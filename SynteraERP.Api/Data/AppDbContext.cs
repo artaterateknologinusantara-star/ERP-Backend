@@ -1,0 +1,379 @@
+using Microsoft.EntityFrameworkCore;
+using SynteraERP.Api.Models;
+
+namespace SynteraERP.Api.Data;
+
+public class AppDbContext : DbContext
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    // ─── Auth ────────────────────────────────────────────────────────────────
+    public DbSet<Role> Roles => Set<Role>();
+    public DbSet<User> Users => Set<User>();
+
+    // ─── Master Data ──────────────────────────────────────────────────────────
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<NumberingConfig> NumberingConfigs => Set<NumberingConfig>();
+    public DbSet<ItemMaster> ItemMasters => Set<ItemMaster>();
+    public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
+
+    // ─── Quotation ────────────────────────────────────────────────────────────
+    public DbSet<Quotation> Quotations => Set<Quotation>();
+    public DbSet<QuotationTab> QuotationTabs => Set<QuotationTab>();
+    public DbSet<QuotationGroup> QuotationGroups => Set<QuotationGroup>();
+    public DbSet<QuotationItem> QuotationItems => Set<QuotationItem>();
+    public DbSet<CustomerPO> CustomerPOs => Set<CustomerPO>();
+
+    // ─── Sales ────────────────────────────────────────────────────────────────
+    public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
+
+    // ─── Finance ─────────────────────────────────────────────────────────────
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<Payment> Payments => Set<Payment>();
+
+    // ─── Purchasing ───────────────────────────────────────────────────────────
+    public DbSet<PurchaseRequest> PurchaseRequests => Set<PurchaseRequest>();
+    public DbSet<PurchaseRequestItem> PurchaseRequestItems => Set<PurchaseRequestItem>();
+    public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
+    public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+
+    protected override void OnModelCreating(ModelBuilder b)
+    {
+        base.OnModelCreating(b);
+
+        // ─── Global soft-delete filter ────────────────────────────────────────
+        b.Entity<User>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<Customer>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<Supplier>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<ItemMaster>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<Quotation>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<CustomerPO>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<SalesOrder>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<Invoice>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<PurchaseRequest>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<PurchaseOrder>().HasQueryFilter(e => !e.IsDeleted);
+
+        // ─── Role ─────────────────────────────────────────────────────────────
+        b.Entity<Role>(e =>
+        {
+            e.HasIndex(r => r.Name).IsUnique();
+            e.Property(r => r.Name).HasMaxLength(50).IsRequired();
+        });
+
+        // ─── User ─────────────────────────────────────────────────────────────
+        b.Entity<User>(e =>
+        {
+            e.HasIndex(u => u.Email).IsUnique();
+            e.Property(u => u.Email).HasMaxLength(150).IsRequired();
+            e.Property(u => u.Name).HasMaxLength(100).IsRequired();
+            e.Property(u => u.PasswordHash).HasMaxLength(255).IsRequired();
+            e.HasOne(u => u.Role)
+             .WithMany(r => r.Users)
+             .HasForeignKey(u => u.RoleId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── Customer ─────────────────────────────────────────────────────────
+        b.Entity<Customer>(e =>
+        {
+            e.HasIndex(c => c.Code).IsUnique();
+            e.Property(c => c.Code).HasMaxLength(20).IsRequired();
+            e.Property(c => c.Name).HasMaxLength(200).IsRequired();
+        });
+
+        // ─── Supplier ─────────────────────────────────────────────────────────
+        b.Entity<Supplier>(e =>
+        {
+            e.HasIndex(s => s.Code).IsUnique();
+            e.Property(s => s.Code).HasMaxLength(20).IsRequired();
+            e.Property(s => s.Name).HasMaxLength(200).IsRequired();
+        });
+
+        // ─── NumberingConfig ──────────────────────────────────────────────────
+        b.Entity<NumberingConfig>(e =>
+        {
+            e.HasIndex(n => n.DocType).IsUnique();
+            e.Property(n => n.DocType).HasMaxLength(30).IsRequired();
+            e.Property(n => n.Prefix).HasMaxLength(20).IsRequired();
+        });
+
+        // ─── ItemMaster ───────────────────────────────────────────────────────
+        b.Entity<ItemMaster>(e =>
+        {
+            e.HasIndex(i => i.Code).IsUnique();
+            e.Property(i => i.Code).HasMaxLength(30).IsRequired();
+            e.Property(i => i.Name).HasMaxLength(300).IsRequired();
+            e.Property(i => i.Category).HasMaxLength(100);
+            e.Property(i => i.Brand).HasMaxLength(100);
+            e.Property(i => i.Uom).HasMaxLength(50).IsRequired();
+            e.Property(i => i.Warehouse).HasMaxLength(100);
+            e.Property(i => i.Stock).HasPrecision(18, 4);
+            e.Property(i => i.MinStock).HasPrecision(18, 4);
+            e.Property(i => i.Price).HasPrecision(18, 2);
+        });
+
+        // ─── Quotation ────────────────────────────────────────────────────────
+        b.Entity<Quotation>(e =>
+        {
+            e.HasIndex(q => new { q.No, q.Revision }).IsUnique();
+            e.Property(q => q.No).HasMaxLength(30).IsRequired();
+            e.Property(q => q.ProjectName).HasMaxLength(300).IsRequired();
+            e.Property(q => q.GrandTotal).HasPrecision(18, 2);
+            e.Property(q => q.TotalMaterial).HasPrecision(18, 2);
+            e.Property(q => q.TotalService).HasPrecision(18, 2);
+            e.Property(q => q.TotalBeforeTax).HasPrecision(18, 2);
+            e.Property(q => q.TaxAmount).HasPrecision(18, 2);
+            e.Property(q => q.Discount).HasPrecision(5, 2);
+            e.Property(q => q.TaxRate).HasPrecision(5, 2);
+            e.Property(q => q.Status).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(q => q.Customer)
+             .WithMany(c => c.Quotations)
+             .HasForeignKey(q => q.CustomerId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(q => q.Sales)
+             .WithMany()
+             .HasForeignKey(q => q.SalesId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(q => q.Parent)
+             .WithMany()
+             .HasForeignKey(q => q.ParentId)
+             .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasOne(q => q.SupersededBy)
+             .WithMany()
+             .HasForeignKey(q => q.SupersededByQuotationId)
+             .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        b.Entity<QuotationTab>(e =>
+        {
+            e.Property(t => t.Label).HasMaxLength(100).IsRequired();
+            e.HasOne(t => t.Quotation)
+             .WithMany(q => q.Tabs)
+             .HasForeignKey(t => t.QuotationId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<QuotationGroup>(e =>
+        {
+            e.Property(g => g.Name).HasMaxLength(200).IsRequired();
+            e.HasOne(g => g.Tab)
+             .WithMany(t => t.Groups)
+             .HasForeignKey(g => g.TabId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<QuotationItem>(e =>
+        {
+            e.Property(i => i.Equipment).HasMaxLength(200).IsRequired();
+            e.Property(i => i.Unit).HasMaxLength(20).IsRequired();
+            e.Property(i => i.ServicePrice).HasPrecision(18, 2);
+            e.Property(i => i.MaterialPrice).HasPrecision(18, 2);
+            e.Property(i => i.Qty).HasPrecision(12, 4);
+            e.Ignore(i => i.TotalService);
+            e.Ignore(i => i.TotalMaterial);
+            e.Ignore(i => i.GrandLine);
+            e.HasOne(i => i.Group)
+             .WithMany(g => g.Items)
+             .HasForeignKey(i => i.GroupId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── CustomerPO ──────────────────────────────────────────────────────────
+        b.Entity<CustomerPO>(e =>
+        {
+            e.HasIndex(c => c.QuotationId).IsUnique();
+            e.Property(c => c.PoNo).HasMaxLength(50).IsRequired();
+            e.Property(c => c.Amount).HasPrecision(18, 2);
+            e.Property(c => c.AttachmentPath).HasMaxLength(500);
+            e.Property(c => c.AttachmentName).HasMaxLength(255);
+            e.HasOne(c => c.Quotation)
+             .WithMany()
+             .HasForeignKey(c => c.QuotationId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── SalesOrder ───────────────────────────────────────────────────────
+        b.Entity<SalesOrder>(e =>
+        {
+            e.HasIndex(s => s.No).IsUnique();
+            e.Property(s => s.No).HasMaxLength(30).IsRequired();
+            e.Property(s => s.ProjectName).HasMaxLength(300).IsRequired();
+            e.Property(s => s.Total).HasPrecision(18, 2);
+            e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(s => s.Customer)
+             .WithMany(c => c.SalesOrders)
+             .HasForeignKey(s => s.CustomerId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(s => s.Sales)
+             .WithMany()
+             .HasForeignKey(s => s.SalesId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(s => s.Quotation)
+             .WithMany()
+             .HasForeignKey(s => s.QuotationId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ─── Invoice ─────────────────────────────────────────────────────────
+        b.Entity<Invoice>(e =>
+        {
+            e.HasIndex(i => i.No).IsUnique();
+            e.Property(i => i.No).HasMaxLength(30).IsRequired();
+            e.Property(i => i.Amount).HasPrecision(18, 2);
+            e.Property(i => i.Paid).HasPrecision(18, 2);
+            e.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
+            e.Ignore(i => i.Balance);
+
+            e.HasOne(i => i.Customer)
+             .WithMany(c => c.Invoices)
+             .HasForeignKey(i => i.CustomerId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(i => i.SalesOrder)
+             .WithMany(s => s.Invoices)
+             .HasForeignKey(i => i.SalesOrderId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<Payment>(e =>
+        {
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.Property(p => p.Method).HasConversion<string>().HasMaxLength(20);
+            e.HasOne(p => p.Invoice)
+             .WithMany(i => i.Payments)
+             .HasForeignKey(p => p.InvoiceId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── PurchaseRequest ──────────────────────────────────────────────────
+        b.Entity<PurchaseRequest>(e =>
+        {
+            e.HasIndex(r => r.No).IsUnique();
+            e.Property(r => r.No).HasMaxLength(30).IsRequired();
+            e.Property(r => r.Total).HasPrecision(18, 2);
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(r => r.SalesOrder)
+             .WithMany(s => s.PurchaseRequests)
+             .HasForeignKey(r => r.SalesOrderId)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(r => r.RequestedByUser)
+             .WithMany()
+             .HasForeignKey(r => r.RequestedBy)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<PurchaseRequestItem>(e =>
+        {
+            e.Property(i => i.EstPrice).HasPrecision(18, 2);
+            e.Property(i => i.Qty).HasPrecision(12, 4);
+            e.HasOne(i => i.PurchaseRequest)
+             .WithMany(r => r.Items)
+             .HasForeignKey(i => i.PRId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── PurchaseOrder ────────────────────────────────────────────────────
+        b.Entity<PurchaseOrder>(e =>
+        {
+            e.HasIndex(o => o.No).IsUnique();
+            e.Property(o => o.No).HasMaxLength(30).IsRequired();
+            e.Property(o => o.Total).HasPrecision(18, 2);
+            e.Property(o => o.Status).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(o => o.Supplier)
+             .WithMany(s => s.PurchaseOrders)
+             .HasForeignKey(o => o.SupplierId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(o => o.PurchaseRequest)
+             .WithMany(r => r.PurchaseOrders)
+             .HasForeignKey(o => o.PurchaseRequestId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<PurchaseOrderItem>(e =>
+        {
+            e.Property(i => i.Price).HasPrecision(18, 2);
+            e.Property(i => i.Qty).HasPrecision(12, 4);
+            e.Property(i => i.ReceivedQty).HasPrecision(12, 4);
+            e.Ignore(i => i.Total);
+            e.HasOne(i => i.PurchaseOrder)
+             .WithMany(o => o.Items)
+             .HasForeignKey(i => i.POId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── CompanySettings ─────────────────────────────────────────────────────
+        b.Entity<CompanySettings>(e =>
+        {
+            e.Property(c => c.CompanyName).HasMaxLength(200).IsRequired();
+            e.Property(c => c.LogoPath).HasMaxLength(500);
+            e.Property(c => c.Address).HasMaxLength(500);
+            e.Property(c => c.Phone).HasMaxLength(50);
+            e.Property(c => c.Email).HasMaxLength(150);
+            e.Property(c => c.Website).HasMaxLength(200);
+            e.Property(c => c.FooterText).HasMaxLength(1000);
+            e.Property(c => c.SignatureName).HasMaxLength(100);
+            e.Property(c => c.SignatureTitle).HasMaxLength(100);
+        });
+
+        // ─── Seed data ────────────────────────────────────────────────────────
+        var adminRoleId = new Guid("10000000-0000-0000-0000-000000000001");
+        var salesRoleId = new Guid("10000000-0000-0000-0000-000000000002");
+        var financeRoleId = new Guid("10000000-0000-0000-0000-000000000003");
+
+        b.Entity<Role>().HasData(
+            new Role { Id = adminRoleId, Name = "Administrator", Description = "Full system access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow },
+            new Role { Id = salesRoleId, Name = "Sales", Description = "Quotation and sales module access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow },
+            new Role { Id = financeRoleId, Name = "Finance", Description = "Invoice and payment access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }
+        );
+
+        var adminId = new Guid("20000000-0000-0000-0000-000000000001");
+        b.Entity<User>().HasData(
+            new User
+            {
+                Id = adminId,
+                RoleId = adminRoleId,
+                Name = "Administrator",
+                Email = "admin@syntera.id",
+                // password: Admin@123
+                PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            }
+        );
+
+        b.Entity<NumberingConfig>().HasData(
+            new NumberingConfig { Id = Guid.NewGuid(), DocType = "QUOTATION", Prefix = "Q.SYN", LastNumber = 148 },
+            new NumberingConfig { Id = Guid.NewGuid(), DocType = "SALES_ORDER", Prefix = "SO.SYN", LastNumber = 48 },
+            new NumberingConfig { Id = Guid.NewGuid(), DocType = "INVOICE", Prefix = "INV.SYN", LastNumber = 64 },
+            new NumberingConfig { Id = Guid.NewGuid(), DocType = "PURCHASE_REQUEST", Prefix = "PR.SYN", LastNumber = 34 },
+            new NumberingConfig { Id = Guid.NewGuid(), DocType = "PURCHASE_ORDER", Prefix = "PO.SYN", LastNumber = 19 }
+        );
+
+        b.Entity<CompanySettings>().HasData(new CompanySettings
+        {
+            Id = new Guid("30000000-0000-0000-0000-000000000001"),
+            CompanyName = "PT Syntera Teknologi Nusantara",
+            Address = "Jl. Raya Teknologi No. 1, Jakarta Selatan 12190",
+            Phone = "+62 21 5555-0100",
+            Email = "info@syntera.id",
+            Website = "www.syntera.id",
+            FooterText = "Penawaran ini berlaku selama 14 hari. Harga belum termasuk biaya pengiriman dan instalasi kecuali disebutkan. Pembayaran 50% di muka, sisa 50% setelah pekerjaan selesai.",
+            SignatureName = "Budi Santoso",
+            SignatureTitle = "Sales Manager",
+            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero)
+        });
+    }
+}

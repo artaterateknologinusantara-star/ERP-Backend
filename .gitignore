@@ -1,0 +1,23 @@
+# Build outputs
+bin/
+obj/
+build-output/
+
+# Visual Studio / Rider
+*.user
+*.suo
+*.vs/
+.vs/
+.idea/
+
+# App settings (contains secrets)
+appsettings.json
+appsettings.Development.json
+appsettings.Production.json
+
+# Uploaded files
+SynteraERP.Api/uploads/
+
+# OS
+.DS_Store
+Thumbs.db

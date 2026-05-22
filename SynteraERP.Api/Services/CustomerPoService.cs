@@ -1,0 +1,210 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using SynteraERP.Api.Data;
+using SynteraERP.Api.DTOs.Common;
+using SynteraERP.Api.DTOs.CustomerPO;
+using SynteraERP.Api.Models;
+using SynteraERP.Api.Services.Interfaces;
+
+namespace SynteraERP.Api.Services;
+
+public class CustomerPoService : ICustomerPoService
+{
+    private readonly AppDbContext _db;
+    private readonly IWebHostEnvironment _env;
+
+    public CustomerPoService(AppDbContext db, IWebHostEnvironment env)
+    {
+        _db = db;
+        _env = env;
+    }
+
+    public async Task<PaginatedResponse<CustomerPoListDto>> ListAsync(PaginationParams p)
+    {
+        var q = _db.CustomerPOs
+            .Include(c => c.Quotation).ThenInclude(q => q.Customer)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(p.Search))
+        {
+            var s = p.Search.ToLower();
+            q = q.Where(c => c.PoNo.ToLower().Contains(s)
+                || c.Quotation.No.ToLower().Contains(s)
+                || c.Quotation.Customer.Name.ToLower().Contains(s)
+                || c.Quotation.ProjectName.ToLower().Contains(s));
+        }
+
+        q = p.SortBy switch
+        {
+            "poNo" => p.IsDescending ? q.OrderByDescending(c => c.PoNo) : q.OrderBy(c => c.PoNo),
+            "poDate" => p.IsDescending ? q.OrderByDescending(c => c.PoDate) : q.OrderBy(c => c.PoDate),
+            "amount" => p.IsDescending ? q.OrderByDescending(c => c.Amount) : q.OrderBy(c => c.Amount),
+            _ => q.OrderByDescending(c => c.CreatedAt),
+        };
+
+        var total = await q.CountAsync();
+        var data = await q.Skip(p.Skip).Take(p.PerPage).ToListAsync();
+
+        return PaginatedResponse<CustomerPoListDto>.Create(
+            data.Select(ToListDto).ToList(),
+            total, p.Page, p.PerPage);
+    }
+
+    public async Task<CustomerPoDto?> GetByIdAsync(Guid id)
+    {
+        var cpo = await _db.CustomerPOs
+            .Include(c => c.Quotation).ThenInclude(q => q.Customer)
+            .FirstOrDefaultAsync(c => c.Id == id);
+
+        return cpo is null ? null : ToDto(cpo);
+    }
+
+    public async Task<CustomerPoDto?> GetByQuotationIdAsync(Guid quotationId)
+    {
+        var cpo = await _db.CustomerPOs
+            .Include(c => c.Quotation).ThenInclude(q => q.Customer)
+            .FirstOrDefaultAsync(c => c.QuotationId == quotationId);
+
+        return cpo is null ? null : ToDto(cpo);
+    }
+
+    public async Task<CustomerPoDto> CreateAsync(CreateCustomerPoRequest request, IFormFile? attachment)
+    {
+        var quotation = await _db.Quotations
+            .Include(q => q.Customer)
+            .FirstOrDefaultAsync(q => q.Id == request.QuotationId)
+            ?? throw new KeyNotFoundException("Quotation tidak ditemukan.");
+
+        if (quotation.Status != QuotationStatus.Disetujui)
+            throw new InvalidOperationException("Customer PO hanya dapat diinput untuk Quotation yang sudah Disetujui.");
+
+        var existing = await _db.CustomerPOs.AnyAsync(c => c.QuotationId == request.QuotationId);
+        if (existing)
+            throw new InvalidOperationException("Customer PO untuk Quotation ini sudah diinput.");
+
+        // Amount validation: PO cannot exceed approved quotation total
+        if (request.Amount > quotation.GrandTotal)
+            throw new InvalidOperationException(
+                $"Nilai PO ({request.Amount:N0}) tidak boleh melebihi total penawaran yang disetujui ({quotation.GrandTotal:N0}).");
+
+        // When PO is lower than quotation, a reason (notes) is mandatory for audit trail
+        if (request.Amount < quotation.GrandTotal && string.IsNullOrWhiteSpace(request.Notes))
+            throw new InvalidOperationException(
+                "Nilai PO berbeda dari penawaran. Wajib mengisi catatan alasan perbedaan nilai.");
+
+        string? attachmentPath = null;
+        string? attachmentName = null;
+
+        if (attachment is { Length: > 0 })
+        {
+            var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "customer-po");
+            Directory.CreateDirectory(uploadsDir);
+
+            var ext = Path.GetExtension(attachment.FileName);
+            var storedName = $"{Guid.NewGuid()}{ext}";
+            var fullPath = Path.Combine(uploadsDir, storedName);
+
+            await using var stream = new FileStream(fullPath, FileMode.Create);
+            await attachment.CopyToAsync(stream);
+
+            attachmentPath = Path.Combine("customer-po", storedName);
+            attachmentName = attachment.FileName;
+        }
+
+        var cpo = new CustomerPO
+        {
+            QuotationId = request.QuotationId,
+            PoNo = request.PoNo,
+            PoDate = request.PoDate,
+            Amount = request.Amount,
+            Notes = request.Notes,
+            AttachmentPath = attachmentPath,
+            AttachmentName = attachmentName,
+        };
+
+        _db.CustomerPOs.Add(cpo);
+
+        // Advance quotation to Selesai — it is now execution-ready
+        quotation.Status = QuotationStatus.Selesai;
+        quotation.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync();
+        return (await GetByIdAsync(cpo.Id))!;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id)
+    {
+        var cpo = await _db.CustomerPOs.FindAsync(id);
+        if (cpo is null) return false;
+
+        // Remove stored file if present
+        if (cpo.AttachmentPath is not null)
+        {
+            var fullPath = Path.Combine(_env.ContentRootPath, "uploads", cpo.AttachmentPath);
+            if (File.Exists(fullPath)) File.Delete(fullPath);
+        }
+
+        cpo.IsDeleted = true;
+        cpo.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<(byte[] data, string contentType, string fileName)?> GetAttachmentAsync(Guid id)
+    {
+        var cpo = await _db.CustomerPOs.FindAsync(id);
+        if (cpo is null || cpo.AttachmentPath is null) return null;
+
+        var fullPath = Path.Combine(_env.ContentRootPath, "uploads", cpo.AttachmentPath);
+        if (!File.Exists(fullPath)) return null;
+
+        var data = await File.ReadAllBytesAsync(fullPath);
+        var contentType = GetContentType(cpo.AttachmentPath);
+        var fileName = cpo.AttachmentName ?? Path.GetFileName(cpo.AttachmentPath);
+        return (data, contentType, fileName);
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private static string GetContentType(string path) =>
+        Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".png" => "image/png",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            _ => "application/octet-stream",
+        };
+
+    private static CustomerPoListDto ToListDto(CustomerPO c) => new()
+    {
+        Id = c.Id,
+        PoNo = c.PoNo,
+        QuotationId = c.QuotationId,
+        QuotationNo = c.Quotation?.No ?? string.Empty,
+        CustomerName = c.Quotation?.Customer?.Name ?? string.Empty,
+        ProjectName = c.Quotation?.ProjectName ?? string.Empty,
+        PoDate = c.PoDate,
+        Amount = c.Amount,
+        HasAttachment = c.AttachmentPath is not null,
+        CreatedAt = c.CreatedAt,
+    };
+
+    private static CustomerPoDto ToDto(CustomerPO c) => new()
+    {
+        Id = c.Id,
+        PoNo = c.PoNo,
+        QuotationId = c.QuotationId,
+        QuotationNo = c.Quotation?.No ?? string.Empty,
+        CustomerName = c.Quotation?.Customer?.Name ?? string.Empty,
+        ProjectName = c.Quotation?.ProjectName ?? string.Empty,
+        PoDate = c.PoDate,
+        Amount = c.Amount,
+        HasAttachment = c.AttachmentPath is not null,
+        Notes = c.Notes,
+        AttachmentName = c.AttachmentName,
+        CreatedAt = c.CreatedAt,
+        UpdatedAt = c.UpdatedAt,
+    };
+}
