@@ -19,6 +19,11 @@ public class AppDbContext : DbContext
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
     public DbSet<TaxRate> TaxRates => Set<TaxRate>();
 
+    // ─── Accounting / GL ──────────────────────────────────────────────────────
+    public DbSet<Account> Accounts => Set<Account>();
+    public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
+    public DbSet<JournalEntryLine> JournalEntryLines => Set<JournalEntryLine>();
+
     // ─── Quotation ────────────────────────────────────────────────────────────
     public DbSet<Quotation> Quotations => Set<Quotation>();
     public DbSet<QuotationTab> QuotationTabs => Set<QuotationTab>();
@@ -72,6 +77,8 @@ public class AppDbContext : DbContext
         b.Entity<StockTransaction>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<DeliveryOrder>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<TaxRate>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<Account>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<JournalEntry>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -502,6 +509,53 @@ public class AppDbContext : DbContext
             e.Property(t => t.Rate).HasPrecision(6, 4);
         });
 
+        // ─── Account ──────────────────────────────────────────────────────────
+        b.Entity<Account>(e =>
+        {
+            e.HasIndex(a => a.Code).IsUnique();
+            e.Property(a => a.Code).HasMaxLength(20).IsRequired();
+            e.Property(a => a.Name).HasMaxLength(150).IsRequired();
+            e.Property(a => a.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(a => a.NormalBalance).HasConversion<string>().HasMaxLength(10);
+
+            e.HasOne(a => a.ParentAccount)
+             .WithMany(a => a.ChildAccounts)
+             .HasForeignKey(a => a.ParentAccountId)
+             .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ─── JournalEntry ─────────────────────────────────────────────────────
+        b.Entity<JournalEntry>(e =>
+        {
+            e.HasIndex(j => j.EntryNumber).IsUnique();
+            e.Property(j => j.EntryNumber).HasMaxLength(30).IsRequired();
+            e.Property(j => j.SourceType).HasConversion<string>().HasMaxLength(30);
+            e.Property(j => j.Status).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(j => j.ReversedByEntry)
+             .WithMany()
+             .HasForeignKey(j => j.ReversedByEntryId)
+             .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ─── JournalEntryLine ─────────────────────────────────────────────────
+        b.Entity<JournalEntryLine>(e =>
+        {
+            e.HasKey(l => l.Id);
+            e.Property(l => l.Debit).HasPrecision(18, 2);
+            e.Property(l => l.Credit).HasPrecision(18, 2);
+
+            e.HasOne(l => l.JournalEntry)
+             .WithMany(j => j.Lines)
+             .HasForeignKey(l => l.JournalEntryId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(l => l.Account)
+             .WithMany()
+             .HasForeignKey(l => l.AccountId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ─── AuditLog ─────────────────────────────────────────────────────────
         b.Entity<AuditLog>(e =>
         {
@@ -573,5 +627,75 @@ public class AppDbContext : DbContext
             CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero),
             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero)
         });
+
+        // ─── Chart of Accounts (Fase 1 Accounting) ─────────────────────────────
+        var acctSeedDate = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero);
+        var acctKasBankId = new Guid("50000000-0000-0000-0000-000000000001");
+        var acctBebanOpId = new Guid("50000000-0000-0000-0000-00000000000f");
+
+        Account NewAccount(string idHex, string code, string name, AccountType type, NormalBalanceType normal, Guid? parentId = null, bool isControl = false) => new()
+        {
+            Id = new Guid($"50000000-0000-0000-0000-{idHex.PadLeft(12, '0')}"),
+            Code = code,
+            Name = name,
+            Type = type,
+            ParentAccountId = parentId,
+            NormalBalance = normal,
+            IsControlAccount = isControl,
+            CreatedAt = acctSeedDate,
+            UpdatedAt = acctSeedDate,
+        };
+
+        b.Entity<Account>().HasData(
+            // ASET
+            NewAccount("1", "1-1000", "Kas & Bank", AccountType.Asset, NormalBalanceType.Debit, isControl: true),
+            NewAccount("2", "1-1001", "Kas", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
+            NewAccount("3", "1-1002", "Bank BCA", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
+            NewAccount("4", "1-1003", "Bank Mandiri", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
+            NewAccount("5", "1-1004", "Bank BNI", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
+            NewAccount("6", "1-2000", "Piutang Usaha", AccountType.Asset, NormalBalanceType.Debit),
+            NewAccount("7", "1-3000", "Persediaan", AccountType.Asset, NormalBalanceType.Debit),
+            NewAccount("8", "1-4000", "Aset Tetap", AccountType.Asset, NormalBalanceType.Debit),
+            // LIABILITAS
+            NewAccount("9", "2-1000", "Utang Usaha", AccountType.Liability, NormalBalanceType.Credit),
+            NewAccount("a", "2-2000", "Utang Pajak Keluaran (PPN Keluaran)", AccountType.Liability, NormalBalanceType.Credit),
+            NewAccount("b", "2-3000", "Utang Pajak Masukan (PPN Masukan)", AccountType.Liability, NormalBalanceType.Credit),
+            // EKUITAS
+            NewAccount("c", "3-1000", "Modal", AccountType.Equity, NormalBalanceType.Credit),
+            // PENDAPATAN
+            NewAccount("d", "4-1000", "Pendapatan Penjualan", AccountType.Revenue, NormalBalanceType.Credit),
+            // BEBAN
+            NewAccount("e", "5-1000", "Harga Pokok Penjualan (HPP)", AccountType.Expense, NormalBalanceType.Debit),
+            NewAccount("f", "5-2000", "Beban Operasional", AccountType.Expense, NormalBalanceType.Debit, isControl: true),
+            NewAccount("10", "5-2001", "Beban Sewa Kantor", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("11", "5-2002", "Beban ATK", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("12", "5-2003", "Beban Listrik", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("13", "5-2004", "Beban Air", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("14", "5-2005", "Beban Internet", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("15", "5-2006", "Beban Telepon", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("16", "5-2007", "Beban BBM", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("17", "5-2008", "Beban Parkir", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("18", "5-2009", "Beban Perjalanan Bisnis", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("19", "5-2010", "Beban Entertainment", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("1a", "5-2011", "Beban Kurir", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("1b", "5-2012", "Beban Maintenance Kantor", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("1c", "5-2013", "Beban Bank Charges", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("1d", "5-2014", "Beban Asuransi", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("1e", "5-2015", "Beban Training", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("1f", "5-2016", "Beban Pajak", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId),
+            NewAccount("20", "5-2017", "Beban Lain-lain", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId)
+        );
+
+        // NumberingConfig baru khusus Journal Entry — TIDAK menyentuh DocType lain sama sekali.
+        b.Entity<NumberingConfig>().HasData(
+            new NumberingConfig
+            {
+                Id = new Guid("60000000-0000-0000-0000-000000000001"),
+                DocType = "JOURNAL_ENTRY",
+                Prefix = "JE.SYN",
+                LastNumber = 0,
+                UpdatedAt = acctSeedDate,
+            }
+        );
     }
 }
