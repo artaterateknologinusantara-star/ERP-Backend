@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Middleware;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -57,7 +58,12 @@ builder.Services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<IItemMasterService, ItemMasterService>();
 builder.Services.AddScoped<ICustomerPoService, CustomerPoService>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<QuotationPdfService>();
+builder.Services.AddScoped<SalesOrderPdfService>();
+builder.Services.AddScoped<InvoicePdfService>();
+builder.Services.AddScoped<ISystemResetService, SystemResetService>();
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 builder.Services.AddControllers()
@@ -125,6 +131,19 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await CustomerSeeder.SeedAsync(db);
     await ItemMasterSeeder.SeedAsync(db);
+
+    // Seed DELIVERY_ORDER numbering config if not present
+    if (!await db.NumberingConfigs.AnyAsync(n => n.DocType == "DELIVERY_ORDER"))
+    {
+        db.NumberingConfigs.Add(new NumberingConfig
+        {
+            DocType = "DELIVERY_ORDER",
+            Prefix = "DO.SYN",
+            LastNumber = 0,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+    }
 }
 
 app.Run();

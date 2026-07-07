@@ -33,7 +33,38 @@ public class ItemMasterController : ControllerBase
     public async Task<ActionResult<ApiResponse<ItemMasterDto>>> Get(Guid id)
     {
         var item = await _svc.GetByIdAsync(id);
-        if (item is null) return NotFound(ApiResponse<ItemMasterDto>.Fail("Item Master tidak ditemukan."));
+        if (item is null) return NotFound(ApiResponse<ItemMasterDto>.Fail("Item tidak ditemukan."));
         return Ok(ApiResponse<ItemMasterDto>.Ok(item));
+    }
+
+    [HttpPost]
+    public async Task<ActionResult<ApiResponse<ItemMasterDto>>> Create([FromBody] CreateItemMasterRequest request)
+    {
+        var item = await _svc.CreateAsync(request);
+        return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<ItemMasterDto>.Ok(item, "Item berhasil dibuat."));
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<ItemMasterDto>>> Update(Guid id, [FromBody] UpdateItemMasterRequest request)
+    {
+        var item = await _svc.UpdateAsync(id, request);
+        if (item is null) return NotFound(ApiResponse<ItemMasterDto>.Fail("Item tidak ditemukan."));
+        return Ok(ApiResponse<ItemMasterDto>.Ok(item, "Item berhasil diperbarui."));
+    }
+
+    [HttpPatch("{id:guid}/status")]
+    public async Task<ActionResult<ApiResponse>> SetStatus(Guid id, [FromBody] SetStatusRequest request)
+    {
+        var ok = await _svc.SetStatusAsync(id, request.IsActive);
+        if (!ok) return NotFound(ApiResponse.Fail("Item tidak ditemukan."));
+        return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<ActionResult<ApiResponse>> Delete(Guid id)
+    {
+        var ok = await _svc.DeleteAsync(id);
+        if (!ok) return NotFound(ApiResponse.Fail("Item tidak ditemukan."));
+        return Ok(ApiResponse.Ok("Item berhasil dihapus."));
     }
 }

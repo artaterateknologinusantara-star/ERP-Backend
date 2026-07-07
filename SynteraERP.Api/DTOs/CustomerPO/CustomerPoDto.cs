@@ -11,6 +11,8 @@ public class CustomerPoListDto
     public DateOnly PoDate { get; set; }
     public decimal Amount { get; set; }
     public bool HasAttachment { get; set; }
+    public Guid? SalesOrderId { get; set; }
+    public string? SalesOrderNo { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
 

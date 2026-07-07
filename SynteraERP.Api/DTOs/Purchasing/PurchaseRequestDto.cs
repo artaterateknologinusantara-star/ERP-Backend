@@ -10,13 +10,16 @@ public class PurchaseRequestListDto
     public string Status { get; set; } = string.Empty;
     public decimal Total { get; set; }
     public string? Notes { get; set; }
+    public int ItemCount { get; set; }
 }
 
 public class PurchaseRequestDto : PurchaseRequestListDto
 {
     public Guid RequestedBy { get; set; }
     public Guid? SalesOrderId { get; set; }
+    public string? ApprovedByName { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public int ItemsNeedingPriceVerification { get; set; }
     public List<PurchaseRequestItemDto> Items { get; set; } = [];
 }
 
@@ -51,4 +54,14 @@ public class CreatePRItemRequest
 public class UpdatePRStatusRequest
 {
     public string Status { get; set; } = string.Empty;
+}
+
+public class PurchaseRequestStatsDto
+{
+    public int Total { get; set; }
+    public int Draft { get; set; }
+    public int Submitted { get; set; }
+    public int Approved { get; set; }
+    public int Rejected { get; set; }
+    public decimal TotalValue { get; set; }
 }

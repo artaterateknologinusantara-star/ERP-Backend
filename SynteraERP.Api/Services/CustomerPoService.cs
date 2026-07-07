@@ -45,8 +45,25 @@ public class CustomerPoService : ICustomerPoService
         var total = await q.CountAsync();
         var data = await q.Skip(p.Skip).Take(p.PerPage).ToListAsync();
 
+        // Load associated SalesOrders in one query, keyed by QuotationId
+        var quotationIds = data.Select(c => c.QuotationId).Distinct().ToList();
+        var soMap = new Dictionary<Guid, (Guid Id, string No)>();
+        if (quotationIds.Count > 0)
+        {
+            var soList = await _db.SalesOrders
+                .Where(s => s.QuotationId != null && quotationIds.Contains(s.QuotationId!.Value))
+                .Select(s => new { s.Id, s.No, QuotationId = s.QuotationId!.Value })
+                .ToListAsync();
+            foreach (var s in soList)
+                soMap.TryAdd(s.QuotationId, (s.Id, s.No));
+        }
+
         return PaginatedResponse<CustomerPoListDto>.Create(
-            data.Select(ToListDto).ToList(),
+            data.Select(c =>
+            {
+                var found = soMap.TryGetValue(c.QuotationId, out var so);
+                return ToListDto(c, found ? so.Id : null, found ? so.No : null);
+            }).ToList(),
             total, p.Page, p.PerPage);
     }
 
@@ -56,7 +73,10 @@ public class CustomerPoService : ICustomerPoService
             .Include(c => c.Quotation).ThenInclude(q => q.Customer)
             .FirstOrDefaultAsync(c => c.Id == id);
 
-        return cpo is null ? null : ToDto(cpo);
+        if (cpo is null) return null;
+        var so = await _db.SalesOrders
+            .FirstOrDefaultAsync(s => s.QuotationId == cpo.QuotationId && !s.IsDeleted);
+        return ToDto(cpo, so?.Id, so?.No);
     }
 
     public async Task<CustomerPoDto?> GetByQuotationIdAsync(Guid quotationId)
@@ -65,7 +85,10 @@ public class CustomerPoService : ICustomerPoService
             .Include(c => c.Quotation).ThenInclude(q => q.Customer)
             .FirstOrDefaultAsync(c => c.QuotationId == quotationId);
 
-        return cpo is null ? null : ToDto(cpo);
+        if (cpo is null) return null;
+        var so = await _db.SalesOrders
+            .FirstOrDefaultAsync(s => s.QuotationId == quotationId && !s.IsDeleted);
+        return ToDto(cpo, so?.Id, so?.No);
     }
 
     public async Task<CustomerPoDto> CreateAsync(CreateCustomerPoRequest request, IFormFile? attachment)
@@ -177,7 +200,7 @@ public class CustomerPoService : ICustomerPoService
             _ => "application/octet-stream",
         };
 
-    private static CustomerPoListDto ToListDto(CustomerPO c) => new()
+    private static CustomerPoListDto ToListDto(CustomerPO c, Guid? soId, string? soNo) => new()
     {
         Id = c.Id,
         PoNo = c.PoNo,
@@ -188,10 +211,12 @@ public class CustomerPoService : ICustomerPoService
         PoDate = c.PoDate,
         Amount = c.Amount,
         HasAttachment = c.AttachmentPath is not null,
+        SalesOrderId = soId,
+        SalesOrderNo = soNo,
         CreatedAt = c.CreatedAt,
     };
 
-    private static CustomerPoDto ToDto(CustomerPO c) => new()
+    private static CustomerPoDto ToDto(CustomerPO c, Guid? soId, string? soNo) => new()
     {
         Id = c.Id,
         PoNo = c.PoNo,
@@ -202,6 +227,8 @@ public class CustomerPoService : ICustomerPoService
         PoDate = c.PoDate,
         Amount = c.Amount,
         HasAttachment = c.AttachmentPath is not null,
+        SalesOrderId = soId,
+        SalesOrderNo = soNo,
         Notes = c.Notes,
         AttachmentName = c.AttachmentName,
         CreatedAt = c.CreatedAt,

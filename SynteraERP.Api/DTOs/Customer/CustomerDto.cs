@@ -1,4 +1,11 @@
+using SynteraERP.Api.DTOs.Common;
+
 namespace SynteraERP.Api.DTOs.Customer;
+
+public class CustomerParams : PaginationParams
+{
+    public bool? IsActive { get; set; }
+}
 
 public class CustomerDto
 {

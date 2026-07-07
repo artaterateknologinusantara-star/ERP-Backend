@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Invoice;
+using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -12,14 +13,26 @@ namespace SynteraERP.Api.Controllers;
 public class InvoiceController : ControllerBase
 {
     private readonly IInvoiceService _svc;
+    private readonly InvoicePdfService _pdfSvc;
 
-    public InvoiceController(IInvoiceService svc) => _svc = svc;
+    public InvoiceController(IInvoiceService svc, InvoicePdfService pdfSvc)
+    {
+        _svc = svc;
+        _pdfSvc = pdfSvc;
+    }
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<InvoiceListDto>>>> List([FromQuery] PaginationParams p)
     {
         var result = await _svc.ListAsync(p);
         return Ok(ApiResponse<PaginatedResponse<InvoiceListDto>>.Ok(result));
+    }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetStats()
+    {
+        var result = await _svc.GetStatsAsync();
+        return Ok(new { success = true, data = result });
     }
 
     [HttpGet("{id:guid}")]
@@ -51,5 +64,13 @@ public class InvoiceController : ControllerBase
         var ok = await _svc.DeleteAsync(id);
         if (!ok) return NotFound(ApiResponse.Fail("Invoice tidak ditemukan."));
         return Ok(ApiResponse.Ok("Invoice berhasil dihapus."));
+    }
+
+    [HttpGet("{id:guid}/pdf")]
+    public async Task<IActionResult> ExportPdf(Guid id)
+    {
+        var pdfBytes = await _pdfSvc.GenerateAsync(id);
+        if (pdfBytes is null) return NotFound();
+        return File(pdfBytes, "application/pdf", $"Invoice_{id}.pdf");
     }
 }

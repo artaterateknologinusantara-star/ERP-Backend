@@ -27,9 +27,11 @@ public class AppDbContext : DbContext
 
     // ─── Sales ────────────────────────────────────────────────────────────────
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
+    public DbSet<SalesOrderItem> SalesOrderItems { get; set; }
 
     // ─── Finance ─────────────────────────────────────────────────────────────
     public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<InvoiceItem> InvoiceItems { get; set; }
     public DbSet<Payment> Payments => Set<Payment>();
 
     // ─── Purchasing ───────────────────────────────────────────────────────────
@@ -37,6 +39,19 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseRequestItem> PurchaseRequestItems => Set<PurchaseRequestItem>();
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
+    public DbSet<POPayment> POPayments { get; set; }
+
+    // ─── Inventory ────────────────────────────────────────────────────────────
+    public DbSet<StockTransaction> StockTransactions { get; set; }
+    public DbSet<DeliveryOrder> DeliveryOrders { get; set; }
+    public DbSet<DeliveryOrderItem> DeliveryOrderItems { get; set; }
+
+    // ─── Project ──────────────────────────────────────────────────────────────
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectTask> ProjectTasks => Set<ProjectTask>();
+
+    // ─── Audit ────────────────────────────────────────────────────────────────
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -53,6 +68,8 @@ public class AppDbContext : DbContext
         b.Entity<Invoice>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<PurchaseRequest>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<PurchaseOrder>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<StockTransaction>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<DeliveryOrder>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -110,7 +127,15 @@ public class AppDbContext : DbContext
             e.Property(i => i.Warehouse).HasMaxLength(100);
             e.Property(i => i.Stock).HasPrecision(18, 4);
             e.Property(i => i.MinStock).HasPrecision(18, 4);
-            e.Property(i => i.Price).HasPrecision(18, 2);
+            e.Property(i => i.SellingPrice).HasPrecision(18, 2);
+            e.Property(i => i.PurchasePrice).HasPrecision(18, 2);
+            e.Property(i => i.LastPurchasePrice).HasPrecision(18, 2);
+            e.Property(i => i.ReorderPoint).HasPrecision(18, 4);
+            e.HasOne(i => i.PreferredVendor)
+             .WithMany()
+             .HasForeignKey(i => i.PreferredVendorId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
         });
 
         // ─── Quotation ────────────────────────────────────────────────────────
@@ -222,6 +247,28 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.SetNull);
         });
 
+        // ─── SalesOrderItem ───────────────────────────────────────────────────
+        b.Entity<SalesOrderItem>(e =>
+        {
+            e.Property(i => i.Amount).HasPrecision(18, 2);
+            e.Property(i => i.UnitPrice).HasPrecision(18, 2);
+            e.Property(i => i.Qty).HasPrecision(18, 4);
+            e.Property(i => i.QtyShipped).HasPrecision(18, 4);
+            e.Property(i => i.Discount).HasPrecision(5, 2);
+            e.Ignore(i => i.QtyNotShipped);
+
+            e.HasOne(i => i.SalesOrder)
+             .WithMany(s => s.Items)
+             .HasForeignKey(i => i.SalesOrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(i => i.ItemMaster)
+             .WithMany()
+             .HasForeignKey(i => i.ItemMasterId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
+        });
+
         // ─── Invoice ─────────────────────────────────────────────────────────
         b.Entity<Invoice>(e =>
         {
@@ -241,6 +288,17 @@ public class AppDbContext : DbContext
              .WithMany(s => s.Invoices)
              .HasForeignKey(i => i.SalesOrderId)
              .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<InvoiceItem>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Qty).HasPrecision(18, 4);
+            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.HasOne(x => x.Invoice).WithMany(x => x.Items)
+             .HasForeignKey(x => x.InvoiceId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<Payment>(e =>
@@ -280,6 +338,11 @@ public class AppDbContext : DbContext
              .WithMany(r => r.Items)
              .HasForeignKey(i => i.PRId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(i => i.ItemMaster)
+             .WithMany()
+             .HasForeignKey(i => i.ItemMasterId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
         });
 
         // ─── PurchaseOrder ────────────────────────────────────────────────────
@@ -311,6 +374,107 @@ public class AppDbContext : DbContext
              .WithMany(o => o.Items)
              .HasForeignKey(i => i.POId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(i => i.ItemMaster)
+             .WithMany()
+             .HasForeignKey(i => i.ItemMasterId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
+        });
+
+        b.Entity<POPayment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Method).HasMaxLength(50);
+            e.HasOne(x => x.PurchaseOrder)
+             .WithMany(x => x.Payments)
+             .HasForeignKey(x => x.PurchaseOrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── StockTransaction ─────────────────────────────────────────────────
+        b.Entity<StockTransaction>(e =>
+        {
+            e.Property(x => x.Qty).HasPrecision(18, 4);
+            e.Property(x => x.StockBefore).HasPrecision(18, 4);
+            e.Property(x => x.StockAfter).HasPrecision(18, 4);
+            e.Property(x => x.Type).HasConversion<string>();
+            e.Property(x => x.Source).HasConversion<string>();
+            e.HasOne(x => x.ItemMaster).WithMany()
+                .HasForeignKey(x => x.ItemMasterId)
+                .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedByUser).WithMany()
+                .HasForeignKey(x => x.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── DeliveryOrder ────────────────────────────────────────────────────
+        b.Entity<DeliveryOrder>(e =>
+        {
+            e.HasIndex(x => x.No).IsUnique();
+            e.Property(x => x.Status).HasConversion<string>();
+            e.HasOne(x => x.SalesOrder).WithMany()
+                .HasForeignKey(x => x.SalesOrderId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+            e.HasOne(x => x.Customer).WithMany()
+                .HasForeignKey(x => x.CustomerId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .IsRequired(false);
+            e.HasOne(x => x.CreatedByUser).WithMany()
+                .HasForeignKey(x => x.CreatedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── DeliveryOrderItem ────────────────────────────────────────────────
+        b.Entity<DeliveryOrderItem>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Qty).HasPrecision(18, 4);
+            e.Property(x => x.QtyOrdered).HasPrecision(18, 4);
+            e.Property(x => x.QtyPreviouslyOut).HasPrecision(18, 4);
+            e.HasOne(x => x.DeliveryOrder).WithMany(x => x.Items)
+                .HasForeignKey(x => x.DeliveryOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ItemMaster).WithMany()
+                .HasForeignKey(x => x.ItemMasterId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── Project ──────────────────────────────────────────────────────────────
+        b.Entity<Project>(e =>
+        {
+            e.HasIndex(p => p.Code).IsUnique();
+            e.Property(p => p.Code).HasMaxLength(30).IsRequired();
+            e.Property(p => p.Name).HasMaxLength(300).IsRequired();
+            e.Property(p => p.Budget).HasPrecision(18, 2);
+            e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasQueryFilter(p => !p.IsDeleted);
+
+            e.HasOne(p => p.Customer).WithMany()
+             .HasForeignKey(p => p.CustomerId)
+             .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.SalesOrder).WithMany()
+             .HasForeignKey(p => p.SalesOrderId)
+             .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(p => p.ProjectManager).WithMany()
+             .HasForeignKey(p => p.ProjectManagerId)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<ProjectTask>(e =>
+        {
+            e.Property(t => t.Title).HasMaxLength(300).IsRequired();
+            e.Property(t => t.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(t => t.Priority).HasConversion<string>().HasMaxLength(10);
+            e.HasQueryFilter(t => !t.IsDeleted);
+
+            e.HasOne(t => t.Project).WithMany(p => p.Tasks)
+             .HasForeignKey(t => t.ProjectId)
+             .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(t => t.AssignedTo).WithMany()
+             .HasForeignKey(t => t.AssignedToId)
+             .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ─── CompanySettings ─────────────────────────────────────────────────────
@@ -325,6 +489,17 @@ public class AppDbContext : DbContext
             e.Property(c => c.FooterText).HasMaxLength(1000);
             e.Property(c => c.SignatureName).HasMaxLength(100);
             e.Property(c => c.SignatureTitle).HasMaxLength(100);
+        });
+
+        // ─── AuditLog ─────────────────────────────────────────────────────────
+        b.Entity<AuditLog>(e =>
+        {
+            e.HasKey(a => a.Id);
+            e.Property(a => a.Action).HasMaxLength(50).IsRequired();
+            e.Property(a => a.Scope).HasMaxLength(200).IsRequired();
+            e.Property(a => a.Details).HasColumnType("nvarchar(max)");
+            e.Property(a => a.PerformedByName).HasMaxLength(100);
+            e.Property(a => a.IpAddress).HasMaxLength(45);
         });
 
         // ─── Seed data ────────────────────────────────────────────────────────

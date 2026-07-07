@@ -22,6 +22,49 @@ namespace SynteraERP.Api.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("SynteraERP.Api.Models.AuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
+
+                    b.Property<Guid>("PerformedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PerformedByName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("TotalDeleted")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AuditLogs");
+                });
+
             modelBuilder.Entity("SynteraERP.Api.Models.CompanySettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -206,6 +249,120 @@ namespace SynteraERP.Api.Migrations
                     b.ToTable("CustomerPOs");
                 });
 
+            modelBuilder.Entity("SynteraERP.Api.Models.DeliveryOrder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DeliveryAddress")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly>("DeliveryDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("No")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RecipientName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("SalesOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("No")
+                        .IsUnique();
+
+                    b.HasIndex("SalesOrderId");
+
+                    b.ToTable("DeliveryOrders");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.DeliveryOrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DeliveryOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ItemMasterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ItemName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("QtyOrdered")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("QtyPreviouslyOut")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Sku")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Uom")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeliveryOrderId");
+
+                    b.HasIndex("ItemMasterId");
+
+                    b.ToTable("DeliveryOrderItems");
+                });
+
             modelBuilder.Entity("SynteraERP.Api.Models.Invoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -254,6 +411,9 @@ namespace SynteraERP.Api.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("Terms")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -270,6 +430,48 @@ namespace SynteraERP.Api.Migrations
                     b.HasIndex("SalesOrderId");
 
                     b.ToTable("Invoices");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.InvoiceItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("InvoiceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Sku")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Uom")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.ToTable("InvoiceItems");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.ItemMaster", b =>
@@ -306,16 +508,43 @@ namespace SynteraERP.Api.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsInventoryItem")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("LastPurchasePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("LeadTimeDays")
+                        .HasColumnType("int");
+
                     b.Property<decimal>("MinStock")
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Model")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
 
-                    b.Property<decimal>("Price")
+                    b.Property<Guid?>("PreferredVendorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ProcurementNotes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal?>("PurchasePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal?>("ReorderPoint")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("SellingPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
@@ -334,6 +563,9 @@ namespace SynteraERP.Api.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("VendorItemCode")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Warehouse")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -342,6 +574,8 @@ namespace SynteraERP.Api.Migrations
 
                     b.HasIndex("Code")
                         .IsUnique();
+
+                    b.HasIndex("PreferredVendorId");
 
                     b.ToTable("ItemMasters");
                 });
@@ -378,44 +612,81 @@ namespace SynteraERP.Api.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("4d0ec25b-1877-4f22-8b8d-179b138c1f3c"),
+                            Id = new Guid("a6a75225-ec1d-4c5c-8537-2bf071fb03c9"),
                             DocType = "QUOTATION",
                             LastNumber = 148,
                             Prefix = "Q.SYN",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4834), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7501), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
-                            Id = new Guid("24de1bf5-7fa0-4db2-98e5-e83bf2d0fbcd"),
+                            Id = new Guid("c5408131-d6b2-4044-8917-956cd5ed0401"),
                             DocType = "SALES_ORDER",
                             LastNumber = 48,
                             Prefix = "SO.SYN",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4840), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7507), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
-                            Id = new Guid("62df74d1-e4d4-44e4-9b88-f225cf8f589b"),
+                            Id = new Guid("4efada93-8857-4bce-9814-b9e607b2189c"),
                             DocType = "INVOICE",
                             LastNumber = 64,
                             Prefix = "INV.SYN",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4849), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7510), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
-                            Id = new Guid("e63af99a-5d8e-485d-8d0a-70360ba892a3"),
+                            Id = new Guid("c8dd376a-4fbb-4601-84bd-d9f591ac26b6"),
                             DocType = "PURCHASE_REQUEST",
                             LastNumber = 34,
                             Prefix = "PR.SYN",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4853), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7515), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
-                            Id = new Guid("3a564d8a-3d2b-4f72-a472-aae77e582801"),
+                            Id = new Guid("b6a2f048-20ed-4fe1-894b-f1ebba6a10ce"),
                             DocType = "PURCHASE_ORDER",
                             LastNumber = 19,
                             Prefix = "PO.SYN",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4857), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7517), new TimeSpan(0, 0, 0, 0, 0))
                         });
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.POPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly>("PaymentDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("PurchaseOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reference")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PurchaseOrderId");
+
+                    b.ToTable("POPayments");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.Payment", b =>
@@ -456,6 +727,144 @@ namespace SynteraERP.Api.Migrations
                     b.HasIndex("InvoiceId");
 
                     b.ToTable("Payments");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.Project", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Budget")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Progress")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ProjectManagerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("SalesOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("ProjectManagerId");
+
+                    b.HasIndex("SalesOrderId");
+
+                    b.ToTable("Projects");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.ProjectTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("AssignedToId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssignedToId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("ProjectTasks");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.PurchaseOrder", b =>
@@ -526,6 +935,9 @@ namespace SynteraERP.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("ItemMasterId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ItemName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -550,6 +962,8 @@ namespace SynteraERP.Api.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ItemMasterId");
 
                     b.HasIndex("POId");
 
@@ -631,6 +1045,9 @@ namespace SynteraERP.Api.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<Guid?>("ItemMasterId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ItemName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -650,6 +1067,8 @@ namespace SynteraERP.Api.Migrations
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ItemMasterId");
 
                     b.HasIndex("PRId");
 
@@ -923,32 +1342,32 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4327), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7263), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Full system access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Administrator",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4327), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7264), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4334), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7311), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Quotation and sales module access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Sales",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4335), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7311), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4339), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7314), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Invoice and payment access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Finance",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4340), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7314), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -973,6 +1392,9 @@ namespace SynteraERP.Api.Migrations
                     b.Property<DateOnly?>("DeliveryDate")
                         .HasColumnType("date");
 
+                    b.Property<DateOnly?>("ExpectedDate")
+                        .HasColumnType("date");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -992,13 +1414,22 @@ namespace SynteraERP.Api.Migrations
                     b.Property<Guid?>("QuotationId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("RefQuotation")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("SalesId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ShipTo")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Terms")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<decimal>("Total")
                         .HasPrecision(18, 2)
@@ -1022,6 +1453,144 @@ namespace SynteraERP.Api.Migrations
                     b.HasIndex("SalesId");
 
                     b.ToTable("SalesOrders");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.SalesOrderItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Discount")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("ItemMasterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("QtyShipped")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<Guid>("SalesOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Sku")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Uom")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ItemMasterId");
+
+                    b.HasIndex("SalesOrderId");
+
+                    b.ToTable("SalesOrderItems");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.StockTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ItemMasterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Qty")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<Guid?>("RefId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RefNo")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("StockAfter")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("StockBefore")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("ItemMasterId");
+
+                    b.ToTable("StockTransactions");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.Supplier", b =>
@@ -1148,14 +1717,14 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4772), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7475), new TimeSpan(0, 0, 0, 0, 0)),
                             Email = "admin@syntera.id",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Administrator",
                             PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
                             RoleId = new Guid("10000000-0000-0000-0000-000000000001"),
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 5, 20, 19, 4, 32, 353, DateTimeKind.Unspecified).AddTicks(4773), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 6, 13, 14, 58, 33, 663, DateTimeKind.Unspecified).AddTicks(7475), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -1168,6 +1737,50 @@ namespace SynteraERP.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Quotation");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.DeliveryOrder", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SynteraERP.Api.Models.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SynteraERP.Api.Models.SalesOrder", "SalesOrder")
+                        .WithMany()
+                        .HasForeignKey("SalesOrderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("SalesOrder");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.DeliveryOrderItem", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.DeliveryOrder", "DeliveryOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("DeliveryOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SynteraERP.Api.Models.ItemMaster", "ItemMaster")
+                        .WithMany()
+                        .HasForeignKey("ItemMasterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DeliveryOrder");
+
+                    b.Navigation("ItemMaster");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.Invoice", b =>
@@ -1188,6 +1801,38 @@ namespace SynteraERP.Api.Migrations
                     b.Navigation("SalesOrder");
                 });
 
+            modelBuilder.Entity("SynteraERP.Api.Models.InvoiceItem", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.Invoice", "Invoice")
+                        .WithMany("Items")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.ItemMaster", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.Supplier", "PreferredVendor")
+                        .WithMany()
+                        .HasForeignKey("PreferredVendorId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("PreferredVendor");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.POPayment", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.PurchaseOrder", "PurchaseOrder")
+                        .WithMany("Payments")
+                        .HasForeignKey("PurchaseOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseOrder");
+                });
+
             modelBuilder.Entity("SynteraERP.Api.Models.Payment", b =>
                 {
                     b.HasOne("SynteraERP.Api.Models.Invoice", "Invoice")
@@ -1197,6 +1842,49 @@ namespace SynteraERP.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.Project", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SynteraERP.Api.Models.User", "ProjectManager")
+                        .WithMany()
+                        .HasForeignKey("ProjectManagerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SynteraERP.Api.Models.SalesOrder", "SalesOrder")
+                        .WithMany()
+                        .HasForeignKey("SalesOrderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("ProjectManager");
+
+                    b.Navigation("SalesOrder");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.ProjectTask", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.User", "AssignedTo")
+                        .WithMany()
+                        .HasForeignKey("AssignedToId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SynteraERP.Api.Models.Project", "Project")
+                        .WithMany("Tasks")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AssignedTo");
+
+                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.PurchaseOrder", b =>
@@ -1219,11 +1907,18 @@ namespace SynteraERP.Api.Migrations
 
             modelBuilder.Entity("SynteraERP.Api.Models.PurchaseOrderItem", b =>
                 {
+                    b.HasOne("SynteraERP.Api.Models.ItemMaster", "ItemMaster")
+                        .WithMany()
+                        .HasForeignKey("ItemMasterId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SynteraERP.Api.Models.PurchaseOrder", "PurchaseOrder")
                         .WithMany("Items")
                         .HasForeignKey("POId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ItemMaster");
 
                     b.Navigation("PurchaseOrder");
                 });
@@ -1248,11 +1943,18 @@ namespace SynteraERP.Api.Migrations
 
             modelBuilder.Entity("SynteraERP.Api.Models.PurchaseRequestItem", b =>
                 {
+                    b.HasOne("SynteraERP.Api.Models.ItemMaster", "ItemMaster")
+                        .WithMany()
+                        .HasForeignKey("ItemMasterId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("SynteraERP.Api.Models.PurchaseRequest", "PurchaseRequest")
                         .WithMany("Items")
                         .HasForeignKey("PRId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("ItemMaster");
 
                     b.Navigation("PurchaseRequest");
                 });
@@ -1349,6 +2051,43 @@ namespace SynteraERP.Api.Migrations
                     b.Navigation("Sales");
                 });
 
+            modelBuilder.Entity("SynteraERP.Api.Models.SalesOrderItem", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.ItemMaster", "ItemMaster")
+                        .WithMany()
+                        .HasForeignKey("ItemMasterId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("SynteraERP.Api.Models.SalesOrder", "SalesOrder")
+                        .WithMany("Items")
+                        .HasForeignKey("SalesOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ItemMaster");
+
+                    b.Navigation("SalesOrder");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.StockTransaction", b =>
+                {
+                    b.HasOne("SynteraERP.Api.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SynteraERP.Api.Models.ItemMaster", "ItemMaster")
+                        .WithMany()
+                        .HasForeignKey("ItemMasterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("ItemMaster");
+                });
+
             modelBuilder.Entity("SynteraERP.Api.Models.User", b =>
                 {
                     b.HasOne("SynteraERP.Api.Models.Role", "Role")
@@ -1369,14 +2108,28 @@ namespace SynteraERP.Api.Migrations
                     b.Navigation("SalesOrders");
                 });
 
+            modelBuilder.Entity("SynteraERP.Api.Models.DeliveryOrder", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("SynteraERP.Api.Models.Invoice", b =>
                 {
+                    b.Navigation("Items");
+
                     b.Navigation("Payments");
+                });
+
+            modelBuilder.Entity("SynteraERP.Api.Models.Project", b =>
+                {
+                    b.Navigation("Tasks");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.PurchaseOrder", b =>
                 {
                     b.Navigation("Items");
+
+                    b.Navigation("Payments");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.PurchaseRequest", b =>
@@ -1409,6 +2162,8 @@ namespace SynteraERP.Api.Migrations
             modelBuilder.Entity("SynteraERP.Api.Models.SalesOrder", b =>
                 {
                     b.Navigation("Invoices");
+
+                    b.Navigation("Items");
 
                     b.Navigation("PurchaseRequests");
                 });

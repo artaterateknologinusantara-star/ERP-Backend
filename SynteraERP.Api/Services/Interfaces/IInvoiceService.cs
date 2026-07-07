@@ -10,4 +10,5 @@ public interface IInvoiceService
     Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request);
     Task<InvoiceDto?> RecordPaymentAsync(Guid id, RecordPaymentRequest request);
     Task<bool> DeleteAsync(Guid id);
+    Task<InvoiceStatsResponse> GetStatsAsync();
 }

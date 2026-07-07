@@ -14,12 +14,17 @@ public class SalesOrder : BaseEntity
     public SalesOrderStatus Status { get; set; } = SalesOrderStatus.Draft;
     public decimal Total { get; set; } = 0;
     public string? Notes { get; set; }
+    public string? ShipTo { get; set; }
+    public string? Terms { get; set; }
+    public DateOnly? ExpectedDate { get; set; }
+    public string? RefQuotation { get; set; }
 
     public Quotation? Quotation { get; set; }
     public Customer Customer { get; set; } = null!;
     public User Sales { get; set; } = null!;
     public ICollection<Invoice> Invoices { get; set; } = [];
     public ICollection<PurchaseRequest> PurchaseRequests { get; set; } = [];
+    public ICollection<SalesOrderItem> Items { get; set; } = new List<SalesOrderItem>();
 }
 
 public enum SalesOrderStatus

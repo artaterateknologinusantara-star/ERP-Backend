@@ -14,7 +14,24 @@ public class ItemMasterDto
     public string? Warehouse { get; set; }
     public decimal Stock { get; set; }
     public decimal MinStock { get; set; }
-    public decimal Price { get; set; }
+
+    // ── Pricing ──
+    public decimal SellingPrice { get; set; }
+    public decimal? PurchasePrice { get; set; }
+    public decimal? LastPurchasePrice { get; set; }
+
+    // ── Vendor ──
+    public Guid? PreferredVendorId { get; set; }
+    public string? PreferredVendorName { get; set; }
+
+    // ── Future-ready ──
+    public string? Model { get; set; }
+    public int? LeadTimeDays { get; set; }
+    public string? VendorItemCode { get; set; }
+    public string? ProcurementNotes { get; set; }
+    public bool IsInventoryItem { get; set; }
+    public decimal? ReorderPoint { get; set; }
+
     public bool IsActive { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

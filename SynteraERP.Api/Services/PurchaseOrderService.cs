@@ -49,9 +49,50 @@ public class PurchaseOrderService : IPurchaseOrderService
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseRequest)
             .Include(x => x.Items)
+            .Include(x => x.Payments.OrderBy(p => p.PaymentDate))
             .FirstOrDefaultAsync(x => x.Id == id);
 
         return po is null ? null : ToDto(po);
+    }
+
+    public async Task<POPaymentResponse> RecordPaymentAsync(Guid poId, RecordPOPaymentRequest request)
+    {
+        var po = await _db.PurchaseOrders
+            .Include(x => x.Payments)
+            .FirstOrDefaultAsync(x => x.Id == poId && !x.IsDeleted)
+            ?? throw new InvalidOperationException("Purchase Order tidak ditemukan.");
+
+        var currentPaid = po.Payments.Sum(x => x.Amount);
+        var newTotal    = currentPaid + request.Amount;
+
+        if (newTotal > po.Total)
+            throw new InvalidOperationException(
+                $"Total pembayaran (Rp {newTotal:N0}) melebihi total PO (Rp {po.Total:N0}).");
+
+        var payment = new POPayment
+        {
+            Id              = Guid.NewGuid(),
+            PurchaseOrderId = poId,
+            PaymentDate     = request.PaymentDate,
+            Amount          = request.Amount,
+            Method          = request.Method,
+            Reference       = request.Reference,
+            Notes           = request.Notes,
+        };
+
+        _db.POPayments.Add(payment);
+        await _db.SaveChangesAsync();
+
+        return new POPaymentResponse
+        {
+            Id          = payment.Id,
+            PaymentDate = payment.PaymentDate,
+            Amount      = payment.Amount,
+            Method      = payment.Method,
+            Reference   = payment.Reference,
+            Notes       = payment.Notes,
+            CreatedAt   = payment.CreatedAt,
+        };
     }
 
     public async Task<PurchaseOrderDto> CreateAsync(CreatePurchaseOrderRequest request)
@@ -95,7 +136,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         return true;
     }
 
-    public async Task<PurchaseOrderDto?> ReceiveGoodsAsync(Guid id, ReceiveGoodsRequest request)
+    public async Task<PurchaseOrderDto?> ReceiveGoodsAsync(Guid id, ReceiveGoodsRequest request, Guid userId)
     {
         var po = await _db.PurchaseOrders
             .Include(x => x.Items)
@@ -106,8 +147,39 @@ public class PurchaseOrderService : IPurchaseOrderService
         foreach (var recv in request.Items)
         {
             var item = po.Items.FirstOrDefault(i => i.Id == recv.ItemId);
-            if (item is not null)
-                item.ReceivedQty = Math.Min(item.ReceivedQty + recv.ReceivedQty, item.Qty);
+            if (item is null || recv.ReceivedQty <= 0) continue;
+
+            item.ReceivedQty = Math.Min(item.ReceivedQty + recv.ReceivedQty, item.Qty);
+
+            if (item.ItemMasterId.HasValue)
+            {
+                var master = await _db.ItemMasters.FindAsync(item.ItemMasterId.Value);
+                if (master is not null)
+                {
+                    var stockBefore = master.Stock;
+                    master.Stock += recv.ReceivedQty;
+                    master.LastPurchasePrice = item.Price;
+
+                    if (master.PreferredVendorId == null)
+                        master.PreferredVendorId = po.SupplierId;
+
+                    master.UpdatedAt = DateTimeOffset.UtcNow;
+
+                    _db.StockTransactions.Add(new StockTransaction
+                    {
+                        ItemMasterId    = master.Id,
+                        Type            = StockTransactionType.StockIn,
+                        Source          = StockTransactionSource.PurchaseOrder,
+                        Qty             = recv.ReceivedQty,
+                        StockBefore     = stockBefore,
+                        StockAfter      = master.Stock,
+                        RefNo           = po.No,
+                        RefId           = po.Id,
+                        Notes           = $"Goods Receipt dari PO {po.No}",
+                        CreatedByUserId = userId,
+                    });
+                }
+            }
         }
 
         var allReceived = po.Items.All(i => i.ReceivedQty >= i.Qty);
@@ -122,6 +194,45 @@ public class PurchaseOrderService : IPurchaseOrderService
         return (await GetByIdAsync(id))!;
     }
 
+    public async Task<PurchaseOrderDto?> CreateFromPrAsync(Guid prId, CreatePoFromPrRequest request)
+    {
+        var pr = await _db.PurchaseRequests
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == prId && !x.IsDeleted);
+
+        if (pr is null || pr.Status != Models.PurchaseRequestStatus.Approved)
+            return null;
+
+        var no = await NextNumberAsync();
+        var po = new Models.PurchaseOrder
+        {
+            No             = no,
+            SupplierId     = request.SupplierId,
+            PurchaseRequestId = prId,
+            Date           = DateOnly.FromDateTime(DateTime.UtcNow),
+            DeliveryDate   = request.DeliveryDate,
+            Notes          = request.Notes,
+            Status         = Models.PurchaseOrderStatus.Draft,
+            Items          = pr.Items.Select(i => new Models.PurchaseOrderItem
+            {
+                ItemName     = i.ItemName,
+                Qty          = i.Qty,
+                Unit         = i.Unit,
+                Price        = i.EstPrice,
+                ItemMasterId = i.ItemMasterId,
+            }).ToList(),
+        };
+
+        po.Total = po.Items.Sum(i => i.Qty * i.Price);
+
+        pr.Status    = Models.PurchaseRequestStatus.Ordered;
+        pr.UpdatedAt = DateTimeOffset.UtcNow;
+
+        _db.PurchaseOrders.Add(po);
+        await _db.SaveChangesAsync();
+        return (await GetByIdAsync(po.Id))!;
+    }
+
     public async Task<bool> DeleteAsync(Guid id)
     {
         var po = await _db.PurchaseOrders.FindAsync(id);
@@ -131,6 +242,23 @@ public class PurchaseOrderService : IPurchaseOrderService
         po.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    public async Task<PurchaseOrderStatsDto> GetStatsAsync()
+    {
+        var all = await _db.PurchaseOrders
+            .Where(x => !x.IsDeleted)
+            .ToListAsync();
+
+        return new PurchaseOrderStatsDto
+        {
+            Total          = all.Count,
+            Draft          = all.Count(x => x.Status == PurchaseOrderStatus.Draft),
+            Ordered        = all.Count(x => x.Status == PurchaseOrderStatus.Ordered),
+            PartialReceive = all.Count(x => x.Status == PurchaseOrderStatus.PartialReceive),
+            Completed      = all.Count(x => x.Status == PurchaseOrderStatus.Completed),
+            TotalValue     = all.Sum(x => x.Total),
+        };
     }
 
     private async Task<string> NextNumberAsync()
@@ -144,41 +272,62 @@ public class PurchaseOrderService : IPurchaseOrderService
         return no;
     }
 
+    private static string PurchaseOrderStatusString(PurchaseOrderStatus s) =>
+        s == PurchaseOrderStatus.PartialReceive ? "Partial Receive" : s.ToString();
+
     private static PurchaseOrderListDto ToListDto(Models.PurchaseOrder x) => new()
     {
-        Id = x.Id,
-        No = x.No,
-        Date = x.Date,
-        SupplierName = x.Supplier?.Name ?? string.Empty,
+        Id                = x.Id,
+        No                = x.No,
+        Date              = x.Date,
+        SupplierName      = x.Supplier?.Name ?? string.Empty,
         PurchaseRequestNo = x.PurchaseRequest?.No,
-        Status = x.Status.ToString(),
-        Total = x.Total,
-        DeliveryDate = x.DeliveryDate,
+        PurchaseRequestId = x.PurchaseRequestId,
+        Status            = PurchaseOrderStatusString(x.Status),
+        Total             = x.Total,
+        DeliveryDate      = x.DeliveryDate,
     };
 
-    private static PurchaseOrderDto ToDto(Models.PurchaseOrder x) => new()
+    private static PurchaseOrderDto ToDto(Models.PurchaseOrder x)
     {
-        Id = x.Id,
-        No = x.No,
-        Date = x.Date,
-        SupplierName = x.Supplier?.Name ?? string.Empty,
-        PurchaseRequestNo = x.PurchaseRequest?.No,
-        Status = x.Status.ToString(),
-        Total = x.Total,
-        DeliveryDate = x.DeliveryDate,
-        SupplierId = x.SupplierId,
-        PurchaseRequestId = x.PurchaseRequestId,
-        Notes = x.Notes,
-        CreatedAt = x.CreatedAt,
-        Items = x.Items.Select(i => new PurchaseOrderItemDto
+        var totalPaid = x.Payments.Sum(p => p.Amount);
+        return new PurchaseOrderDto
         {
-            Id = i.Id,
-            ItemName = i.ItemName,
-            Qty = i.Qty,
-            Unit = i.Unit,
-            Price = i.Price,
-            Total = i.Total,
-            ReceivedQty = i.ReceivedQty,
-        }).ToList(),
-    };
+            Id                = x.Id,
+            No                = x.No,
+            Date              = x.Date,
+            SupplierName      = x.Supplier?.Name ?? string.Empty,
+            PurchaseRequestNo = x.PurchaseRequest?.No,
+            Status            = PurchaseOrderStatusString(x.Status),
+            Total             = x.Total,
+            DeliveryDate      = x.DeliveryDate,
+            SupplierId        = x.SupplierId,
+            PurchaseRequestId = x.PurchaseRequestId,
+            Notes             = x.Notes,
+            CreatedAt         = x.CreatedAt,
+            TotalPaid         = totalPaid,
+            Balance           = x.Total - totalPaid,
+            Items = x.Items.Select(i => new PurchaseOrderItemDto
+            {
+                Id           = i.Id,
+                ItemName     = i.ItemName,
+                Qty          = i.Qty,
+                Unit         = i.Unit,
+                Price        = i.Price,
+                Total        = i.Total,
+                ReceivedQty  = i.ReceivedQty,
+                ItemMasterId = i.ItemMasterId,
+            }).ToList(),
+            Payments = x.Payments.OrderBy(p => p.PaymentDate).Select(p => new POPaymentResponse
+            {
+                Id          = p.Id,
+                PaymentDate = p.PaymentDate,
+                Amount      = p.Amount,
+                Method      = p.Method,
+                Reference   = p.Reference,
+                Notes       = p.Notes,
+                CreatedAt   = p.CreatedAt,
+            }).ToList(),
+        };
+    }
 }

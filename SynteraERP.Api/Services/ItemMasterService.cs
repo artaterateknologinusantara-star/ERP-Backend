@@ -15,7 +15,7 @@ public class ItemMasterService : IItemMasterService
 
     public async Task<PaginatedResponse<ItemMasterDto>> ListAsync(ItemMasterParams p)
     {
-        var q = _db.ItemMasters.AsQueryable();
+        var q = _db.ItemMasters.Include(i => i.PreferredVendor).AsQueryable();
 
         if (p.IsActive.HasValue)
             q = q.Where(i => i.IsActive == p.IsActive.Value);
@@ -32,25 +32,28 @@ public class ItemMasterService : IItemMasterService
 
         q = p.SortBy switch
         {
-            "code" => p.IsDescending ? q.OrderByDescending(i => i.Code) : q.OrderBy(i => i.Code),
-            "name" => p.IsDescending ? q.OrderByDescending(i => i.Name) : q.OrderBy(i => i.Name),
-            "stock" => p.IsDescending ? q.OrderByDescending(i => i.Stock) : q.OrderBy(i => i.Stock),
-            "price" => p.IsDescending ? q.OrderByDescending(i => i.Price) : q.OrderBy(i => i.Price),
-            "createdAt" => p.IsDescending ? q.OrderByDescending(i => i.CreatedAt) : q.OrderBy(i => i.CreatedAt),
-            _ => p.IsDescending ? q.OrderByDescending(i => i.Code) : q.OrderBy(i => i.Code),
+            "code"          => p.IsDescending ? q.OrderByDescending(i => i.Code)          : q.OrderBy(i => i.Code),
+            "name"          => p.IsDescending ? q.OrderByDescending(i => i.Name)          : q.OrderBy(i => i.Name),
+            "stock"         => p.IsDescending ? q.OrderByDescending(i => i.Stock)         : q.OrderBy(i => i.Stock),
+            "price"         => p.IsDescending ? q.OrderByDescending(i => i.SellingPrice)  : q.OrderBy(i => i.SellingPrice),
+            "sellingPrice"  => p.IsDescending ? q.OrderByDescending(i => i.SellingPrice)  : q.OrderBy(i => i.SellingPrice),
+            "purchasePrice" => p.IsDescending ? q.OrderByDescending(i => i.PurchasePrice) : q.OrderBy(i => i.PurchasePrice),
+            "createdAt"     => p.IsDescending ? q.OrderByDescending(i => i.CreatedAt)     : q.OrderBy(i => i.CreatedAt),
+            _               => p.IsDescending ? q.OrderByDescending(i => i.Code)          : q.OrderBy(i => i.Code),
         };
 
         var total = await q.CountAsync();
-        var data = await q.Skip(p.Skip).Take(p.PerPage)
-            .Select(i => ToDto(i))
-            .ToListAsync();
+        var rawItems = await q.Skip(p.Skip).Take(p.PerPage).ToListAsync();
+        var data = rawItems.Select(i => ToDto(i)).ToList();
 
         return PaginatedResponse<ItemMasterDto>.Create(data, total, p.Page, p.PerPage);
     }
 
     public async Task<ItemMasterDto?> GetByIdAsync(Guid id)
     {
-        var item = await _db.ItemMasters.FindAsync(id);
+        var item = await _db.ItemMasters
+            .Include(i => i.PreferredVendor)
+            .FirstOrDefaultAsync(x => x.Id == id);
         return item is null ? null : ToDto(item);
     }
 
@@ -67,21 +70,119 @@ public class ItemMasterService : IItemMasterService
         };
     }
 
+    public async Task<ItemMasterDto> CreateAsync(CreateItemMasterRequest req)
+    {
+        var code = await GenerateCodeAsync();
+        var item = new ItemMaster
+        {
+            Code             = code,
+            Name             = req.Name,
+            Description      = req.Description,
+            Category         = req.Category,
+            Brand            = req.Brand,
+            Uom              = req.Uom,
+            Warehouse        = req.Warehouse,
+            Stock            = req.Stock,
+            MinStock         = req.MinStock,
+            SellingPrice     = req.SellingPrice,
+            PurchasePrice    = req.PurchasePrice,
+            PreferredVendorId= req.PreferredVendorId,
+            Model            = req.Model,
+            LeadTimeDays     = req.LeadTimeDays,
+            VendorItemCode   = req.VendorItemCode,
+            ProcurementNotes = req.ProcurementNotes,
+            ReorderPoint     = req.ReorderPoint,
+            IsActive         = true,
+        };
+        _db.ItemMasters.Add(item);
+        await _db.SaveChangesAsync();
+
+        await _db.Entry(item).Reference(i => i.PreferredVendor).LoadAsync();
+        return ToDto(item);
+    }
+
+    public async Task<ItemMasterDto?> UpdateAsync(Guid id, UpdateItemMasterRequest req)
+    {
+        var item = await _db.ItemMasters
+            .Include(i => i.PreferredVendor)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (item is null) return null;
+
+        item.Name             = req.Name;
+        item.Description      = req.Description;
+        item.Category         = req.Category;
+        item.Brand            = req.Brand;
+        item.Uom              = req.Uom;
+        item.Warehouse        = req.Warehouse;
+        item.Stock            = req.Stock;
+        item.MinStock         = req.MinStock;
+        item.SellingPrice     = req.SellingPrice;
+        item.PurchasePrice    = req.PurchasePrice;
+        item.PreferredVendorId= req.PreferredVendorId;
+        item.Model            = req.Model;
+        item.LeadTimeDays     = req.LeadTimeDays;
+        item.VendorItemCode   = req.VendorItemCode;
+        item.ProcurementNotes = req.ProcurementNotes;
+        item.ReorderPoint     = req.ReorderPoint;
+        item.UpdatedAt        = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        await _db.Entry(item).Reference(i => i.PreferredVendor).LoadAsync();
+        return ToDto(item);
+    }
+
+    public async Task<bool> SetStatusAsync(Guid id, bool isActive)
+    {
+        var item = await _db.ItemMasters.FindAsync(id);
+        if (item is null) return false;
+        item.IsActive  = isActive;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> DeleteAsync(Guid id)
+    {
+        var item = await _db.ItemMasters.FindAsync(id);
+        if (item is null) return false;
+        item.IsDeleted = true;
+        item.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    private async Task<string> GenerateCodeAsync()
+    {
+        var count = await _db.ItemMasters.CountAsync() + 1;
+        return $"ITM{count:D5}";
+    }
+
     private static ItemMasterDto ToDto(ItemMaster item) => new()
     {
-        Id = item.Id,
-        Code = item.Code,
-        Name = item.Name,
-        Description = item.Description,
-        Category = item.Category,
-        Brand = item.Brand,
-        Uom = item.Uom,
-        Warehouse = item.Warehouse,
-        Stock = item.Stock,
-        MinStock = item.MinStock,
-        Price = item.Price,
-        IsActive = item.IsActive,
-        CreatedAt = item.CreatedAt,
-        UpdatedAt = item.UpdatedAt,
+        Id                  = item.Id,
+        Code                = item.Code,
+        Name                = item.Name,
+        Description         = item.Description,
+        Category            = item.Category,
+        Brand               = item.Brand,
+        Uom                 = item.Uom,
+        Warehouse           = item.Warehouse,
+        Stock               = item.Stock,
+        MinStock            = item.MinStock,
+        SellingPrice        = item.SellingPrice,
+        PurchasePrice       = item.PurchasePrice,
+        LastPurchasePrice   = item.LastPurchasePrice,
+        PreferredVendorId   = item.PreferredVendorId,
+        PreferredVendorName = item.PreferredVendor?.Name,
+        Model               = item.Model,
+        LeadTimeDays        = item.LeadTimeDays,
+        VendorItemCode      = item.VendorItemCode,
+        ProcurementNotes    = item.ProcurementNotes,
+        IsInventoryItem     = item.IsInventoryItem,
+        ReorderPoint        = item.ReorderPoint,
+        IsActive            = item.IsActive,
+        CreatedAt           = item.CreatedAt,
+        UpdatedAt           = item.UpdatedAt,
     };
 }

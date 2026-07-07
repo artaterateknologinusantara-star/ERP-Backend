@@ -16,7 +16,7 @@ public class CustomerController : ControllerBase
     public CustomerController(ICustomerService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<PaginatedResponse<CustomerDto>>>> List([FromQuery] PaginationParams p)
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<CustomerDto>>>> List([FromQuery] CustomerParams p)
     {
         var result = await _svc.ListAsync(p);
         return Ok(ApiResponse<PaginatedResponse<CustomerDto>>.Ok(result));

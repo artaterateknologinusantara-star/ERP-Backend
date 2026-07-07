@@ -16,6 +16,21 @@ public class PurchaseOrder : BaseEntity
     public PurchaseRequest? PurchaseRequest { get; set; }
     public Supplier Supplier { get; set; } = null!;
     public ICollection<PurchaseOrderItem> Items { get; set; } = [];
+    public ICollection<POPayment> Payments { get; set; } = new List<POPayment>();
+}
+
+public class POPayment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PurchaseOrderId { get; set; }
+    public PurchaseOrder PurchaseOrder { get; set; } = null!;
+
+    public DateOnly PaymentDate { get; set; }
+    public decimal Amount { get; set; }
+    public string Method { get; set; } = string.Empty;
+    public string? Reference { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public class PurchaseOrderItem
@@ -27,10 +42,12 @@ public class PurchaseOrderItem
     public string Unit { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public decimal ReceivedQty { get; set; } = 0;
+    public Guid? ItemMasterId { get; set; }
 
     public decimal Total => Qty * Price;
 
     public PurchaseOrder PurchaseOrder { get; set; } = null!;
+    public ItemMaster? ItemMaster { get; set; }
 }
 
 public enum PurchaseOrderStatus

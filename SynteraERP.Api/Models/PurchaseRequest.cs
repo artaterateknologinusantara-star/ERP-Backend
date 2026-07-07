@@ -29,8 +29,10 @@ public class PurchaseRequestItem
     public string Unit { get; set; } = string.Empty;
     public decimal EstPrice { get; set; } = 0;
     public string? Notes { get; set; }
+    public Guid? ItemMasterId { get; set; }
 
     public PurchaseRequest PurchaseRequest { get; set; } = null!;
+    public ItemMaster? ItemMaster { get; set; }
 }
 
 public enum PurchaseRequestStatus

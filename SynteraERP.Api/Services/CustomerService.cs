@@ -13,9 +13,12 @@ public class CustomerService : ICustomerService
 
     public CustomerService(AppDbContext db) => _db = db;
 
-    public async Task<PaginatedResponse<CustomerDto>> ListAsync(PaginationParams p)
+    public async Task<PaginatedResponse<CustomerDto>> ListAsync(CustomerParams p)
     {
         var q = _db.Customers.AsQueryable();
+
+        if (p.IsActive.HasValue)
+            q = q.Where(c => c.IsActive == p.IsActive.Value);
 
         if (!string.IsNullOrWhiteSpace(p.Search))
         {
