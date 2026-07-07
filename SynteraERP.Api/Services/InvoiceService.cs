@@ -11,11 +11,13 @@ public class InvoiceService : IInvoiceService
 {
     private readonly AppDbContext _db;
     private readonly ITaxRateService _taxRateService;
+    private readonly IJournalPostingService _journalPostingService;
 
-    public InvoiceService(AppDbContext db, ITaxRateService taxRateService)
+    public InvoiceService(AppDbContext db, ITaxRateService taxRateService, IJournalPostingService journalPostingService)
     {
         _db = db;
         _taxRateService = taxRateService;
+        _journalPostingService = journalPostingService;
     }
 
     public async Task<PaginatedResponse<InvoiceListDto>> ListAsync(PaginationParams p)
@@ -82,6 +84,9 @@ public class InvoiceService : IInvoiceService
 
     public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request)
     {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        var taxRate = await _taxRateService.GetDefaultRateAsync();
         var no = await NextNumberAsync();
         var inv = new Models.Invoice
         {
@@ -121,20 +126,46 @@ public class InvoiceService : IInvoiceService
                 }).ToList();
 
                 // Recalculate Amount dari items
-                var taxRate   = await _taxRateService.GetDefaultRateAsync();
-                var subTotal  = Math.Round(inv.Items.Sum(x => x.Amount), 2);
-                var taxAmount = Math.Round(subTotal * taxRate, 2);
-                inv.Amount    = subTotal + taxAmount;
+                var subTotalForItems  = Math.Round(inv.Items.Sum(x => x.Amount), 2);
+                var taxAmountForItems = Math.Round(subTotalForItems * taxRate, 2);
+                inv.Amount             = subTotalForItems + taxAmountForItems;
             }
         }
 
         _db.Invoices.Add(inv);
         await _db.SaveChangesAsync();
+
+        // Posting GL: Debit Piutang Usaha = Total, Kredit Pendapatan Penjualan = Subtotal, Kredit
+        // Utang Pajak Keluaran = PPN. Subtotal/PPN dihitung persis sama seperti ToDto (reverse-calculate
+        // dari Amount kalau tidak ada item SO) supaya angka jurnal selalu cocok dengan yang ditampilkan ke user.
+        var hasItems = inv.Items != null && inv.Items.Any();
+        var subTotal = hasItems
+            ? Math.Round(inv.Items!.Sum(i => i.Amount), 2)
+            : Math.Round(inv.Amount / (1 + taxRate), 2);
+        var taxAmount = hasItems
+            ? Math.Round(subTotal * taxRate, 2)
+            : inv.Amount - subTotal;
+
+        await _journalPostingService.PostAsync(
+            $"Invoice AR {inv.No}",
+            JournalSourceType.SalesInvoice,
+            inv.Id,
+            DateTimeOffset.UtcNow,
+            new PostingLine[]
+            {
+                new("1-2000", inv.Amount, 0, "Piutang Usaha"),
+                new("4-1000", 0, subTotal, "Pendapatan Penjualan"),
+                new("2-2000", 0, taxAmount, "Utang Pajak Keluaran (PPN Keluaran)"),
+            });
+
+        await tx.CommitAsync();
         return (await GetByIdAsync(inv.Id))!;
     }
 
     public async Task<InvoiceDto?> RecordPaymentAsync(Guid id, RecordPaymentRequest request)
     {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         var inv = await _db.Invoices
             .Include(x => x.Payments)
             .FirstOrDefaultAsync(x => x.Id == id);
@@ -163,6 +194,22 @@ public class InvoiceService : IInvoiceService
             : InvoiceStatus.PartialPaid;
 
         await _db.SaveChangesAsync();
+
+        // Semua Cash In/Out saat ini diposting ke akun Kas (1-1001) karena Payment.Method/POPayment.Method
+        // tidak menyimpan info bank account spesifik. Perlu field bank account terstruktur di masa depan
+        // untuk rekonsiliasi kas/bank yang akurat.
+        await _journalPostingService.PostAsync(
+            $"Pembayaran Invoice {inv.No}",
+            JournalSourceType.CashIn,
+            payment.Id,
+            new DateTimeOffset(request.Date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+            new PostingLine[]
+            {
+                new("1-1001", request.Amount, 0, "Kas masuk dari pelunasan piutang"),
+                new("1-2000", 0, request.Amount, "Pelunasan Piutang Usaha"),
+            });
+
+        await tx.CommitAsync();
         return (await GetByIdAsync(id))!;
     }
 

@@ -10,8 +10,13 @@ namespace SynteraERP.Api.Services;
 public class PurchaseOrderService : IPurchaseOrderService
 {
     private readonly AppDbContext _db;
+    private readonly IJournalPostingService _journalPostingService;
 
-    public PurchaseOrderService(AppDbContext db) => _db = db;
+    public PurchaseOrderService(AppDbContext db, IJournalPostingService journalPostingService)
+    {
+        _db = db;
+        _journalPostingService = journalPostingService;
+    }
 
     public async Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p)
     {
@@ -57,6 +62,8 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<POPaymentResponse> RecordPaymentAsync(Guid poId, RecordPOPaymentRequest request)
     {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         var po = await _db.PurchaseOrders
             .Include(x => x.Payments)
             .FirstOrDefaultAsync(x => x.Id == poId && !x.IsDeleted)
@@ -82,6 +89,24 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         _db.POPayments.Add(payment);
         await _db.SaveChangesAsync();
+
+        // Semua Cash In/Out saat ini diposting ke akun Kas (1-1001) karena Payment.Method/POPayment.Method
+        // tidak menyimpan info bank account spesifik. Perlu field bank account terstruktur di masa depan
+        // untuk rekonsiliasi kas/bank yang akurat.
+        // Catatan tambahan: POPayment.Method adalah string bebas (bukan enum terstruktur seperti
+        // Payment.Method di sisi AR) - potential cleanup di masa depan, tidak diperbaiki di Fase 2 ini.
+        await _journalPostingService.PostAsync(
+            $"Pembayaran PO {po.No}",
+            JournalSourceType.CashOut,
+            payment.Id,
+            new DateTimeOffset(request.PaymentDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+            new PostingLine[]
+            {
+                new("2-1000", request.Amount, 0, "Pelunasan Utang Usaha"),
+                new("1-1001", 0, request.Amount, "Kas keluar untuk pembayaran PO"),
+            });
+
+        await tx.CommitAsync();
 
         return new POPaymentResponse
         {

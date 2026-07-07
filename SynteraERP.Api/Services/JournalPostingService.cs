@@ -185,6 +185,50 @@ public class JournalPostingService : IJournalPostingService
             .ToList();
     }
 
+    public async Task<Guid> PostAsync(string description, JournalSourceType sourceType, Guid? sourceId, DateTimeOffset date, IReadOnlyList<PostingLine> lines)
+    {
+        if (lines.Count == 0)
+            throw new ArgumentException("Journal posting harus punya minimal 1 baris.");
+
+        var codes = lines.Select(l => l.AccountCode).Distinct().ToList();
+        var accounts = await _db.Accounts.Where(a => codes.Contains(a.Code)).ToListAsync();
+
+        var missingCodes = codes.Except(accounts.Select(a => a.Code)).ToList();
+        if (missingCodes.Count > 0)
+            throw new InvalidOperationException($"Account dengan Code {string.Join(", ", missingCodes)} tidak ditemukan.");
+
+        var accountByCode = accounts.ToDictionary(a => a.Code);
+
+        var totalDebit  = Math.Round(lines.Sum(l => l.Debit), 2);
+        var totalCredit = Math.Round(lines.Sum(l => l.Credit), 2);
+        if (totalDebit != totalCredit)
+            throw new InvalidOperationException($"Journal entry tidak balance: Debit {totalDebit}, Credit {totalCredit}");
+
+        var entryNumber = await NextEntryNumberAsync();
+
+        var entry = new JournalEntry
+        {
+            EntryNumber = entryNumber,
+            Date        = date,
+            Description = description,
+            SourceType  = sourceType,
+            SourceId    = sourceId,
+            Status      = JournalEntryStatus.Posted,
+            PostedAt    = DateTimeOffset.UtcNow,
+            Lines = lines.Select(l => new JournalEntryLine
+            {
+                AccountId = accountByCode[l.AccountCode].Id,
+                Debit     = l.Debit,
+                Credit    = l.Credit,
+                Memo      = l.Memo,
+            }).ToList(),
+        };
+
+        _db.JournalEntries.Add(entry);
+        await _db.SaveChangesAsync();
+        return entry.Id;
+    }
+
     private async Task<string> NextEntryNumberAsync()
     {
         var config = await _db.NumberingConfigs
