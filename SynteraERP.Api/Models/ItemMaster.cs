@@ -19,6 +19,9 @@ public class ItemMaster : BaseEntity
     public decimal? PurchasePrice     { get; set; }
     public decimal? LastPurchasePrice { get; set; }
 
+    // ── Moving Average Cost (Fase 3 Accounting) ──
+    public decimal CurrentAverageCost { get; set; } = 0;
+
     // ── Vendor (Fase 1) ──
     public Guid? PreferredVendorId { get; set; }
     public Supplier? PreferredVendor { get; set; }

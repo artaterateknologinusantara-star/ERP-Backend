@@ -163,11 +163,15 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<PurchaseOrderDto?> ReceiveGoodsAsync(Guid id, ReceiveGoodsRequest request, Guid userId)
     {
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         var po = await _db.PurchaseOrders
             .Include(x => x.Items)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (po is null) return null;
+
+        decimal totalStockInValue = 0;
 
         foreach (var recv in request.Items)
         {
@@ -182,7 +186,15 @@ public class PurchaseOrderService : IPurchaseOrderService
                 if (master is not null)
                 {
                     var stockBefore = master.Stock;
-                    master.Stock += recv.ReceivedQty;
+                    var qtyMasuk = recv.ReceivedQty;
+                    var unitCostPembelian = item.Price;
+
+                    // Moving Average: NewAvgCost = ((QtyLama*AvgCostLama) + (QtyMasuk*UnitCost)) / (QtyLama+QtyMasuk)
+                    master.CurrentAverageCost = Math.Round(
+                        ((stockBefore * master.CurrentAverageCost) + (qtyMasuk * unitCostPembelian)) / (stockBefore + qtyMasuk),
+                        2);
+
+                    master.Stock += qtyMasuk;
                     master.LastPurchasePrice = item.Price;
 
                     if (master.PreferredVendorId == null)
@@ -195,7 +207,7 @@ public class PurchaseOrderService : IPurchaseOrderService
                         ItemMasterId    = master.Id,
                         Type            = StockTransactionType.StockIn,
                         Source          = StockTransactionSource.PurchaseOrder,
-                        Qty             = recv.ReceivedQty,
+                        Qty             = qtyMasuk,
                         StockBefore     = stockBefore,
                         StockAfter      = master.Stock,
                         RefNo           = po.No,
@@ -203,8 +215,14 @@ public class PurchaseOrderService : IPurchaseOrderService
                         Notes           = $"Goods Receipt dari PO {po.No}",
                         CreatedByUserId = userId,
                     });
+
+                    totalStockInValue += Math.Round(qtyMasuk * unitCostPembelian, 2);
                 }
             }
+            // Item PO tanpa ItemMasterId (nama barang bebas tanpa link ke Item Master) sengaja dilewati
+            // dari cost tracking & posting GL - konsisten dengan batasan existing (item begitu juga tidak
+            // pernah di-track stoknya). Akibatnya saldo Utang Usaha di GL bisa tidak akurat untuk PO yang
+            // mengandung item semacam ini - lihat PROJECT_STATUS.md bagian Known Gaps.
         }
 
         var allReceived = po.Items.All(i => i.ReceivedQty >= i.Qty);
@@ -216,6 +234,24 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         po.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
+
+        // Posting GL: Debit Persediaan / Kredit Utang Usaha sebesar total nilai barang yang diterima
+        // (hanya mencakup item yang linked ke Item Master - lihat catatan limitation di atas).
+        if (totalStockInValue > 0)
+        {
+            await _journalPostingService.PostAsync(
+                $"Penerimaan Barang PO {po.No}",
+                JournalSourceType.StockIn,
+                po.Id,
+                DateTimeOffset.UtcNow,
+                new PostingLine[]
+                {
+                    new("1-3000", totalStockInValue, 0, "Persediaan"),
+                    new("2-1000", 0, totalStockInValue, "Utang Usaha"),
+                });
+        }
+
+        await tx.CommitAsync();
         return (await GetByIdAsync(id))!;
     }
 

@@ -139,6 +139,7 @@ public class AppDbContext : DbContext
             e.Property(i => i.SellingPrice).HasPrecision(18, 2);
             e.Property(i => i.PurchasePrice).HasPrecision(18, 2);
             e.Property(i => i.LastPurchasePrice).HasPrecision(18, 2);
+            e.Property(i => i.CurrentAverageCost).HasPrecision(18, 2);
             e.Property(i => i.ReorderPoint).HasPrecision(18, 4);
             e.HasOne(i => i.PreferredVendor)
              .WithMany()

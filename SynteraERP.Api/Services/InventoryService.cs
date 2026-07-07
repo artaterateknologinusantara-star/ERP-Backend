@@ -9,8 +9,13 @@ namespace SynteraERP.Api.Services;
 public class InventoryService : IInventoryService
 {
     private readonly AppDbContext _db;
+    private readonly IJournalPostingService _journalPostingService;
 
-    public InventoryService(AppDbContext db) => _db = db;
+    public InventoryService(AppDbContext db, IJournalPostingService journalPostingService)
+    {
+        _db = db;
+        _journalPostingService = journalPostingService;
+    }
 
     // ─── Stats ────────────────────────────────────────────────────────────────
 
@@ -242,11 +247,16 @@ public class InventoryService : IInventoryService
                     $"diminta: {doItem.Qty}");
         }
 
+        decimal totalCogs = 0;
+
         foreach (var doItem in doEntity.Items)
         {
             var stockBefore = doItem.ItemMaster.Stock;
             doItem.ItemMaster.Stock -= doItem.Qty;
             doItem.ItemMaster.UpdatedAt = DateTimeOffset.UtcNow;
+
+            // COGS = Qty x CurrentAverageCost dibekukan SAAT konfirmasi ini, tidak dihitung ulang nanti.
+            totalCogs += Math.Round(doItem.Qty * doItem.ItemMaster.CurrentAverageCost, 2);
 
             _db.StockTransactions.Add(new StockTransaction
             {
@@ -278,6 +288,22 @@ public class InventoryService : IInventoryService
         }
 
         await _db.SaveChangesAsync();
+
+        // Posting GL: Debit HPP / Kredit Persediaan sebesar total COGS delivery ini.
+        if (totalCogs > 0)
+        {
+            await _journalPostingService.PostAsync(
+                $"COGS Delivery Order {doEntity.No}",
+                JournalSourceType.StockOut,
+                doEntity.Id,
+                DateTimeOffset.UtcNow,
+                new PostingLine[]
+                {
+                    new("5-1000", totalCogs, 0, "Harga Pokok Penjualan"),
+                    new("1-3000", 0, totalCogs, "Persediaan"),
+                });
+        }
+
         await tx.CommitAsync();
 
         return (await GetDeliveryOrderByIdAsync(id))!;
