@@ -10,8 +10,13 @@ namespace SynteraERP.Api.Services;
 public class SalesOrderService : ISalesOrderService
 {
     private readonly AppDbContext _db;
+    private readonly ITaxRateService _taxRateService;
 
-    public SalesOrderService(AppDbContext db) => _db = db;
+    public SalesOrderService(AppDbContext db, ITaxRateService taxRateService)
+    {
+        _db = db;
+        _taxRateService = taxRateService;
+    }
 
     public async Task<PaginatedResponse<SalesOrderListResponse>> GetListAsync(int page, int perPage, string? search, string? status)
     {
@@ -60,7 +65,10 @@ public class SalesOrderService : ISalesOrderService
             .Include(x => x.Items.OrderBy(i => i.SortOrder))
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
 
-        return so is null ? null : ToDetailResponse(so);
+        if (so is null) return null;
+
+        var taxRate = await _taxRateService.GetDefaultRateAsync();
+        return ToDetailResponse(so, taxRate);
     }
 
     public async Task<SalesOrderDetailResponse> CreateAsync(CreateSalesOrderRequest request)
@@ -101,8 +109,9 @@ public class SalesOrderService : ISalesOrderService
             SortOrder = dto.SortOrder,
         }).ToList();
 
+        var taxRate = await _taxRateService.GetDefaultRateAsync();
         var subTotal = Math.Round(items.Sum(x => x.Amount), 2);
-        var taxAmount = Math.Round(subTotal * 11 / 100, 2);
+        var taxAmount = Math.Round(subTotal * taxRate, 2);
         var grandTotal = subTotal + taxAmount;
 
         var no = await NextNumberAsync();
@@ -211,8 +220,9 @@ public class SalesOrderService : ISalesOrderService
             SortOrder = index,
         }).ToList();
 
+        var taxRate = await _taxRateService.GetDefaultRateAsync();
         var subTotal = Math.Round(soItems.Sum(x => x.Amount), 2);
-        var taxAmount = Math.Round(subTotal * 11 / 100, 2);
+        var taxAmount = Math.Round(subTotal * taxRate, 2);
         var grandTotal = subTotal + taxAmount;
 
         var no = await NextNumberAsync();
@@ -274,13 +284,13 @@ public class SalesOrderService : ISalesOrderService
         return no;
     }
 
-    private static SalesOrderDetailResponse ToDetailResponse(SalesOrder so)
+    private static SalesOrderDetailResponse ToDetailResponse(SalesOrder so, decimal taxRate)
     {
         var subTotal = so.Items.Any()
             ? Math.Round(so.Items.Sum(x => x.Amount), 2)
-            : Math.Round(so.Total / 1.11m, 2);
+            : Math.Round(so.Total / (1 + taxRate), 2);
 
-        var taxAmount = Math.Round(subTotal * 11 / 100, 2);
+        var taxAmount = Math.Round(subTotal * taxRate, 2);
         var grandTotal = so.Items.Any() ? subTotal + taxAmount : so.Total;
 
         return new SalesOrderDetailResponse

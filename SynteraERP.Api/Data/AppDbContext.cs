@@ -17,6 +17,7 @@ public class AppDbContext : DbContext
     public DbSet<NumberingConfig> NumberingConfigs => Set<NumberingConfig>();
     public DbSet<ItemMaster> ItemMasters => Set<ItemMaster>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
+    public DbSet<TaxRate> TaxRates => Set<TaxRate>();
 
     // ─── Quotation ────────────────────────────────────────────────────────────
     public DbSet<Quotation> Quotations => Set<Quotation>();
@@ -70,6 +71,7 @@ public class AppDbContext : DbContext
         b.Entity<PurchaseOrder>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<StockTransaction>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<DeliveryOrder>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<TaxRate>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -491,6 +493,15 @@ public class AppDbContext : DbContext
             e.Property(c => c.SignatureTitle).HasMaxLength(100);
         });
 
+        // ─── TaxRate ──────────────────────────────────────────────────────────
+        b.Entity<TaxRate>(e =>
+        {
+            e.HasIndex(t => t.Code).IsUnique();
+            e.Property(t => t.Code).HasMaxLength(20).IsRequired();
+            e.Property(t => t.Name).HasMaxLength(100).IsRequired();
+            e.Property(t => t.Rate).HasPrecision(6, 4);
+        });
+
         // ─── AuditLog ─────────────────────────────────────────────────────────
         b.Entity<AuditLog>(e =>
         {
@@ -548,6 +559,18 @@ public class AppDbContext : DbContext
             FooterText = "Penawaran ini berlaku selama 14 hari. Harga belum termasuk biaya pengiriman dan instalasi kecuali disebutkan. Pembayaran 50% di muka, sisa 50% setelah pekerjaan selesai.",
             SignatureName = "Budi Santoso",
             SignatureTitle = "Sales Manager",
+            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero)
+        });
+
+        b.Entity<TaxRate>().HasData(new TaxRate
+        {
+            Id = new Guid("40000000-0000-0000-0000-000000000001"),
+            Code = "PPN11",
+            Name = "PPN 11%",
+            Rate = 0.11m,
+            IsDefault = true,
+            IsActive = true,
+            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero),
             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero)
         });
     }

@@ -10,8 +10,13 @@ namespace SynteraERP.Api.Services;
 public class InvoiceService : IInvoiceService
 {
     private readonly AppDbContext _db;
+    private readonly ITaxRateService _taxRateService;
 
-    public InvoiceService(AppDbContext db) => _db = db;
+    public InvoiceService(AppDbContext db, ITaxRateService taxRateService)
+    {
+        _db = db;
+        _taxRateService = taxRateService;
+    }
 
     public async Task<PaginatedResponse<InvoiceListDto>> ListAsync(PaginationParams p)
     {
@@ -69,7 +74,10 @@ public class InvoiceService : IInvoiceService
             .Include(x => x.Items.OrderBy(i => i.SortOrder))
             .FirstOrDefaultAsync(x => x.Id == id);
 
-        return inv is null ? null : ToDto(inv);
+        if (inv is null) return null;
+
+        var taxRate = await _taxRateService.GetDefaultRateAsync();
+        return ToDto(inv, taxRate);
     }
 
     public async Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request)
@@ -113,8 +121,9 @@ public class InvoiceService : IInvoiceService
                 }).ToList();
 
                 // Recalculate Amount dari items
+                var taxRate   = await _taxRateService.GetDefaultRateAsync();
                 var subTotal  = Math.Round(inv.Items.Sum(x => x.Amount), 2);
-                var taxAmount = Math.Round(subTotal * 0.11m, 2);
+                var taxAmount = Math.Round(subTotal * taxRate, 2);
                 inv.Amount    = subTotal + taxAmount;
             }
         }
@@ -211,15 +220,15 @@ public class InvoiceService : IInvoiceService
             : 0,
     };
 
-    private static InvoiceDto ToDto(Models.Invoice x)
+    private static InvoiceDto ToDto(Models.Invoice x, decimal taxRate)
     {
         // Compute subTotal / taxAmount dari items jika ada, otherwise reverse dari Amount
         var hasItems  = x.Items != null && x.Items.Any();
         var subTotal  = hasItems
             ? Math.Round(x.Items!.Sum(i => i.Amount), 2)
-            : Math.Round(x.Amount / 1.11m, 2);
+            : Math.Round(x.Amount / (1 + taxRate), 2);
         var taxAmount = hasItems
-            ? Math.Round(subTotal * 0.11m, 2)
+            ? Math.Round(subTotal * taxRate, 2)
             : x.Amount - subTotal;
 
         return new InvoiceDto
