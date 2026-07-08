@@ -700,13 +700,10 @@ public class AppDbContext : DbContext
             }
         );
 
-        b.Entity<NumberingConfig>().HasData(
-            new NumberingConfig { Id = Guid.NewGuid(), DocType = "QUOTATION", Prefix = "Q.SYN", LastNumber = 148 },
-            new NumberingConfig { Id = Guid.NewGuid(), DocType = "SALES_ORDER", Prefix = "SO.SYN", LastNumber = 48 },
-            new NumberingConfig { Id = Guid.NewGuid(), DocType = "INVOICE", Prefix = "INV.SYN", LastNumber = 64 },
-            new NumberingConfig { Id = Guid.NewGuid(), DocType = "PURCHASE_REQUEST", Prefix = "PR.SYN", LastNumber = 34 },
-            new NumberingConfig { Id = Guid.NewGuid(), DocType = "PURCHASE_ORDER", Prefix = "PO.SYN", LastNumber = 19 }
-        );
+        // NumberingConfig TIDAK LAGI di-seed lewat HasData() di sini — lihat NumberingConfigSeeder.cs.
+        // (Technical debt yang ditutup: HasData dengan Id=Guid.NewGuid() menyebabkan setiap migration
+        // baru meregenerasi ulang seed ini dan berisiko mereset LastNumber ke nilai hardcode lama,
+        // menimpa nilai aktual yang sudah bertumbuh dari transaksi nyata. Lihat 03_DEVELOPMENT_ROADMAP.md.)
 
         b.Entity<CompanySettings>().HasData(new CompanySettings
         {
@@ -825,32 +822,7 @@ public class AppDbContext : DbContext
             NewExpenseCategory("11", "OTHER", "Other/Miscellaneous", "20")
         );
 
-        // NumberingConfig baru khusus Journal Entry — TIDAK menyentuh DocType lain sama sekali.
-        b.Entity<NumberingConfig>().HasData(
-            new NumberingConfig
-            {
-                Id = new Guid("60000000-0000-0000-0000-000000000001"),
-                DocType = "JOURNAL_ENTRY",
-                Prefix = "JE.SYN",
-                LastNumber = 0,
-                UpdatedAt = acctSeedDate,
-            },
-            new NumberingConfig
-            {
-                Id = new Guid("60000000-0000-0000-0000-000000000002"),
-                DocType = "SUPPLIER_INVOICE",
-                Prefix = "SINV.SYN",
-                LastNumber = 0,
-                UpdatedAt = acctSeedDate,
-            },
-            new NumberingConfig
-            {
-                Id = new Guid("60000000-0000-0000-0000-000000000003"),
-                DocType = "EXPENSE",
-                Prefix = "EXP.SYN",
-                LastNumber = 0,
-                UpdatedAt = acctSeedDate,
-            }
-        );
+        // JOURNAL_ENTRY/SUPPLIER_INVOICE/EXPENSE NumberingConfig juga dipindah ke NumberingConfigSeeder.cs
+        // (konsolidasi penuh - lihat catatan di seed NumberingConfig di atas).
     }
 }

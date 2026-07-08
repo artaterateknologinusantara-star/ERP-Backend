@@ -140,19 +140,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await CustomerSeeder.SeedAsync(db);
     await ItemMasterSeeder.SeedAsync(db);
-
-    // Seed DELIVERY_ORDER numbering config if not present
-    if (!await db.NumberingConfigs.AnyAsync(n => n.DocType == "DELIVERY_ORDER"))
-    {
-        db.NumberingConfigs.Add(new NumberingConfig
-        {
-            DocType = "DELIVERY_ORDER",
-            Prefix = "DO.SYN",
-            LastNumber = 0,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        });
-        await db.SaveChangesAsync();
-    }
+    await NumberingConfigSeeder.SeedAsync(db);
 }
 
 app.Run();
