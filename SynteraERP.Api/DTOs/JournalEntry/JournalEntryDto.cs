@@ -48,6 +48,7 @@ public class JournalEntryQueryParams : PaginationParams
     public DateOnly? DateTo { get; set; }
     public string? Status { get; set; }
     public string? SourceType { get; set; }
+    public Guid? SourceId { get; set; }
 }
 
 public class CreateJournalEntryLineRequest

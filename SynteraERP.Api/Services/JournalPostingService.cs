@@ -35,6 +35,9 @@ public class JournalPostingService : IJournalPostingService
         if (!string.IsNullOrWhiteSpace(p.SourceType) && Enum.TryParse<JournalSourceType>(p.SourceType, true, out var sourceType))
             q = q.Where(x => x.SourceType == sourceType);
 
+        if (p.SourceId.HasValue)
+            q = q.Where(x => x.SourceId == p.SourceId.Value);
+
         q = q.OrderByDescending(x => x.Date).ThenByDescending(x => x.EntryNumber);
 
         var total = await q.CountAsync();
