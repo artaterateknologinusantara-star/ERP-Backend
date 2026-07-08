@@ -50,6 +50,10 @@ public class AppDbContext : DbContext
     public DbSet<SupplierInvoiceItem> SupplierInvoiceItems => Set<SupplierInvoiceItem>();
     public DbSet<SupplierInvoicePayment> SupplierInvoicePayments => Set<SupplierInvoicePayment>();
 
+    // ─── Expense Management (Fase 5) ─────────────────────────────────────────
+    public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
+    public DbSet<Expense> Expenses => Set<Expense>();
+
     // ─── Inventory ────────────────────────────────────────────────────────────
     public DbSet<StockTransaction> StockTransactions { get; set; }
     public DbSet<DeliveryOrder> DeliveryOrders { get; set; }
@@ -83,6 +87,8 @@ public class AppDbContext : DbContext
         b.Entity<Account>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<JournalEntry>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<SupplierInvoice>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<ExpenseCategory>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<Expense>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -463,6 +469,43 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // ─── Expense Management (Fase 5) ────────────────────────────────────────
+        b.Entity<ExpenseCategory>(e =>
+        {
+            e.HasIndex(x => x.Code).IsUnique();
+            e.Property(x => x.Code).HasMaxLength(30).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(150).IsRequired();
+
+            e.HasOne(x => x.Account)
+             .WithMany()
+             .HasForeignKey(x => x.AccountId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<Expense>(e =>
+        {
+            e.HasIndex(x => x.ExpenseNo).IsUnique();
+            e.Property(x => x.ExpenseNo).HasMaxLength(30).IsRequired();
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Method).HasMaxLength(50).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(x => x.ExpenseCategory)
+             .WithMany()
+             .HasForeignKey(x => x.ExpenseCategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Vendor)
+             .WithMany()
+             .HasForeignKey(x => x.VendorId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.CashBankAccount)
+             .WithMany()
+             .HasForeignKey(x => x.CashBankAccountId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ─── StockTransaction ─────────────────────────────────────────────────
         b.Entity<StockTransaction>(e =>
         {
@@ -749,6 +792,38 @@ public class AppDbContext : DbContext
             NewAccount("20", "5-2017", "Beban Lain-lain", AccountType.Expense, NormalBalanceType.Debit, acctBebanOpId)
         );
 
+        // ─── ExpenseCategory seed (Fase 5) — mapping 1:1 ke 17 akun beban 5-2001..5-2017 di atas ────
+        ExpenseCategory NewExpenseCategory(string idHex, string code, string name, string accountIdHex) => new()
+        {
+            Id = new Guid($"70000000-0000-0000-0000-{idHex.PadLeft(12, '0')}"),
+            Code = code,
+            Name = name,
+            AccountId = new Guid($"50000000-0000-0000-0000-{accountIdHex.PadLeft(12, '0')}"),
+            IsActive = true,
+            CreatedAt = acctSeedDate,
+            UpdatedAt = acctSeedDate,
+        };
+
+        b.Entity<ExpenseCategory>().HasData(
+            NewExpenseCategory("1", "RENT", "Office Rent", "10"),
+            NewExpenseCategory("2", "ATK", "Office Supplies (ATK)", "11"),
+            NewExpenseCategory("3", "ELEC", "Office Electricity", "12"),
+            NewExpenseCategory("4", "WATER", "Water", "13"),
+            NewExpenseCategory("5", "INTERNET", "Internet", "14"),
+            NewExpenseCategory("6", "PHONE", "Telephone", "15"),
+            NewExpenseCategory("7", "FUEL", "Fuel (BBM)", "16"),
+            NewExpenseCategory("8", "PARKING", "Parking", "17"),
+            NewExpenseCategory("9", "TRAVEL", "Business Travel", "18"),
+            NewExpenseCategory("a", "ENTERTAINMENT", "Entertainment", "19"),
+            NewExpenseCategory("b", "COURIER", "Courier", "1a"),
+            NewExpenseCategory("c", "MAINTENANCE", "Office Maintenance", "1b"),
+            NewExpenseCategory("d", "BANKCHARGE", "Bank Charges", "1c"),
+            NewExpenseCategory("e", "INSURANCE", "Insurance", "1d"),
+            NewExpenseCategory("f", "TRAINING", "Training", "1e"),
+            NewExpenseCategory("10", "TAX", "Tax", "1f"),
+            NewExpenseCategory("11", "OTHER", "Other/Miscellaneous", "20")
+        );
+
         // NumberingConfig baru khusus Journal Entry — TIDAK menyentuh DocType lain sama sekali.
         b.Entity<NumberingConfig>().HasData(
             new NumberingConfig
@@ -764,6 +839,14 @@ public class AppDbContext : DbContext
                 Id = new Guid("60000000-0000-0000-0000-000000000002"),
                 DocType = "SUPPLIER_INVOICE",
                 Prefix = "SINV.SYN",
+                LastNumber = 0,
+                UpdatedAt = acctSeedDate,
+            },
+            new NumberingConfig
+            {
+                Id = new Guid("60000000-0000-0000-0000-000000000003"),
+                DocType = "EXPENSE",
+                Prefix = "EXP.SYN",
                 LastNumber = 0,
                 UpdatedAt = acctSeedDate,
             }

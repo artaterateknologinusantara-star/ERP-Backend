@@ -65,6 +65,8 @@ builder.Services.AddScoped<ICompanySettingsService, CompanySettingsService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<IJournalPostingService, JournalPostingService>();
 builder.Services.AddScoped<ISupplierInvoiceService, SupplierInvoiceService>();
+builder.Services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
+builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<QuotationPdfService>();
 builder.Services.AddScoped<SalesOrderPdfService>();
 builder.Services.AddScoped<InvoicePdfService>();
