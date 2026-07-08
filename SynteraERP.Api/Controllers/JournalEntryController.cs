@@ -44,6 +44,13 @@ public class JournalEntryController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<JournalEntryDto>.Ok(item, "Journal entry berhasil dibuat."));
     }
 
+    [HttpPost("opening-balance")]
+    public async Task<ActionResult<ApiResponse<JournalEntryDto>>> CreateOpeningBalance([FromBody] CreateOpeningBalanceRequest request)
+    {
+        var item = await _svc.CreateOpeningBalanceAsync(request);
+        return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<JournalEntryDto>.Ok(item, "Opening Balance berhasil dibuat."));
+    }
+
     [HttpPost("{id:guid}/reverse")]
     public async Task<ActionResult<ApiResponse<JournalEntryDto>>> Reverse(Guid id)
     {

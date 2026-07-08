@@ -109,6 +109,52 @@ public class JournalPostingService : IJournalPostingService
         return (await GetByIdAsync(entry.Id))!;
     }
 
+    public async Task<JournalEntryDto> CreateOpeningBalanceAsync(CreateOpeningBalanceRequest req)
+    {
+        if (req.Lines.Count == 0)
+            throw new ArgumentException("Opening Balance harus punya minimal 1 baris.");
+
+        var accountIds = req.Lines.Select(l => l.AccountId).Distinct().ToList();
+        var accounts = await _db.Accounts.Where(a => accountIds.Contains(a.Id)).ToListAsync();
+
+        var missingIds = accountIds.Except(accounts.Select(a => a.Id)).ToList();
+        if (missingIds.Count > 0)
+            throw new InvalidOperationException($"Account dengan Id {string.Join(", ", missingIds)} tidak ditemukan.");
+
+        var accountById = accounts.ToDictionary(a => a.Id);
+
+        // Opening Balance HANYA untuk akun Neraca (Asset/Liability/Equity) — saldo dari pembukuan lama
+        // tidak pernah berbentuk Pendapatan/Beban. Kalau baris Revenue/Expense lolos ke sini, Laba Rugi
+        // (GetIncomeStatementAsync) dan baris "Laba Rugi Berjalan (Belum Ditutup)" di Neraca
+        // (GetBalanceSheetAsync) akan terdistorsi permanen sejak hari pertama go-live. Validasi ini
+        // sengaja diletakkan di wrapper ini, bukan di CreateManualEntryAsync — lihat catatan di
+        // IJournalPostingService.CreateOpeningBalanceAsync.
+        var invalidLines = req.Lines
+            .Where(l => accountById[l.AccountId].Type is AccountType.Revenue or AccountType.Expense)
+            .Select(l => accountById[l.AccountId].Code)
+            .Distinct()
+            .ToList();
+
+        if (invalidLines.Count > 0)
+            throw new InvalidOperationException(
+                $"Opening Balance tidak boleh menyentuh akun Pendapatan/Beban: {string.Join(", ", invalidLines)}. " +
+                "Saldo awal hanya berlaku untuk akun Asset/Liability/Equity.");
+
+        // KETERBATASAN DIKETAHUI: tidak ada lock tanggal (Period Closing/#13 di roadmap belum
+        // dikerjakan) — setelah Opening Balance ini di-Posted, JE manual lain masih bisa dibuat dengan
+        // Date sebelum cut-off ini, yang bisa mengubah saldo "historis" yang seharusnya sudah final.
+        // Diterima sebagai keterbatasan sementara (lihat 00_PROJECT_STATUS.md Known Gaps), akan
+        // ditutup permanen oleh Period Closing.
+        return await CreateManualEntryAsync(new CreateJournalEntryRequest
+        {
+            Date = req.Date,
+            Description = string.IsNullOrWhiteSpace(req.Description) ? "Opening Balance" : req.Description,
+            SourceType = nameof(JournalSourceType.OpeningBalance),
+            PostImmediately = true,
+            Lines = req.Lines,
+        });
+    }
+
     public async Task<JournalEntryDto> ReverseAsync(Guid journalEntryId)
     {
         var original = await _db.JournalEntries

@@ -28,6 +28,7 @@ public enum JournalSourceType
     OperationalExpense,
     ManualAdjustment,
     Reversal,
+    OpeningBalance,
 }
 
 public enum JournalEntryStatus

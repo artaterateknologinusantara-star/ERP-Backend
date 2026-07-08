@@ -69,6 +69,13 @@ public class CreateJournalEntryRequest
     public List<CreateJournalEntryLineRequest> Lines { get; set; } = [];
 }
 
+public class CreateOpeningBalanceRequest
+{
+    public DateTimeOffset? Date { get; set; }
+    public string Description { get; set; } = "Opening Balance";
+    public List<CreateJournalEntryLineRequest> Lines { get; set; } = [];
+}
+
 public class TrialBalanceRowDto
 {
     public Guid AccountId { get; set; }

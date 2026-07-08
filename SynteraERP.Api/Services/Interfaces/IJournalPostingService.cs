@@ -12,6 +12,16 @@ public interface IJournalPostingService
     Task<PaginatedResponse<JournalEntryListDto>> ListAsync(JournalEntryQueryParams p);
     Task<JournalEntryDto?> GetByIdAsync(Guid id);
     Task<JournalEntryDto> CreateManualEntryAsync(CreateJournalEntryRequest request);
+
+    /// <summary>
+    /// Wrapper tipis di atas CreateManualEntryAsync, khusus SourceType=OpeningBalance. Validasi
+    /// "tidak boleh menyentuh akun Revenue/Expense" sengaja diisolasi di sini (bukan di
+    /// CreateManualEntryAsync) supaya method generik itu tidak menumpuk percabangan khusus
+    /// per-SourceType (pola sama seperti keputusan desain GRNI di Fase 4) — dan supaya validasi ini
+    /// tidak bisa "ketarik hilang" kalau CreateManualEntryAsync di-refactor nanti untuk keperluan lain.
+    /// </summary>
+    Task<JournalEntryDto> CreateOpeningBalanceAsync(CreateOpeningBalanceRequest request);
+
     Task<JournalEntryDto> ReverseAsync(Guid journalEntryId);
     Task<List<TrialBalanceRowDto>> GetTrialBalanceAsync(DateTimeOffset? asOfDate);
 
