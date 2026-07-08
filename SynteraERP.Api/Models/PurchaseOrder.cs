@@ -42,6 +42,7 @@ public class PurchaseOrderItem
     public string Unit { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public decimal ReceivedQty { get; set; } = 0;
+    public decimal InvoicedQty { get; set; } = 0;
     public Guid? ItemMasterId { get; set; }
 
     public decimal Total => Qty * Price;

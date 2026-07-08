@@ -25,4 +25,12 @@ public interface IPurchaseOrderService
     Task<bool> DeleteAsync(Guid id);
     Task<PurchaseOrderStatsDto> GetStatsAsync();
     Task<POPaymentResponse> RecordPaymentAsync(Guid poId, RecordPOPaymentRequest request);
+
+    /// <summary>
+    /// Dipakai internal oleh SupplierInvoiceService (Fase 4) untuk mencatat pembayaran lewat alur
+    /// Supplier Invoice - TIDAK membuka transaction sendiri (ikut transaction milik caller) dan TIDAK
+    /// menegakkan guard "PO sudah punya Supplier Invoice" (justru itu jalur yang diperbolehkan).
+    /// JANGAN dipanggil langsung dari controller.
+    /// </summary>
+    Task<Guid> RecordPaymentForSupplierInvoiceAsync(Guid poId, RecordPOPaymentRequest request);
 }

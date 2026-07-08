@@ -64,6 +64,22 @@ public class PurchaseOrderService : IPurchaseOrderService
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
 
+        // Fase 4: begitu PO punya Supplier Invoice yang sudah Approved/PartiallyPaid, pembayaran WAJIB
+        // lewat endpoint Supplier Invoice - supaya SupplierInvoice.Status (dipakai untuk AP Aging) tidak
+        // pernah kelewat/telat update karena ada pembayaran yang tercatat di GL tapi tidak tertaut ke invoice.
+        var blockingInvoiceNo = await _db.SupplierInvoices
+            .Where(x => x.PurchaseOrderId == poId &&
+                (x.Status == SupplierInvoiceStatus.Approved || x.Status == SupplierInvoiceStatus.PartiallyPaid))
+            .Select(x => x.No)
+            .FirstOrDefaultAsync();
+
+        if (blockingInvoiceNo is not null)
+            throw new InvalidOperationException(
+                $"PO ini sudah memiliki Supplier Invoice {blockingInvoiceNo}. Gunakan endpoint pembayaran Supplier Invoice untuk mencatat pembayaran, bukan endpoint PO langsung.");
+
+        // Cap terhadap po.Total (belum termasuk PPN) HANYA berlaku di jalur langsung ini - PO tidak
+        // pernah punya Supplier Invoice untuk sampai ke titik ini (baru saja divalidasi di atas), jadi
+        // tidak ada tagihan ber-PPN yang perlu diakomodasi.
         var po = await _db.PurchaseOrders
             .Include(x => x.Payments)
             .FirstOrDefaultAsync(x => x.Id == poId && !x.IsDeleted)
@@ -75,6 +91,32 @@ public class PurchaseOrderService : IPurchaseOrderService
         if (newTotal > po.Total)
             throw new InvalidOperationException(
                 $"Total pembayaran (Rp {newTotal:N0}) melebihi total PO (Rp {po.Total:N0}).");
+
+        var payment = await RecordPaymentCoreAsync(poId, request);
+        await tx.CommitAsync();
+
+        return ToPaymentResponse(payment);
+    }
+
+    public async Task<Guid> RecordPaymentForSupplierInvoiceAsync(Guid poId, RecordPOPaymentRequest request)
+    {
+        // Sengaja TIDAK BeginTransactionAsync di sini - caller (SupplierInvoiceService) sudah membuka
+        // transaction sendiri yang membungkus method ini plus penautan SupplierInvoicePayment + update
+        // Status, supaya semuanya rollback bersama kalau salah satu gagal.
+        // Sengaja TIDAK validasi terhadap po.Total di sini - itu tidak memperhitungkan PPN. Caller
+        // (SupplierInvoiceService) sudah validasi terhadap SupplierInvoice.Total (Subtotal+PPN), yang
+        // merupakan batas yang benar untuk jalur pembayaran lewat Supplier Invoice.
+        var payment = await RecordPaymentCoreAsync(poId, request);
+        return payment.Id;
+    }
+
+    private async Task<POPayment> RecordPaymentCoreAsync(Guid poId, RecordPOPaymentRequest request)
+    {
+        var poNo = await _db.PurchaseOrders
+            .Where(x => x.Id == poId && !x.IsDeleted)
+            .Select(x => x.No)
+            .FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException("Purchase Order tidak ditemukan.");
 
         var payment = new POPayment
         {
@@ -96,7 +138,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         // Catatan tambahan: POPayment.Method adalah string bebas (bukan enum terstruktur seperti
         // Payment.Method di sisi AR) - potential cleanup di masa depan, tidak diperbaiki di Fase 2 ini.
         await _journalPostingService.PostAsync(
-            $"Pembayaran PO {po.No}",
+            $"Pembayaran PO {poNo}",
             JournalSourceType.CashOut,
             payment.Id,
             new DateTimeOffset(request.PaymentDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
@@ -106,19 +148,19 @@ public class PurchaseOrderService : IPurchaseOrderService
                 new("1-1001", 0, request.Amount, "Kas keluar untuk pembayaran PO"),
             });
 
-        await tx.CommitAsync();
-
-        return new POPaymentResponse
-        {
-            Id          = payment.Id,
-            PaymentDate = payment.PaymentDate,
-            Amount      = payment.Amount,
-            Method      = payment.Method,
-            Reference   = payment.Reference,
-            Notes       = payment.Notes,
-            CreatedAt   = payment.CreatedAt,
-        };
+        return payment;
     }
+
+    private static POPaymentResponse ToPaymentResponse(POPayment payment) => new()
+    {
+        Id          = payment.Id,
+        PaymentDate = payment.PaymentDate,
+        Amount      = payment.Amount,
+        Method      = payment.Method,
+        Reference   = payment.Reference,
+        Notes       = payment.Notes,
+        CreatedAt   = payment.CreatedAt,
+    };
 
     public async Task<PurchaseOrderDto> CreateAsync(CreatePurchaseOrderRequest request)
     {
@@ -235,8 +277,11 @@ public class PurchaseOrderService : IPurchaseOrderService
         po.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
 
-        // Posting GL: Debit Persediaan / Kredit Utang Usaha sebesar total nilai barang yang diterima
-        // (hanya mencakup item yang linked ke Item Master - lihat catatan limitation di atas).
+        // Posting GL: Debit Persediaan / Kredit GRNI (Barang Diterima Belum Ditagih, 1-3500) sebesar
+        // total nilai barang yang diterima (hanya mencakup item yang linked ke Item Master - lihat
+        // catatan limitation di atas). SENGAJA bukan langsung ke Utang Usaha (2-1000) - itu direklas
+        // dari GRNI ke Utang Usaha saat SupplierInvoice di-approve (Fase 4), supaya tidak dobel-kredit
+        // Utang Usaha untuk PO yang barangnya sudah diterima tapi tagihan vendornya belum masuk.
         if (totalStockInValue > 0)
         {
             await _journalPostingService.PostAsync(
@@ -247,7 +292,7 @@ public class PurchaseOrderService : IPurchaseOrderService
                 new PostingLine[]
                 {
                     new("1-3000", totalStockInValue, 0, "Persediaan"),
-                    new("2-1000", 0, totalStockInValue, "Utang Usaha"),
+                    new("1-3500", 0, totalStockInValue, "Barang Diterima Belum Ditagih (GRNI)"),
                 });
         }
 

@@ -46,6 +46,9 @@ public class AppDbContext : DbContext
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseOrderItem> PurchaseOrderItems => Set<PurchaseOrderItem>();
     public DbSet<POPayment> POPayments { get; set; }
+    public DbSet<SupplierInvoice> SupplierInvoices => Set<SupplierInvoice>();
+    public DbSet<SupplierInvoiceItem> SupplierInvoiceItems => Set<SupplierInvoiceItem>();
+    public DbSet<SupplierInvoicePayment> SupplierInvoicePayments => Set<SupplierInvoicePayment>();
 
     // ─── Inventory ────────────────────────────────────────────────────────────
     public DbSet<StockTransaction> StockTransactions { get; set; }
@@ -79,6 +82,7 @@ public class AppDbContext : DbContext
         b.Entity<TaxRate>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<Account>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<JournalEntry>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<SupplierInvoice>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -379,6 +383,7 @@ public class AppDbContext : DbContext
             e.Property(i => i.Price).HasPrecision(18, 2);
             e.Property(i => i.Qty).HasPrecision(12, 4);
             e.Property(i => i.ReceivedQty).HasPrecision(12, 4);
+            e.Property(i => i.InvoicedQty).HasPrecision(12, 4);
             e.Ignore(i => i.Total);
             e.HasOne(i => i.PurchaseOrder)
              .WithMany(o => o.Items)
@@ -400,6 +405,62 @@ public class AppDbContext : DbContext
              .WithMany(x => x.Payments)
              .HasForeignKey(x => x.PurchaseOrderId)
              .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── SupplierInvoice (Fase 4) ───────────────────────────────────────────
+        b.Entity<SupplierInvoice>(e =>
+        {
+            e.HasIndex(x => x.No).IsUnique();
+            e.HasIndex(x => new { x.SupplierId, x.InvoiceNumber }).IsUnique();
+            e.Property(x => x.No).HasMaxLength(30).IsRequired();
+            e.Property(x => x.InvoiceNumber).HasMaxLength(100).IsRequired();
+            e.Property(x => x.Subtotal).HasPrecision(18, 2);
+            e.Property(x => x.PPNMasukan).HasPrecision(18, 2);
+            e.Property(x => x.Total).HasPrecision(18, 2);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(x => x.PurchaseOrder)
+             .WithMany()
+             .HasForeignKey(x => x.PurchaseOrderId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Supplier)
+             .WithMany()
+             .HasForeignKey(x => x.SupplierId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<SupplierInvoiceItem>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Qty).HasPrecision(12, 4);
+            e.Property(x => x.Price).HasPrecision(18, 2);
+            e.Ignore(x => x.Amount);
+
+            e.HasOne(x => x.SupplierInvoice)
+             .WithMany(x => x.Items)
+             .HasForeignKey(x => x.SupplierInvoiceId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.PurchaseOrderItem)
+             .WithMany()
+             .HasForeignKey(x => x.PurchaseOrderItemId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<SupplierInvoicePayment>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.HasOne(x => x.SupplierInvoice)
+             .WithMany(x => x.Payments)
+             .HasForeignKey(x => x.SupplierInvoiceId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.POPayment)
+             .WithMany()
+             .HasForeignKey(x => x.POPaymentId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ─── StockTransaction ─────────────────────────────────────────────────
@@ -656,6 +717,7 @@ public class AppDbContext : DbContext
             NewAccount("5", "1-1004", "Bank BNI", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
             NewAccount("6", "1-2000", "Piutang Usaha", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("7", "1-3000", "Persediaan", AccountType.Asset, NormalBalanceType.Debit),
+            NewAccount("21", "1-3500", "Barang Diterima Belum Ditagih (GRNI)", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("8", "1-4000", "Aset Tetap", AccountType.Asset, NormalBalanceType.Debit),
             // LIABILITAS
             NewAccount("9", "2-1000", "Utang Usaha", AccountType.Liability, NormalBalanceType.Credit),
@@ -694,6 +756,14 @@ public class AppDbContext : DbContext
                 Id = new Guid("60000000-0000-0000-0000-000000000001"),
                 DocType = "JOURNAL_ENTRY",
                 Prefix = "JE.SYN",
+                LastNumber = 0,
+                UpdatedAt = acctSeedDate,
+            },
+            new NumberingConfig
+            {
+                Id = new Guid("60000000-0000-0000-0000-000000000002"),
+                DocType = "SUPPLIER_INVOICE",
+                Prefix = "SINV.SYN",
                 LastNumber = 0,
                 UpdatedAt = acctSeedDate,
             }
