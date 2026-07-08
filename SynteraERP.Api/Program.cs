@@ -67,9 +67,11 @@ builder.Services.AddScoped<IJournalPostingService, JournalPostingService>();
 builder.Services.AddScoped<ISupplierInvoiceService, SupplierInvoiceService>();
 builder.Services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
+builder.Services.AddScoped<IReportsService, ReportsService>();
 builder.Services.AddScoped<QuotationPdfService>();
 builder.Services.AddScoped<SalesOrderPdfService>();
 builder.Services.AddScoped<InvoicePdfService>();
+builder.Services.AddScoped<ReportsPdfService>();
 builder.Services.AddScoped<ISystemResetService, SystemResetService>();
 
 // ── Controllers ───────────────────────────────────────────────────────────────
