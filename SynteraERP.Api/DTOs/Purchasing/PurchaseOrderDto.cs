@@ -90,8 +90,15 @@ public class ReceiveGoodsRequest
 public class CreatePoFromPrRequest
 {
     public Guid SupplierId { get; set; }
+    public List<CreatePoFromPrItemRequest> Items { get; set; } = [];
     public string? Notes { get; set; }
     public DateOnly? DeliveryDate { get; set; }
+}
+
+public class CreatePoFromPrItemRequest
+{
+    public Guid PRItemId { get; set; }
+    public decimal Qty { get; set; }
 }
 
 public class ReceiveGoodsItemRequest

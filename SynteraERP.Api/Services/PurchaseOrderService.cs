@@ -302,12 +302,51 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<PurchaseOrderDto?> CreateFromPrAsync(Guid prId, CreatePoFromPrRequest request)
     {
+        if (request.Items.Count == 0)
+            throw new ArgumentException("Purchase Order harus punya minimal 1 item dari Purchase Request.");
+
+        var duplicateIds = request.Items.GroupBy(i => i.PRItemId).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        if (duplicateIds.Count > 0)
+            throw new ArgumentException("Item PR yang sama tidak boleh direferensikan lebih dari 1 kali dalam satu Purchase Order.");
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         var pr = await _db.PurchaseRequests
             .Include(x => x.Items)
             .FirstOrDefaultAsync(x => x.Id == prId && !x.IsDeleted);
 
-        if (pr is null || pr.Status != Models.PurchaseRequestStatus.Approved)
+        // PO Split per Vendor (Antrian Jangka Panjang #1): 1 PR boleh menghasilkan lebih dari 1 PO,
+        // masing-masing PO tetap 1:1 ke satu Supplier, selama PR-nya masih Approved (belum ada PO sama
+        // sekali) atau PartiallyOrdered (sebagian item sudah teralokasi ke PO lain, sisanya belum).
+        if (pr is null || (pr.Status != Models.PurchaseRequestStatus.Approved && pr.Status != Models.PurchaseRequestStatus.PartiallyOrdered))
             return null;
+
+        var poItems = new List<Models.PurchaseOrderItem>();
+
+        foreach (var reqItem in request.Items)
+        {
+            var prItem = pr.Items.FirstOrDefault(i => i.Id == reqItem.PRItemId)
+                ?? throw new InvalidOperationException($"Item PR dengan Id {reqItem.PRItemId} tidak ditemukan di PR {pr.No}.");
+
+            if (reqItem.Qty <= 0)
+                throw new ArgumentException($"Qty untuk {prItem.ItemName} harus lebih dari 0.");
+
+            var remaining = prItem.Qty - prItem.OrderedQty;
+            if (reqItem.Qty > remaining)
+                throw new InvalidOperationException(
+                    $"Qty untuk {prItem.ItemName} ({reqItem.Qty}) melebihi sisa yang belum teralokasi ke PO manapun ({remaining} — total {prItem.Qty}, sudah teralokasi {prItem.OrderedQty}).");
+
+            prItem.OrderedQty += reqItem.Qty;
+
+            poItems.Add(new Models.PurchaseOrderItem
+            {
+                ItemName     = prItem.ItemName,
+                Qty          = reqItem.Qty,
+                Unit         = prItem.Unit,
+                Price        = prItem.EstPrice,
+                ItemMasterId = prItem.ItemMasterId,
+            });
+        }
 
         var no = await NextNumberAsync();
         var po = new Models.PurchaseOrder
@@ -319,23 +358,22 @@ public class PurchaseOrderService : IPurchaseOrderService
             DeliveryDate   = request.DeliveryDate,
             Notes          = request.Notes,
             Status         = Models.PurchaseOrderStatus.Draft,
-            Items          = pr.Items.Select(i => new Models.PurchaseOrderItem
-            {
-                ItemName     = i.ItemName,
-                Qty          = i.Qty,
-                Unit         = i.Unit,
-                Price        = i.EstPrice,
-                ItemMasterId = i.ItemMasterId,
-            }).ToList(),
+            Items          = poItems,
         };
 
         po.Total = po.Items.Sum(i => i.Qty * i.Price);
 
-        pr.Status    = Models.PurchaseRequestStatus.Ordered;
+        // Status PR dihitung otomatis (pola sama seperti PurchaseOrderStatus.PartialReceive di
+        // ReceiveGoodsAsync) - BUKAN lewat UpdateStatusAsync manual, supaya tidak ada jalur lain yang
+        // bisa membuat status PR "Ordered"/"PartiallyOrdered" jadi tidak sinkron dengan OrderedQty item.
+        var allFullyOrdered = pr.Items.All(i => i.OrderedQty >= i.Qty);
+        pr.Status    = allFullyOrdered ? Models.PurchaseRequestStatus.Ordered : Models.PurchaseRequestStatus.PartiallyOrdered;
         pr.UpdatedAt = DateTimeOffset.UtcNow;
 
         _db.PurchaseOrders.Add(po);
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
         return (await GetByIdAsync(po.Id))!;
     }
 

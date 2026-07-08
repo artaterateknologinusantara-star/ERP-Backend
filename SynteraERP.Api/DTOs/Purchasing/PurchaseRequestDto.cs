@@ -31,6 +31,7 @@ public class PurchaseRequestItemDto
     public string Unit { get; set; } = string.Empty;
     public decimal EstPrice { get; set; }
     public string? Notes { get; set; }
+    public decimal OrderedQty { get; set; }
 }
 
 public class CreatePurchaseRequestRequest

@@ -30,6 +30,7 @@ public class PurchaseRequestItem
     public decimal EstPrice { get; set; } = 0;
     public string? Notes { get; set; }
     public Guid? ItemMasterId { get; set; }
+    public decimal OrderedQty { get; set; } = 0;
 
     public PurchaseRequest PurchaseRequest { get; set; } = null!;
     public ItemMaster? ItemMaster { get; set; }
@@ -41,5 +42,9 @@ public enum PurchaseRequestStatus
     Submitted,
     Approved,
     Rejected,
-    Ordered
+    Ordered,
+    // PartiallyOrdered SENGAJA ditambahkan di AKHIR enum (bukan disisipkan di tengah) — meskipun
+    // Status disimpan sebagai string di database (HasConversion<string>() di AppDbContext), urutan
+    // deklarasi C# tetap dijaga stabil untuk konsistensi dan menghindari kebingungan di masa depan.
+    PartiallyOrdered,
 }

@@ -131,7 +131,7 @@ public class PurchaseOrderController : ControllerBase
     {
         var item = await _svc.CreateFromPrAsync(prId, request);
         if (item is null)
-            return NotFound(ApiResponse<PurchaseOrderDto>.Fail("Purchase Request tidak ditemukan atau statusnya bukan Approved."));
+            return NotFound(ApiResponse<PurchaseOrderDto>.Fail("Purchase Request tidak ditemukan, atau statusnya bukan Approved/PartiallyOrdered."));
         return CreatedAtAction(nameof(Get), new { id = item.Id },
             ApiResponse<PurchaseOrderDto>.Ok(item, "Purchase Order berhasil dibuat dari Purchase Request."));
     }

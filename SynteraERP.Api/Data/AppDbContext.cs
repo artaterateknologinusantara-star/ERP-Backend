@@ -354,6 +354,7 @@ public class AppDbContext : DbContext
         {
             e.Property(i => i.EstPrice).HasPrecision(18, 2);
             e.Property(i => i.Qty).HasPrecision(12, 4);
+            e.Property(i => i.OrderedQty).HasPrecision(12, 4);
             e.HasOne(i => i.PurchaseRequest)
              .WithMany(r => r.Items)
              .HasForeignKey(i => i.PRId)

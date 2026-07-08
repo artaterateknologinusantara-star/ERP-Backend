@@ -289,12 +289,13 @@ public class PurchaseRequestService : IPurchaseRequestService
     {
         var items = x.Items.Select(i => new PurchaseRequestItemDto
         {
-            Id       = i.Id,
-            ItemName = i.ItemName,
-            Qty      = i.Qty,
-            Unit     = i.Unit,
-            EstPrice = i.EstPrice,
-            Notes    = i.Notes,
+            Id         = i.Id,
+            ItemName   = i.ItemName,
+            Qty        = i.Qty,
+            Unit       = i.Unit,
+            EstPrice   = i.EstPrice,
+            Notes      = i.Notes,
+            OrderedQty = i.OrderedQty,
         }).ToList();
 
         return new PurchaseRequestDto
