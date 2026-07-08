@@ -21,6 +21,7 @@ public class InvoiceDto : InvoiceListDto
     public Guid? SalesOrderId { get; set; }
     public string? Notes { get; set; }
     public string? Terms { get; set; }
+    public string? NomorFakturPajak { get; set; }
     public decimal SubTotal { get; set; }
     public decimal TaxAmount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
@@ -59,6 +60,7 @@ public class CreateInvoiceRequest
     public decimal Amount { get; set; }
     public string? Notes { get; set; }
     public string? Terms { get; set; }
+    public string? NomorFakturPajak { get; set; }
 }
 
 public class RecordPaymentRequest

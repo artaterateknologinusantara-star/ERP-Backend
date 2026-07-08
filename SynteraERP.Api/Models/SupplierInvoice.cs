@@ -13,6 +13,7 @@ public class SupplierInvoice : BaseEntity
     public decimal Subtotal { get; set; } = 0;
     public decimal PPNMasukan { get; set; } = 0;
     public decimal Total { get; set; } = 0;
+    public string? NomorFakturPajak { get; set; }
     public SupplierInvoiceStatus Status { get; set; } = SupplierInvoiceStatus.Draft;
     public DateTimeOffset? ApprovedAt { get; set; }
     public Guid? ApprovedBy { get; set; }

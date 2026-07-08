@@ -9,4 +9,5 @@ public interface IReportsService
     Task<IncomeStatementDto> GetIncomeStatementAsync(DateOnly? startDate, DateOnly? endDate);
     Task<BalanceSheetDto> GetBalanceSheetAsync(DateOnly? asOfDate);
     Task<GeneralLedgerDto?> GetGeneralLedgerAsync(Guid accountId, DateOnly? startDate, DateOnly? endDate);
+    Task<PpnReconciliationDto> GetPpnReconciliationAsync(DateOnly? startDate, DateOnly? endDate);
 }

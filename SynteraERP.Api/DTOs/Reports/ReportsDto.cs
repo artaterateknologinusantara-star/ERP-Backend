@@ -59,3 +59,26 @@ public class GeneralLedgerDto
     public List<GeneralLedgerLineDto> Lines { get; set; } = [];
     public decimal ClosingBalance { get; set; }
 }
+
+public class PpnReconciliationRowDto
+{
+    public DateTimeOffset Date { get; set; }
+    public string EntryNumber { get; set; } = string.Empty;
+    public string SourceType { get; set; } = string.Empty;
+    public string DocumentNo { get; set; } = string.Empty;
+    public string? PartnerName { get; set; }
+    public string? Npwp { get; set; }
+    public string? NomorFakturPajak { get; set; }
+    public decimal Amount { get; set; }
+}
+
+public class PpnReconciliationDto
+{
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public List<PpnReconciliationRowDto> PpnKeluaran { get; set; } = [];
+    public List<PpnReconciliationRowDto> PpnMasukan { get; set; } = [];
+    public decimal TotalPpnKeluaran { get; set; }
+    public decimal TotalPpnMasukan { get; set; }
+    public decimal Selisih { get; set; }
+}

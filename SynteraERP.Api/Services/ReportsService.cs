@@ -246,6 +246,123 @@ public class ReportsService : IReportsService
         };
     }
 
+    public async Task<PpnReconciliationDto> GetPpnReconciliationAsync(DateOnly? startDate, DateOnly? endDate)
+    {
+        var end = endDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var start = startDate ?? new DateOnly(end.Year, end.Month, 1);
+
+        var startOffset = ToStartOfDay(start);
+        var endOffset = ToEndOfDay(end);
+
+        // Sumber kebenaran adalah JournalEntryLine yang sudah diposting (bukan reverse-calculate dari
+        // Invoice.Amount) — supaya angka di laporan ini tidak pernah melenceng dari GL kalau TaxRate
+        // default berubah di kemudian hari (lihat catatan investigasi PPN Reconciliation). Reversed
+        // entries tetap diikutkan (pola sama seperti GetTrialBalanceAsync) supaya jurnal pembalik
+        // menetralkan entri asal alih-alih dobel-hitung.
+        var rawKeluaran = await _db.JournalEntryLines
+            .Include(l => l.JournalEntry)
+            .Include(l => l.Account)
+            .Where(l => l.Account.Code == "2-2000"
+                     && l.JournalEntry.Status != JournalEntryStatus.Draft
+                     && l.JournalEntry.Date >= startOffset && l.JournalEntry.Date <= endOffset)
+            .Select(l => new
+            {
+                l.JournalEntry.Date,
+                l.JournalEntry.EntryNumber,
+                l.JournalEntry.Description,
+                l.JournalEntry.SourceType,
+                l.JournalEntry.SourceId,
+                l.Debit,
+                l.Credit,
+            })
+            .ToListAsync();
+
+        var rawMasukan = await _db.JournalEntryLines
+            .Include(l => l.JournalEntry)
+            .Include(l => l.Account)
+            .Where(l => l.Account.Code == "2-3000"
+                     && l.JournalEntry.Status != JournalEntryStatus.Draft
+                     && l.JournalEntry.Date >= startOffset && l.JournalEntry.Date <= endOffset)
+            .Select(l => new
+            {
+                l.JournalEntry.Date,
+                l.JournalEntry.EntryNumber,
+                l.JournalEntry.Description,
+                l.JournalEntry.SourceType,
+                l.JournalEntry.SourceId,
+                l.Debit,
+                l.Credit,
+            })
+            .ToListAsync();
+
+        // Resolve detail dokumen asal (No Invoice/SupplierInvoice, nama Customer/Supplier, NPWP, Nomor
+        // Faktur Pajak) hanya untuk baris yang SourceType-nya langsung merujuk Invoice/SupplierInvoice.
+        // Baris lain (mis. Reversal, atau ManualAdjustment/OpeningBalance yang kebetulan menyentuh akun
+        // ini) tetap ikut di total, tapi kolom dokumennya fallback ke JournalEntry.Description — tidak
+        // dipaksakan resolve 2-hop yang rapuh untuk kasus tepi yang jarang terjadi.
+        var invoiceIds = rawKeluaran
+            .Where(x => x.SourceType == JournalSourceType.SalesInvoice && x.SourceId.HasValue)
+            .Select(x => x.SourceId!.Value).Distinct().ToList();
+        var invoices = await _db.Invoices.Include(i => i.Customer)
+            .Where(i => invoiceIds.Contains(i.Id)).ToListAsync();
+        var invoiceById = invoices.ToDictionary(i => i.Id);
+
+        var supplierInvoiceIds = rawMasukan
+            .Where(x => x.SourceType == JournalSourceType.PurchaseInvoice && x.SourceId.HasValue)
+            .Select(x => x.SourceId!.Value).Distinct().ToList();
+        var supplierInvoices = await _db.SupplierInvoices.Include(si => si.Supplier)
+            .Where(si => supplierInvoiceIds.Contains(si.Id)).ToListAsync();
+        var supplierInvoiceById = supplierInvoices.ToDictionary(si => si.Id);
+
+        var ppnKeluaran = rawKeluaran.Select(x =>
+        {
+            Models.Invoice? inv = x.SourceType == JournalSourceType.SalesInvoice && x.SourceId.HasValue
+                ? invoiceById.GetValueOrDefault(x.SourceId.Value) : null;
+            return new PpnReconciliationRowDto
+            {
+                Date             = x.Date,
+                EntryNumber      = x.EntryNumber,
+                SourceType       = x.SourceType.ToString(),
+                DocumentNo       = inv?.No ?? x.Description,
+                PartnerName      = inv?.Customer.Name,
+                Npwp             = inv?.Customer.Npwp,
+                NomorFakturPajak = inv?.NomorFakturPajak,
+                Amount           = x.Credit - x.Debit,
+            };
+        }).OrderBy(x => x.Date).ThenBy(x => x.EntryNumber).ToList();
+
+        var ppnMasukan = rawMasukan.Select(x =>
+        {
+            Models.SupplierInvoice? si = x.SourceType == JournalSourceType.PurchaseInvoice && x.SourceId.HasValue
+                ? supplierInvoiceById.GetValueOrDefault(x.SourceId.Value) : null;
+            return new PpnReconciliationRowDto
+            {
+                Date             = x.Date,
+                EntryNumber      = x.EntryNumber,
+                SourceType       = x.SourceType.ToString(),
+                DocumentNo       = si?.No ?? x.Description,
+                PartnerName      = si?.Supplier.Name,
+                Npwp             = si?.Supplier.Npwp,
+                NomorFakturPajak = si?.NomorFakturPajak,
+                Amount           = x.Debit - x.Credit,
+            };
+        }).OrderBy(x => x.Date).ThenBy(x => x.EntryNumber).ToList();
+
+        var totalKeluaran = ppnKeluaran.Sum(x => x.Amount);
+        var totalMasukan = ppnMasukan.Sum(x => x.Amount);
+
+        return new PpnReconciliationDto
+        {
+            StartDate        = start,
+            EndDate          = end,
+            PpnKeluaran      = ppnKeluaran,
+            PpnMasukan       = ppnMasukan,
+            TotalPpnKeluaran = totalKeluaran,
+            TotalPpnMasukan  = totalMasukan,
+            Selisih          = totalKeluaran - totalMasukan,
+        };
+    }
+
     private static DateTimeOffset ToStartOfDay(DateOnly date) =>
         new(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
 

@@ -14,6 +14,7 @@ public class Invoice : BaseEntity
     public InvoiceStatus Status { get; set; } = InvoiceStatus.Draft;
     public string? Notes { get; set; }
     public string? Terms { get; set; }
+    public string? NomorFakturPajak { get; set; }
 
     public decimal Balance => Amount - Paid;
 

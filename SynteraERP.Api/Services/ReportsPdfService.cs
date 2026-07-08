@@ -280,6 +280,49 @@ public class ReportsPdfService
         return document.GeneratePdf();
     }
 
+    public async Task<byte[]> GeneratePpnReconciliationAsync(DateOnly? startDate, DateOnly? endDate)
+    {
+        var data = await _reportsService.GetPpnReconciliationAsync(startDate, endDate);
+        var company = await GetCompanyAsync();
+
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(40);
+                page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(9));
+
+                page.Header().Element(c => RenderReportHeader(c, company, "REKAPITULASI PPN",
+                    $"Periode {data.StartDate:dd/MM/yyyy} - {data.EndDate:dd/MM/yyyy}"));
+
+                page.Content().Element(c => c.PaddingTop(12).Column(col =>
+                {
+                    col.Spacing(10);
+                    RenderPpnSection(col, "PPN KELUARAN (dari Invoice AR)", data.PpnKeluaran, data.TotalPpnKeluaran);
+                    RenderPpnSection(col, "PPN MASUKAN (dari Supplier Invoice)", data.PpnMasukan, data.TotalPpnMasukan);
+
+                    col.Item().PaddingTop(6).BorderTop(1.5f).BorderColor(Navy).PaddingTop(6).Row(row =>
+                    {
+                        row.RelativeItem().Text("SELISIH (PPN Keluaran - PPN Masukan)").FontSize(10).Bold().FontColor(Navy);
+                        row.ConstantItem(120).AlignRight().Text(FormatRupiah(data.Selisih))
+                            .FontSize(10).Bold().FontColor(data.Selisih >= 0 ? Green : Red);
+                    });
+                    col.Item().Text(data.Selisih >= 0
+                        ? "Selisih positif: PPN Kurang Bayar (harus disetor)."
+                        : "Selisih negatif: PPN Lebih Bayar (bisa dikompensasi/restitusi).")
+                        .FontSize(8).FontColor(Colors.Grey.Medium);
+                }));
+
+                page.Footer().Element(RenderFooter);
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
     // ── Shared rendering ──────────────────────────────────────────────────────
 
     private static void RenderReportHeader(IContainer container, CompanySettings company, string title, string subtitle)
@@ -385,6 +428,58 @@ public class ReportsPdfService
                     table.Cell().Element(DC).Text(r.AccountCode).FontSize(8);
                     table.Cell().Element(DC).Text(r.AccountName).FontSize(8);
                     table.Cell().Element(DC).AlignRight().Text(FormatRupiah(r.Balance)).FontSize(8);
+                }
+            });
+
+            section.Item().PaddingTop(2).BorderTop(0.5f).BorderColor(SlateGray).PaddingTop(2).Row(row =>
+            {
+                row.RelativeItem().Text($"Total {title}").FontSize(8).Bold();
+                row.ConstantItem(100).AlignRight().Text(FormatRupiah(total)).FontSize(8).Bold();
+            });
+        });
+    }
+
+    private static void RenderPpnSection(ColumnDescriptor col, string title, List<PpnReconciliationRowDto> rows, decimal total)
+    {
+        col.Item().Column(section =>
+        {
+            section.Item().Background(LightBlue).Padding(3).Text(title).FontSize(9).Bold().FontColor(Navy);
+
+            section.Item().PaddingTop(2).Table(table =>
+            {
+                table.ColumnsDefinition(cols =>
+                {
+                    cols.ConstantColumn(55);
+                    cols.ConstantColumn(75);
+                    cols.RelativeColumn(2);
+                    cols.RelativeColumn();
+                    cols.RelativeColumn();
+                    cols.ConstantColumn(85);
+                });
+
+                table.Header(h =>
+                {
+                    static IContainer HC(IContainer c) => c.BorderBottom(1).BorderColor(SlateGray).Padding(3).AlignMiddle();
+                    h.Cell().Element(HC).Text("Tanggal").FontSize(7).Bold();
+                    h.Cell().Element(HC).Text("No. Dokumen").FontSize(7).Bold();
+                    h.Cell().Element(HC).Text("Customer/Supplier").FontSize(7).Bold();
+                    h.Cell().Element(HC).Text("NPWP").FontSize(7).Bold();
+                    h.Cell().Element(HC).Text("No. Faktur Pajak").FontSize(7).Bold();
+                    h.Cell().Element(HC).AlignRight().Text("Jumlah PPN").FontSize(7).Bold();
+                });
+
+                for (int i = 0; i < rows.Count; i++)
+                {
+                    var r = rows[i];
+                    string bg = i % 2 == 1 ? AltRow : (string)Colors.White;
+                    IContainer DC(IContainer c) => c.Background(bg).BorderBottom(0.5f).BorderColor(SlateGray).Padding(3).AlignMiddle();
+
+                    table.Cell().Element(DC).Text(r.Date.ToString("dd/MM/yyyy")).FontSize(7);
+                    table.Cell().Element(DC).Text(r.DocumentNo).FontSize(7);
+                    table.Cell().Element(DC).Text(r.PartnerName ?? "-").FontSize(7);
+                    table.Cell().Element(DC).Text(r.Npwp ?? "-").FontSize(7);
+                    table.Cell().Element(DC).Text(r.NomorFakturPajak ?? "-").FontSize(7);
+                    table.Cell().Element(DC).AlignRight().Text(FormatRupiah(r.Amount)).FontSize(7);
                 }
             });
 

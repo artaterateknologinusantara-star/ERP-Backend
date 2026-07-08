@@ -79,4 +79,18 @@ public class ReportsController : ControllerBase
         if (bytes is null) return NotFound();
         return File(bytes, "application/pdf", $"BukuBesar_{DateOnly.FromDateTime(DateTime.UtcNow):yyyyMMdd}.pdf");
     }
+
+    [HttpGet("ppn-reconciliation")]
+    public async Task<ActionResult<ApiResponse<PpnReconciliationDto>>> PpnReconciliation([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
+    {
+        var result = await _svc.GetPpnReconciliationAsync(startDate, endDate);
+        return Ok(ApiResponse<PpnReconciliationDto>.Ok(result));
+    }
+
+    [HttpGet("ppn-reconciliation/pdf")]
+    public async Task<IActionResult> PpnReconciliationPdf([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
+    {
+        var bytes = await _pdfSvc.GeneratePpnReconciliationAsync(startDate, endDate);
+        return File(bytes, "application/pdf", $"RekapitulasiPPN_{DateOnly.FromDateTime(DateTime.UtcNow):yyyyMMdd}.pdf");
+    }
 }

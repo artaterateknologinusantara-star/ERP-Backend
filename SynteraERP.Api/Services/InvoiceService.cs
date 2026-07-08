@@ -99,6 +99,7 @@ public class InvoiceService : IInvoiceService
             Paid         = 0,
             Notes        = request.Notes,
             Terms        = request.Terms,
+            NomorFakturPajak = request.NomorFakturPajak,
             Status       = InvoiceStatus.Draft,
         };
 
@@ -294,6 +295,7 @@ public class InvoiceService : IInvoiceService
             SalesOrderId = x.SalesOrderId,
             Notes        = x.Notes,
             Terms        = x.Terms,
+            NomorFakturPajak = x.NomorFakturPajak,
             SubTotal     = subTotal,
             TaxAmount    = taxAmount,
             CreatedAt    = x.CreatedAt,
