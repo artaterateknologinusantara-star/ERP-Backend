@@ -32,7 +32,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         var invoices = await db.Invoices
             .Include(x => x.Customer)
             .Include(x => x.SalesOrder)
-            .Where(x => x.Status != InvoiceStatus.Paid && x.Status != InvoiceStatus.Draft)
+            .Where(x => x.Amount > x.Paid)
             .OrderBy(x => x.DueDate)
             .ToListAsync();
 
@@ -69,7 +69,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var invoices = await db.Invoices
-            .Where(x => x.Status != InvoiceStatus.Paid && x.Status != InvoiceStatus.Draft)
+            .Where(x => x.Amount > x.Paid)
             .ToListAsync();
 
         var items = invoices.Select(x => new
@@ -255,7 +255,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
             .ToListAsync();
 
         var invoices = await db.Invoices
-            .Where(x => x.Status != InvoiceStatus.Paid && x.Status != InvoiceStatus.Draft)
+            .Where(x => x.Amount > x.Paid)
             .ToListAsync();
 
         var posAP = pos.Where(x =>
