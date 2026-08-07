@@ -81,6 +81,16 @@ builder.Services.AddControllers()
         opt.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
     });
 
+// Sengaja di-disable supaya CompanySettingsController bisa return format ApiResponse konsisten
+// alih-alih ProblemDetails default. WARNING: controller LAIN yang menambah data annotation
+// ([Required] dkk) di masa depan TIDAK akan otomatis dapat validasi 400 dari [ApiController] lagi —
+// WAJIB tambah ModelState.IsValid check manual sendiri seperti pola di CompanySettingsController,
+// atau auto-400 tidak akan terjadi.
+builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(opt =>
+{
+    opt.SuppressModelStateInvalidFilter = true;
+});
+
 // ── Swagger ───────────────────────────────────────────────────────────────────
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(opt =>
@@ -144,3 +154,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+// Exposes the top-level Program for WebApplicationFactory<Program>-based integration tests
+// (standard .NET idiom for minimal-hosting apps; no effect on runtime behavior).
+public partial class Program { }

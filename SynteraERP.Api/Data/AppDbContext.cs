@@ -605,6 +605,11 @@ public class AppDbContext : DbContext
             e.Property(c => c.SignatureName).HasMaxLength(100);
             e.Property(c => c.SignatureTitle).HasMaxLength(100);
             e.Property(c => c.DocumentPrefix).HasMaxLength(20);
+            e.Property(c => c.LogoFileName).HasMaxLength(255);
+            e.Property(c => c.Npwp).HasMaxLength(20);
+            e.Property(c => c.BankName).HasMaxLength(100);
+            e.Property(c => c.BankAccountNumber).HasMaxLength(50);
+            e.Property(c => c.BankAccountHolderName).HasMaxLength(100);
         });
 
         // ─── TaxRate ──────────────────────────────────────────────────────────
