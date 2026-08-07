@@ -32,6 +32,7 @@ public class CompanySettingsService : ICompanySettingsService
         settings.FooterText     = req.FooterText;
         settings.SignatureName  = req.SignatureName;
         settings.SignatureTitle = req.SignatureTitle;
+        settings.DocumentPrefix = req.DocumentPrefix;
         settings.UpdatedAt      = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -50,6 +51,7 @@ public class CompanySettingsService : ICompanySettingsService
         FooterText      = x.FooterText,
         SignatureName   = x.SignatureName,
         SignatureTitle  = x.SignatureTitle,
+        DocumentPrefix  = x.DocumentPrefix,
         UpdatedAt       = x.UpdatedAt,
     };
 }

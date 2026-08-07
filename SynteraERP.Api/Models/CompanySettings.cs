@@ -12,5 +12,6 @@ public class CompanySettings
     public string? FooterText { get; set; }
     public string? SignatureName { get; set; }
     public string? SignatureTitle { get; set; }
+    public string? DocumentPrefix { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -604,6 +604,7 @@ public class AppDbContext : DbContext
             e.Property(c => c.FooterText).HasMaxLength(1000);
             e.Property(c => c.SignatureName).HasMaxLength(100);
             e.Property(c => c.SignatureTitle).HasMaxLength(100);
+            e.Property(c => c.DocumentPrefix).HasMaxLength(20);
         });
 
         // ─── TaxRate ──────────────────────────────────────────────────────────
@@ -716,6 +717,7 @@ public class AppDbContext : DbContext
             FooterText = "Penawaran ini berlaku selama 14 hari. Harga belum termasuk biaya pengiriman dan instalasi kecuali disebutkan. Pembayaran 50% di muka, sisa 50% setelah pekerjaan selesai.",
             SignatureName = "Budi Santoso",
             SignatureTitle = "Sales Manager",
+            DocumentPrefix = "SYN",
             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero)
         });
 

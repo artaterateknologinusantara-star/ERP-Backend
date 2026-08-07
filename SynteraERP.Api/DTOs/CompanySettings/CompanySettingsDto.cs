@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SynteraERP.Api.DTOs.CompanySettings;
 
 public class CompanySettingsDto
@@ -12,6 +14,7 @@ public class CompanySettingsDto
     public string? FooterText { get; set; }
     public string? SignatureName { get; set; }
     public string? SignatureTitle { get; set; }
+    public string? DocumentPrefix { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
@@ -26,4 +29,7 @@ public class UpdateCompanySettingsRequest
     public string? FooterText { get; set; }
     public string? SignatureName { get; set; }
     public string? SignatureTitle { get; set; }
+
+    [StringLength(20, ErrorMessage = "Kode/Prefix Dokumen maksimal 20 karakter.")]
+    public string? DocumentPrefix { get; set; }
 }
