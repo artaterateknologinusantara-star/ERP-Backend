@@ -52,6 +52,9 @@ public class CompanySettingsController : ControllerBase
         return Ok(ApiResponse<CompanySettingsDto>.Ok(item, "Logo berhasil diunggah."));
     }
 
+    // Anonymous: the logo needs to render on the pre-login screen (and browser tabs generally),
+    // where no JWT exists yet. A company logo image isn't sensitive — nothing else here is exposed.
+    [AllowAnonymous]
     [HttpGet("logo")]
     public async Task<IActionResult> GetLogo()
     {
@@ -61,10 +64,29 @@ public class CompanySettingsController : ControllerBase
         return File(data, contentType, fileName);
     }
 
+    // Anonymous, deliberately minimal: only CompanyName + whether a logo exists — everything else on
+    // CompanySettings (email, NPWP, bank details, etc.) stays behind [Authorize]. Used by the login
+    // page and the browser tab title, both of which render before any JWT is available.
+    [AllowAnonymous]
+    [HttpGet("public")]
+    public async Task<ActionResult<ApiResponse<PublicCompanySettingsDto>>> GetPublic()
+    {
+        var item = await _svc.GetPublicAsync();
+        return Ok(ApiResponse<PublicCompanySettingsDto>.Ok(item));
+    }
+
     [HttpDelete("logo")]
     public async Task<ActionResult<ApiResponse<CompanySettingsDto>>> DeleteLogo()
     {
         var item = await _svc.DeleteLogoAsync();
         return Ok(ApiResponse<CompanySettingsDto>.Ok(item, "Logo berhasil dihapus."));
+    }
+
+    [HttpPost("regenerate-prefixes")]
+    public async Task<ActionResult<ApiResponse<RegeneratePrefixesResponse>>> RegeneratePrefixes()
+    {
+        var result = await _svc.RegeneratePrefixesAsync();
+        return Ok(ApiResponse<RegeneratePrefixesResponse>.Ok(result,
+            $"Prefix diperbarui untuk {result.UpdatedCount} tipe dokumen. Nomor dokumen yang sudah ada tidak berubah."));
     }
 }

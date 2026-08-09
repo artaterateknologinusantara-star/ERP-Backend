@@ -23,6 +23,27 @@ public class CompanySettingsDto
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+// Deliberately minimal — served anonymously (login page, browser tab title). Must never grow to
+// include anything sensitive (email, NPWP, bank details, etc.) that the full CompanySettingsDto has.
+public class PublicCompanySettingsDto
+{
+    public string CompanyName { get; set; } = string.Empty;
+    public bool HasLogo { get; set; }
+}
+
+public class NumberingConfigDto
+{
+    public string DocType { get; set; } = string.Empty;
+    public string Prefix { get; set; } = string.Empty;
+    public int LastNumber { get; set; }
+}
+
+public class RegeneratePrefixesResponse
+{
+    public int UpdatedCount { get; set; }
+    public List<NumberingConfigDto> NumberingConfigs { get; set; } = [];
+}
+
 // Logo is managed exclusively via the dedicated upload/delete logo endpoints (multipart), not here —
 // keeps this request pure JSON and stops callers from setting an arbitrary LogoPath/LogoFileName
 // string that never went through the upload validation.

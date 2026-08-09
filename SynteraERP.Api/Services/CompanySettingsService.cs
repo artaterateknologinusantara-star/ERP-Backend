@@ -27,6 +27,17 @@ public class CompanySettingsService : ICompanySettingsService
         return ToDto(settings);
     }
 
+    public async Task<PublicCompanySettingsDto> GetPublicAsync()
+    {
+        var settings = await _db.CompanySettings.FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException("CompanySettings belum ter-seed.");
+        return new PublicCompanySettingsDto
+        {
+            CompanyName = settings.CompanyName,
+            HasLogo = settings.LogoPath is not null,
+        };
+    }
+
     public async Task<CompanySettingsDto> UpdateAsync(UpdateCompanySettingsRequest req)
     {
         var settings = await _db.CompanySettings.FirstOrDefaultAsync()
@@ -126,6 +137,56 @@ public class CompanySettingsService : ICompanySettingsService
         await _db.SaveChangesAsync();
 
         return ToDto(settings);
+    }
+
+    // DocType -> code prefix mapping, must stay identical to NumberingConfigSeeder.cs — this is how
+    // "Q.SYN" is rebuilt as "Q.<new suffix>" without needing to parse whatever is currently stored.
+    private static readonly Dictionary<string, string> DocTypeCodes = new()
+    {
+        ["QUOTATION"] = "Q",
+        ["SALES_ORDER"] = "SO",
+        ["INVOICE"] = "INV",
+        ["PURCHASE_REQUEST"] = "PR",
+        ["PURCHASE_ORDER"] = "PO",
+        ["JOURNAL_ENTRY"] = "JE",
+        ["SUPPLIER_INVOICE"] = "SINV",
+        ["EXPENSE"] = "EXP",
+        ["DELIVERY_ORDER"] = "DO",
+    };
+
+    public async Task<RegeneratePrefixesResponse> RegeneratePrefixesAsync()
+    {
+        var settings = await _db.CompanySettings.FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException("CompanySettings belum ter-seed.");
+        var suffix = string.IsNullOrWhiteSpace(settings.DocumentPrefix) ? "SYN" : settings.DocumentPrefix.Trim();
+
+        var configs = await _db.NumberingConfigs.ToListAsync();
+        var updatedCount = 0;
+
+        foreach (var cfg in configs)
+        {
+            if (!DocTypeCodes.TryGetValue(cfg.DocType, out var code)) continue;
+
+            var newPrefix = $"{code}.{suffix}";
+            if (cfg.Prefix == newPrefix) continue;
+
+            // LastNumber is intentionally never touched here — only Prefix changes, so numbers
+            // continue from where they left off instead of resetting document history.
+            cfg.Prefix = newPrefix;
+            cfg.UpdatedAt = DateTimeOffset.UtcNow;
+            updatedCount++;
+        }
+
+        await _db.SaveChangesAsync();
+
+        return new RegeneratePrefixesResponse
+        {
+            UpdatedCount = updatedCount,
+            NumberingConfigs = configs
+                .OrderBy(c => c.DocType)
+                .Select(c => new NumberingConfigDto { DocType = c.DocType, Prefix = c.Prefix, LastNumber = c.LastNumber })
+                .ToList(),
+        };
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
