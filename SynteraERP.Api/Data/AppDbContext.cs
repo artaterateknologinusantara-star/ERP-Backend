@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     // ─── Master Data ──────────────────────────────────────────────────────────
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<Branch> Branches => Set<Branch>();
     public DbSet<NumberingConfig> NumberingConfigs => Set<NumberingConfig>();
     public DbSet<ItemMaster> ItemMasters => Set<ItemMaster>();
     public DbSet<CompanySettings> CompanySettings => Set<CompanySettings>();
@@ -74,6 +75,7 @@ public class AppDbContext : DbContext
         b.Entity<User>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<Customer>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<Supplier>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<Branch>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<ItemMaster>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<Quotation>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<CustomerPO>().HasQueryFilter(e => !e.IsDeleted);
@@ -124,6 +126,17 @@ public class AppDbContext : DbContext
             e.HasIndex(s => s.Code).IsUnique();
             e.Property(s => s.Code).HasMaxLength(20).IsRequired();
             e.Property(s => s.Name).HasMaxLength(200).IsRequired();
+        });
+
+        // ─── Branch ───────────────────────────────────────────────────────────
+        b.Entity<Branch>(e =>
+        {
+            e.HasIndex(br => br.Code).IsUnique();
+            e.Property(br => br.Code).HasMaxLength(20).IsRequired();
+            e.Property(br => br.Name).HasMaxLength(200).IsRequired();
+            e.Property(br => br.Address).HasMaxLength(500);
+            e.Property(br => br.Phone).HasMaxLength(50);
+            e.Property(br => br.Manager).HasMaxLength(100);
         });
 
         // ─── NumberingConfig ──────────────────────────────────────────────────
