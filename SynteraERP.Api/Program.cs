@@ -98,9 +98,9 @@ builder.Services.AddSwaggerGen(opt =>
 {
     opt.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Syntera ERP API",
+        Title = "ERP API",
         Version = "v1",
-        Description = "Backend API for Syntera ERP — IT Infrastructure & Project Services"
+        Description = "Backend API for ERP — IT Infrastructure & Project Services"
     });
 
     opt.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -135,7 +135,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI(opt =>
     {
-        opt.SwaggerEndpoint("/swagger/v1/swagger.json", "Syntera ERP API v1");
+        opt.SwaggerEndpoint("/swagger/v1/swagger.json", "ERP API v1");
         opt.RoutePrefix = "swagger";
     });
 }

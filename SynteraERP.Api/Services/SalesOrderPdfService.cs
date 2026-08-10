@@ -36,7 +36,7 @@ public class SalesOrderPdfService
         if (so is null) return null;
 
         var company = await _context.CompanySettings.FirstOrDefaultAsync()
-            ?? new CompanySettings { CompanyName = "PT Syntera Teknologi Nusantara" };
+            ?? new CompanySettings { CompanyName = "Perusahaan Anda" };
 
         byte[]? logoBytes = null;
         if (!string.IsNullOrEmpty(company.LogoPath))
@@ -64,7 +64,7 @@ public class SalesOrderPdfService
 
                 page.Header().Element(c => RenderHeader(c, so, company, logoBytes));
                 page.Content().Element(c => RenderContent(c, so, company, subTotal, taxAmount, grandTotal));
-                page.Footer().Element(c => RenderFooter(c));
+                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
             });
         });
 
@@ -290,14 +290,18 @@ public class SalesOrderPdfService
 
     // ── Footer ────────────────────────────────────────────────────────────────
 
-    private static void RenderFooter(IContainer container)
+    private static void RenderFooter(IContainer container, string? companyName)
     {
+        var footerText = string.IsNullOrWhiteSpace(companyName)
+            ? "Dokumen dicetak otomatis oleh sistem."
+            : $"Dokumen dicetak otomatis oleh sistem {companyName}.";
+
         container.Column(col =>
         {
             col.Item().BorderTop(0.5f).BorderColor(SlateGray).PaddingTop(4).Row(row =>
             {
                 row.RelativeItem()
-                    .Text("Dokumen dicetak otomatis oleh sistem Syntera ERP.")
+                    .Text(footerText)
                     .FontSize(7).FontColor(Colors.Grey.Medium);
 
                 row.ConstantItem(80).AlignRight().Text(text =>

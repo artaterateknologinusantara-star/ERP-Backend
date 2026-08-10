@@ -100,7 +100,7 @@ public class ReportsPdfService
                         .FontSize(8).Bold().FontColor(isBalanced ? Green : Red);
                 }));
 
-                page.Footer().Element(RenderFooter);
+                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
             });
         });
 
@@ -139,7 +139,7 @@ public class ReportsPdfService
                     });
                 }));
 
-                page.Footer().Element(RenderFooter);
+                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
             });
         });
 
@@ -193,7 +193,7 @@ public class ReportsPdfService
                     });
                 }));
 
-                page.Footer().Element(RenderFooter);
+                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
             });
         });
 
@@ -273,7 +273,7 @@ public class ReportsPdfService
                     });
                 }));
 
-                page.Footer().Element(RenderFooter);
+                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
             });
         });
 
@@ -316,7 +316,7 @@ public class ReportsPdfService
                         .FontSize(8).FontColor(Colors.Grey.Medium);
                 }));
 
-                page.Footer().Element(RenderFooter);
+                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
             });
         });
 
@@ -349,13 +349,17 @@ public class ReportsPdfService
         });
     }
 
-    private static void RenderFooter(IContainer container)
+    private static void RenderFooter(IContainer container, string? companyName)
     {
+        var footerText = string.IsNullOrWhiteSpace(companyName)
+            ? "Dokumen dicetak otomatis oleh sistem."
+            : $"Dokumen dicetak otomatis oleh sistem {companyName}.";
+
         container.Column(col =>
         {
             col.Item().BorderTop(0.5f).BorderColor(SlateGray).PaddingTop(4).Row(row =>
             {
-                row.RelativeItem().Text("Dokumen dicetak otomatis oleh sistem Syntera ERP.")
+                row.RelativeItem().Text(footerText)
                     .FontSize(7).FontColor(Colors.Grey.Medium);
 
                 row.ConstantItem(80).AlignRight().Text(text =>
@@ -493,7 +497,7 @@ public class ReportsPdfService
 
     private async Task<CompanySettings> GetCompanyAsync() =>
         await _context.CompanySettings.FirstOrDefaultAsync()
-            ?? new CompanySettings { CompanyName = "PT Syntera Teknologi Nusantara" };
+            ?? new CompanySettings { CompanyName = "Perusahaan Anda" };
 
     private static string FormatRupiah(decimal value) =>
         $"Rp {value:N0}".Replace(",", ".");

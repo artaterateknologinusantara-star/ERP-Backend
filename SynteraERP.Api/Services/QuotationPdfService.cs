@@ -31,7 +31,7 @@ public class QuotationPdfService
         if (quotation is null) return null;
 
         var company = await _db.CompanySettings.FirstOrDefaultAsync()
-            ?? new CompanySettings { CompanyName = "PT Syntera Teknologi Nusantara" };
+            ?? new CompanySettings { CompanyName = "Perusahaan Anda" };
 
         // Resolve logo bytes once — null if path missing or file not found
         byte[]? logoBytes = null;
@@ -61,7 +61,7 @@ public class QuotationPdfService
 
                 page.Header().Element(c => RenderHeader(c, company, quotation, logoBytes));
                 page.Content().Element(c => RenderContent(c, company, quotation, lineItems));
-                page.Footer().Element(RenderFooter);
+                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
             });
         });
 
@@ -354,13 +354,17 @@ public class QuotationPdfService
 
     // ─── Footer ───────────────────────────────────────────────────────────────
 
-    private static void RenderFooter(IContainer c)
+    private static void RenderFooter(IContainer c, string? companyName)
     {
+        var footerText = string.IsNullOrWhiteSpace(companyName)
+            ? "Dokumen dicetak otomatis oleh sistem."
+            : $"Dokumen dicetak otomatis oleh sistem {companyName}.";
+
         c.Row(row =>
         {
             row.RelativeItem().AlignLeft().Text(t =>
             {
-                t.Span("Dokumen dicetak otomatis oleh Syntera ERP.")
+                t.Span(footerText)
                     .FontSize(7).FontColor(Colors.Grey.Medium);
             });
 
