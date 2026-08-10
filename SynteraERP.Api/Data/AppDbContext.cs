@@ -40,6 +40,8 @@ public class AppDbContext : DbContext
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<InvoiceItem> InvoiceItems { get; set; }
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<SalesOrderPayment> SalesOrderPayments => Set<SalesOrderPayment>();
+    public DbSet<DownPaymentApplication> DownPaymentApplications => Set<DownPaymentApplication>();
 
     // ─── Purchasing ───────────────────────────────────────────────────────────
     public DbSet<PurchaseRequest> PurchaseRequests => Set<PurchaseRequest>();
@@ -342,6 +344,35 @@ public class AppDbContext : DbContext
              .WithMany(i => i.Payments)
              .HasForeignKey(p => p.InvoiceId)
              .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── Down Payment Customer ──────────────────────────────────────────────
+        b.Entity<SalesOrderPayment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.Method).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(x => x.SalesOrder)
+             .WithMany(s => s.DownPayments)
+             .HasForeignKey(x => x.SalesOrderId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<DownPaymentApplication>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.AmountApplied).HasPrecision(18, 2);
+
+            e.HasOne(x => x.SalesOrderPayment)
+             .WithMany(x => x.Applications)
+             .HasForeignKey(x => x.SalesOrderPaymentId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Invoice)
+             .WithMany()
+             .HasForeignKey(x => x.InvoiceId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ─── PurchaseRequest ──────────────────────────────────────────────────
@@ -784,6 +815,7 @@ public class AppDbContext : DbContext
             NewAccount("9", "2-1000", "Utang Usaha", AccountType.Liability, NormalBalanceType.Credit),
             NewAccount("a", "2-2000", "Utang Pajak Keluaran (PPN Keluaran)", AccountType.Liability, NormalBalanceType.Credit),
             NewAccount("b", "2-3000", "Utang Pajak Masukan (PPN Masukan)", AccountType.Liability, NormalBalanceType.Credit),
+            NewAccount("22", "2-4000", "Uang Muka Pelanggan", AccountType.Liability, NormalBalanceType.Credit),
             // EKUITAS
             NewAccount("c", "3-1000", "Modal", AccountType.Equity, NormalBalanceType.Credit),
             // PENDAPATAN

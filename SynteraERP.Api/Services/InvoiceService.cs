@@ -187,12 +187,8 @@ public class InvoiceService : IInvoiceService
         };
 
         _db.Payments.Add(payment);
-        inv.Paid += request.Amount;
+        inv.ApplyPayment(request.Amount);
         inv.UpdatedAt = DateTimeOffset.UtcNow;
-
-        inv.Status = inv.Paid >= inv.Amount
-            ? InvoiceStatus.Paid
-            : InvoiceStatus.PartialPaid;
 
         await _db.SaveChangesAsync();
 

@@ -54,6 +54,7 @@ builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
 builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<ISalesOrderPaymentService, SalesOrderPaymentService>();
 builder.Services.AddScoped<IPurchaseRequestService, PurchaseRequestService>();
 builder.Services.AddScoped<IPurchaseOrderService, PurchaseOrderService>();
 builder.Services.AddScoped<IItemMasterService, ItemMasterService>();

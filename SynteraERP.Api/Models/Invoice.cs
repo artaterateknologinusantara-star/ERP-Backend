@@ -22,6 +22,15 @@ public class Invoice : BaseEntity
     public Customer Customer { get; set; } = null!;
     public ICollection<Payment> Payments { get; set; } = [];
     public ICollection<InvoiceItem> Items { get; set; } = new List<InvoiceItem>();
+
+    // Dipakai bersama oleh InvoiceService.RecordPaymentAsync (pembayaran biasa) dan
+    // SalesOrderPaymentService.ApplyToInvoiceAsync (penerapan Down Payment) — satu-satunya tempat
+    // status Paid/PartialPaid dihitung, supaya kedua jalur tidak pernah punya logic transisi yang beda.
+    public void ApplyPayment(decimal amount)
+    {
+        Paid += amount;
+        Status = Paid >= Amount ? InvoiceStatus.Paid : InvoiceStatus.PartialPaid;
+    }
 }
 
 public class InvoiceItem

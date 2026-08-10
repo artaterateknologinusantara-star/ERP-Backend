@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Invoice;
+using SynteraERP.Api.DTOs.SalesOrderPayment;
 using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -14,11 +15,13 @@ public class InvoiceController : ControllerBase
 {
     private readonly IInvoiceService _svc;
     private readonly InvoicePdfService _pdfSvc;
+    private readonly ISalesOrderPaymentService _dpSvc;
 
-    public InvoiceController(IInvoiceService svc, InvoicePdfService pdfSvc)
+    public InvoiceController(IInvoiceService svc, InvoicePdfService pdfSvc, ISalesOrderPaymentService dpSvc)
     {
         _svc = svc;
         _pdfSvc = pdfSvc;
+        _dpSvc = dpSvc;
     }
 
     [HttpGet]
@@ -72,5 +75,13 @@ public class InvoiceController : ControllerBase
         var pdfBytes = await _pdfSvc.GenerateAsync(id);
         if (pdfBytes is null) return NotFound();
         return File(pdfBytes, "application/pdf", $"Invoice_{id}.pdf");
+    }
+
+    [HttpPost("{id:guid}/apply-down-payment")]
+    public async Task<ActionResult<ApiResponse<InvoiceDto>>> ApplyDownPayment(Guid id, [FromBody] ApplyDownPaymentRequest request)
+    {
+        var item = await _dpSvc.ApplyToInvoiceAsync(id, request);
+        if (item is null) return NotFound(ApiResponse<InvoiceDto>.Fail("Invoice tidak ditemukan."));
+        return Ok(ApiResponse<InvoiceDto>.Ok(item, "Down Payment berhasil diterapkan ke Invoice."));
     }
 }

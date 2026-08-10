@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.SalesOrder;
+using SynteraERP.Api.DTOs.SalesOrderPayment;
 using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -15,11 +16,13 @@ public class SalesOrderController : ControllerBase
 {
     private readonly ISalesOrderService _svc;
     private readonly SalesOrderPdfService _pdfSvc;
+    private readonly ISalesOrderPaymentService _dpSvc;
 
-    public SalesOrderController(ISalesOrderService svc, SalesOrderPdfService pdfSvc)
+    public SalesOrderController(ISalesOrderService svc, SalesOrderPdfService pdfSvc, ISalesOrderPaymentService dpSvc)
     {
         _svc = svc;
         _pdfSvc = pdfSvc;
+        _dpSvc = dpSvc;
     }
 
     [HttpGet]
@@ -108,5 +111,19 @@ public class SalesOrderController : ControllerBase
         var pdfBytes = await _pdfSvc.GenerateAsync(id);
         if (pdfBytes is null) return NotFound();
         return File(pdfBytes, "application/pdf", $"SO_{id}.pdf");
+    }
+
+    [HttpPost("{id:guid}/down-payments")]
+    public async Task<ActionResult<ApiResponse<SalesOrderPaymentDto>>> RecordDownPayment(Guid id, [FromBody] RecordDownPaymentRequest request)
+    {
+        var item = await _dpSvc.RecordDownPaymentAsync(id, request);
+        return Ok(ApiResponse<SalesOrderPaymentDto>.Ok(item, "Down Payment berhasil dicatat."));
+    }
+
+    [HttpGet("{id:guid}/down-payments")]
+    public async Task<ActionResult<ApiResponse<List<SalesOrderPaymentDto>>>> ListDownPayments(Guid id)
+    {
+        var items = await _dpSvc.ListForSalesOrderAsync(id);
+        return Ok(ApiResponse<List<SalesOrderPaymentDto>>.Ok(items));
     }
 }

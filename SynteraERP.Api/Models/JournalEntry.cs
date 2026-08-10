@@ -29,6 +29,8 @@ public enum JournalSourceType
     ManualAdjustment,
     Reversal,
     OpeningBalance,
+    CustomerAdvanceReceived,
+    CustomerAdvanceApplied,
 }
 
 public enum JournalEntryStatus
