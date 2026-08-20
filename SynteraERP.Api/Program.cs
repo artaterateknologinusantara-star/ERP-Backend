@@ -146,14 +146,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Seed reference data on startup
-using (var scope = app.Services.CreateScope())
+// Seed reference data on startup (skip when running integration tests)
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await CustomerSeeder.SeedAsync(db);
-    await ItemMasterSeeder.SeedAsync(db);
-    await SupplierSeeder.SeedAsync(db);
-    await NumberingConfigSeeder.SeedAsync(db);
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await CustomerSeeder.SeedAsync(db);
+        await ItemMasterSeeder.SeedAsync(db);
+        await SupplierSeeder.SeedAsync(db);
+        await NumberingConfigSeeder.SeedAsync(db);
+    }
 }
 
 app.Run();

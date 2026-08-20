@@ -234,4 +234,74 @@ public class CustomerPoService : ICustomerPoService
         CreatedAt = c.CreatedAt,
         UpdatedAt = c.UpdatedAt,
     };
+
+    public async Task<CustomerPoDto> UpdateNumberAsync(Guid customerPoId, string newPoNo, string? reason)
+    {
+        if (string.IsNullOrWhiteSpace(newPoNo))
+            throw new ArgumentException("newPoNo is required.");
+
+        var cpo = await _db.CustomerPOs.FindAsync(customerPoId)
+            ?? throw new KeyNotFoundException("Customer PO tidak ditemukan.");
+
+        if (cpo.PoNo == newPoNo)
+            throw new InvalidOperationException("Nomor PO baru sama dengan nomor saat ini.");
+
+        var old = cpo.PoNo;
+        cpo.PoNo = newPoNo;
+        cpo.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var history = new CustomerPoHistory
+        {
+            Id = Guid.NewGuid(),
+            CustomerPoId = cpo.Id,
+            OldPoNo = old,
+            NewPoNo = newPoNo,
+            ChangedAt = DateTime.UtcNow,
+            Reason = reason,
+        };
+
+        // Attempt to capture current user from ambient context (CreatedBy/UpdatedBy pattern)
+        try
+        {
+            // If HttpContext is available via synchronous access, get user info
+            var httpContext = new HttpContextAccessor().HttpContext;
+            if (httpContext?.User?.Identity?.IsAuthenticated == true)
+            {
+                var uid = httpContext.User.Claims.FirstOrDefault(c => c.Type == "sub" || c.Type == "id")?.Value;
+                if (Guid.TryParse(uid, out var g)) history.ChangedBy = g;
+                history.ChangedByName = httpContext.User.Identity?.Name;
+            }
+        }
+        catch
+        {
+            // ignore; fallback to nulls
+        }
+
+        _db.CustomerPoHistories.Add(history);
+        await _db.SaveChangesAsync();
+
+        var so = await _db.SalesOrders.FirstOrDefaultAsync(s => s.QuotationId == cpo.QuotationId && !s.IsDeleted);
+        return ToDto(cpo, so?.Id, so?.No);
+    }
+
+    public async Task<IEnumerable<CustomerPoHistoryDto>> GetHistoryAsync(Guid customerPoId)
+    {
+        var items = await _db.CustomerPoHistories
+            .Where(h => h.CustomerPoId == customerPoId)
+            .OrderByDescending(h => h.ChangedAt)
+            .Select(h => new CustomerPoHistoryDto
+            {
+                Id = h.Id,
+                CustomerPoId = h.CustomerPoId,
+                OldPoNo = h.OldPoNo,
+                NewPoNo = h.NewPoNo,
+                ChangedBy = h.ChangedBy,
+                ChangedByName = h.ChangedByName,
+                ChangedAt = h.ChangedAt,
+                Reason = h.Reason,
+            })
+            .ToListAsync();
+
+        return items;
+    }
 }

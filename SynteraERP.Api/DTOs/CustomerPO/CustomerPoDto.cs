@@ -31,3 +31,15 @@ public class CreateCustomerPoRequest
     public decimal Amount { get; set; }
     public string? Notes { get; set; }
 }
+
+public class CustomerPoHistoryDto
+{
+    public Guid Id { get; set; }
+    public Guid CustomerPoId { get; set; }
+    public string OldPoNo { get; set; } = string.Empty;
+    public string NewPoNo { get; set; } = string.Empty;
+    public Guid? ChangedBy { get; set; }
+    public string? ChangedByName { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string? Reason { get; set; }
+}

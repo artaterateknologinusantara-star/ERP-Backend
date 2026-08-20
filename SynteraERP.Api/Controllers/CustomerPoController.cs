@@ -65,4 +65,39 @@ public class CustomerPoController : ControllerBase
         if (!ok) return NotFound(ApiResponse.Fail("Customer PO tidak ditemukan."));
         return Ok(ApiResponse.Ok("Customer PO berhasil dihapus."));
     }
+
+    [HttpPatch("{id:guid}/number")]
+    public async Task<ActionResult<ApiResponse<CustomerPoDto>>> UpdateNumber(Guid id, [FromBody] UpdateNumberRequest req)
+    {
+        try
+        {
+            var updated = await _svc.UpdateNumberAsync(id, req.NewPoNo, req.Reason);
+            return Ok(ApiResponse<CustomerPoDto>.Ok(updated, "Nomor PO berhasil diperbarui."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse<CustomerPoDto>.Fail(ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse<CustomerPoDto>.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<CustomerPoDto>.Fail(ex.Message));
+        }
+    }
+
+    [HttpGet("{id:guid}/history")]
+    public async Task<ActionResult<ApiResponse<IEnumerable<CustomerPoHistoryDto>>>> History(Guid id)
+    {
+        var items = await _svc.GetHistoryAsync(id);
+        return Ok(ApiResponse<IEnumerable<CustomerPoHistoryDto>>.Ok(items));
+    }
+}
+
+public class UpdateNumberRequest
+{
+    public string NewPoNo { get; set; } = string.Empty;
+    public string? Reason { get; set; }
 }

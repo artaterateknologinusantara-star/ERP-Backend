@@ -14,3 +14,17 @@ public class CustomerPO : BaseEntity
 
     public Quotation Quotation { get; set; } = null!;
 }
+
+public class CustomerPoHistory
+{
+    public Guid Id { get; set; }
+    public Guid CustomerPoId { get; set; }
+    public string OldPoNo { get; set; } = string.Empty;
+    public string NewPoNo { get; set; } = string.Empty;
+    public Guid? ChangedBy { get; set; }
+    public string? ChangedByName { get; set; }
+    public DateTime ChangedAt { get; set; }
+    public string? Reason { get; set; }
+
+    public CustomerPO CustomerPO { get; set; } = null!;
+}

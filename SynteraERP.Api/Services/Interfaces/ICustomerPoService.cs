@@ -12,4 +12,6 @@ public interface ICustomerPoService
     Task<CustomerPoDto> CreateAsync(CreateCustomerPoRequest request, IFormFile? attachment);
     Task<bool> DeleteAsync(Guid id);
     Task<(byte[] data, string contentType, string fileName)?> GetAttachmentAsync(Guid id);
+    Task<CustomerPoDto> UpdateNumberAsync(Guid customerPoId, string newPoNo, string? reason);
+    Task<IEnumerable<CustomerPoHistoryDto>> GetHistoryAsync(Guid customerPoId);
 }

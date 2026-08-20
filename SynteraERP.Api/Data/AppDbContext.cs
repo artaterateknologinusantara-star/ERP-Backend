@@ -31,6 +31,7 @@ public class AppDbContext : DbContext
     public DbSet<QuotationGroup> QuotationGroups => Set<QuotationGroup>();
     public DbSet<QuotationItem> QuotationItems => Set<QuotationItem>();
     public DbSet<CustomerPO> CustomerPOs => Set<CustomerPO>();
+    public DbSet<CustomerPoHistory> CustomerPoHistories => Set<CustomerPoHistory>();
 
     // ─── Sales ────────────────────────────────────────────────────────────────
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
@@ -255,6 +256,19 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(c => c.QuotationId)
              .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CustomerPoHistory>(e =>
+        {
+            e.HasKey(h => h.Id);
+            e.Property(h => h.OldPoNo).HasMaxLength(50).IsRequired();
+            e.Property(h => h.NewPoNo).HasMaxLength(50).IsRequired();
+            e.Property(h => h.ChangedByName).HasMaxLength(100);
+            e.Property(h => h.Reason).HasMaxLength(1000);
+            e.HasOne(h => h.CustomerPO)
+             .WithMany()
+             .HasForeignKey(h => h.CustomerPoId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ─── SalesOrder ───────────────────────────────────────────────────────
