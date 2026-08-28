@@ -21,6 +21,7 @@ public class PurchaseOrderService : IPurchaseOrderService
     public async Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p, Guid? purchaseRequestId = null, IEnumerable<Guid>? purchaseRequestIds = null)
     {
         var q = _db.PurchaseOrders
+            .AsNoTracking()
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseRequest)
             .AsQueryable();
@@ -62,6 +63,7 @@ public class PurchaseOrderService : IPurchaseOrderService
     public async Task<PurchaseOrderDto?> GetByIdAsync(Guid id)
     {
         var po = await _db.PurchaseOrders
+            .AsNoTracking()
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseRequest)
             .Include(x => x.Items)
@@ -401,18 +403,16 @@ public class PurchaseOrderService : IPurchaseOrderService
 
     public async Task<PurchaseOrderStatsDto> GetStatsAsync()
     {
-        var all = await _db.PurchaseOrders
-            .Where(x => !x.IsDeleted)
-            .ToListAsync();
+        var q = _db.PurchaseOrders.Where(x => !x.IsDeleted);
 
         return new PurchaseOrderStatsDto
         {
-            Total          = all.Count,
-            Draft          = all.Count(x => x.Status == PurchaseOrderStatus.Draft),
-            Ordered        = all.Count(x => x.Status == PurchaseOrderStatus.Ordered),
-            PartialReceive = all.Count(x => x.Status == PurchaseOrderStatus.PartialReceive),
-            Completed      = all.Count(x => x.Status == PurchaseOrderStatus.Completed),
-            TotalValue     = all.Sum(x => x.Total),
+            Total          = await q.CountAsync(),
+            Draft          = await q.CountAsync(x => x.Status == PurchaseOrderStatus.Draft),
+            Ordered        = await q.CountAsync(x => x.Status == PurchaseOrderStatus.Ordered),
+            PartialReceive = await q.CountAsync(x => x.Status == PurchaseOrderStatus.PartialReceive),
+            Completed      = await q.CountAsync(x => x.Status == PurchaseOrderStatus.Completed),
+            TotalValue     = await q.SumAsync(x => x.Total),
         };
     }
 

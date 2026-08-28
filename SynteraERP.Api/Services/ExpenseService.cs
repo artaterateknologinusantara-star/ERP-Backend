@@ -36,6 +36,7 @@ public class ExpenseService : IExpenseService
     public async Task<PaginatedResponse<ExpenseListDto>> ListAsync(ExpenseQueryParams p)
     {
         var q = _db.Expenses
+            .AsNoTracking()
             .Include(x => x.ExpenseCategory)
             .Include(x => x.Vendor)
             .AsQueryable();
@@ -64,6 +65,7 @@ public class ExpenseService : IExpenseService
     public async Task<ExpenseDto?> GetByIdAsync(Guid id)
     {
         var exp = await _db.Expenses
+            .AsNoTracking()
             .Include(x => x.ExpenseCategory)
             .Include(x => x.Vendor)
             .Include(x => x.CashBankAccount)

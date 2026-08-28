@@ -180,7 +180,7 @@ public class ReportsService : IReportsService
 
     public async Task<GeneralLedgerDto?> GetGeneralLedgerAsync(Guid accountId, DateOnly? startDate, DateOnly? endDate)
     {
-        var account = await _db.Accounts.FirstOrDefaultAsync(x => x.Id == accountId && !x.IsDeleted);
+        var account = await _db.Accounts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == accountId && !x.IsDeleted);
         if (account is null) return null;
 
         var end = endDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
@@ -303,14 +303,14 @@ public class ReportsService : IReportsService
         var invoiceIds = rawKeluaran
             .Where(x => x.SourceType == JournalSourceType.SalesInvoice && x.SourceId.HasValue)
             .Select(x => x.SourceId!.Value).Distinct().ToList();
-        var invoices = await _db.Invoices.Include(i => i.Customer)
+        var invoices = await _db.Invoices.AsNoTracking().Include(i => i.Customer)
             .Where(i => invoiceIds.Contains(i.Id)).ToListAsync();
         var invoiceById = invoices.ToDictionary(i => i.Id);
 
         var supplierInvoiceIds = rawMasukan
             .Where(x => x.SourceType == JournalSourceType.PurchaseInvoice && x.SourceId.HasValue)
             .Select(x => x.SourceId!.Value).Distinct().ToList();
-        var supplierInvoices = await _db.SupplierInvoices.Include(si => si.Supplier)
+        var supplierInvoices = await _db.SupplierInvoices.AsNoTracking().Include(si => si.Supplier)
             .Where(si => supplierInvoiceIds.Contains(si.Id)).ToListAsync();
         var supplierInvoiceById = supplierInvoices.ToDictionary(si => si.Id);
 

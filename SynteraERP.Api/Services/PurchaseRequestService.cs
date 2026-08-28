@@ -16,6 +16,7 @@ public class PurchaseRequestService : IPurchaseRequestService
     public async Task<PaginatedResponse<PurchaseRequestListDto>> ListAsync(PaginationParams p)
     {
         var q = _db.PurchaseRequests
+            .AsNoTracking()
             .Include(x => x.RequestedByUser)
             .Include(x => x.SalesOrder)
             .Include(x => x.Items)
@@ -46,6 +47,7 @@ public class PurchaseRequestService : IPurchaseRequestService
     public async Task<PurchaseRequestDto?> GetByIdAsync(Guid id)
     {
         var pr = await _db.PurchaseRequests
+            .AsNoTracking()
             .Include(x => x.RequestedByUser)
             .Include(x => x.SalesOrder)
             .Include(x => x.Items)
@@ -57,7 +59,7 @@ public class PurchaseRequestService : IPurchaseRequestService
         string? approvedByName = null;
         if (pr.ApprovedByUserId.HasValue)
         {
-            var approver = await _db.Users.FindAsync(pr.ApprovedByUserId.Value);
+            var approver = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == pr.ApprovedByUserId.Value);
             approvedByName = approver?.Name;
         }
 
@@ -244,18 +246,16 @@ public class PurchaseRequestService : IPurchaseRequestService
 
     public async Task<PurchaseRequestStatsDto> GetStatsAsync()
     {
-        var all = await _db.PurchaseRequests
-            .Where(x => !x.IsDeleted)
-            .ToListAsync();
+        var q = _db.PurchaseRequests.Where(x => !x.IsDeleted);
 
         return new PurchaseRequestStatsDto
         {
-            Total     = all.Count,
-            Draft     = all.Count(x => x.Status == PurchaseRequestStatus.Draft),
-            Submitted = all.Count(x => x.Status == PurchaseRequestStatus.Submitted),
-            Approved  = all.Count(x => x.Status == PurchaseRequestStatus.Approved),
-            Rejected  = all.Count(x => x.Status == PurchaseRequestStatus.Rejected),
-            TotalValue = all.Sum(x => x.Total),
+            Total     = await q.CountAsync(),
+            Draft     = await q.CountAsync(x => x.Status == PurchaseRequestStatus.Draft),
+            Submitted = await q.CountAsync(x => x.Status == PurchaseRequestStatus.Submitted),
+            Approved  = await q.CountAsync(x => x.Status == PurchaseRequestStatus.Approved),
+            Rejected  = await q.CountAsync(x => x.Status == PurchaseRequestStatus.Rejected),
+            TotalValue = await q.SumAsync(x => x.Total),
         };
     }
 

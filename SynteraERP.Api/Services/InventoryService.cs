@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
+using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Inventory;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
@@ -21,30 +22,29 @@ public class InventoryService : IInventoryService
 
     public async Task<InventoryStatsDto> GetStatsAsync()
     {
-        var items = await _db.ItemMasters
-            .Where(x => x.IsActive && !x.IsDeleted)
-            .ToListAsync();
+        var activeItems = _db.ItemMasters.Where(x => x.IsActive && !x.IsDeleted);
 
-        var dos = await _db.DeliveryOrders
-            .Where(x => !x.IsDeleted)
-            .ToListAsync();
+        var totalItems = await activeItems.CountAsync();
 
         return new InventoryStatsDto
         {
-            TotalItems = items.Count,
-            ActiveItems = items.Count(x => x.IsActive),
-            LowStockItems = items.Count(x => x.Stock <= x.MinStock && x.Stock > 0),
-            OutOfStockItems = items.Count(x => x.Stock == 0),
+            TotalItems = totalItems,
+            // activeItems is already filtered to IsActive, so this always equals TotalItems —
+            // preserved as-is from the original logic, not something this pass changes.
+            ActiveItems = totalItems,
+            LowStockItems = await activeItems.CountAsync(x => x.Stock <= x.MinStock && x.Stock > 0),
+            OutOfStockItems = await activeItems.CountAsync(x => x.Stock == 0),
             // Nilai stok dihitung dari PurchasePrice (COGS) jika tersedia, fallback ke SellingPrice
-            TotalStockValue = items.Sum(x => x.Stock * (x.PurchasePrice ?? x.SellingPrice)),
-            PendingDOs = dos.Count(x => x.Status == DeliveryOrderStatus.Draft),
-            ActiveDOs = dos.Count(x => x.Status == DeliveryOrderStatus.Confirmed),
+            TotalStockValue = await activeItems.SumAsync(x => x.Stock * (x.PurchasePrice ?? x.SellingPrice)),
+            PendingDOs = await _db.DeliveryOrders.CountAsync(x => !x.IsDeleted && x.Status == DeliveryOrderStatus.Draft),
+            ActiveDOs = await _db.DeliveryOrders.CountAsync(x => !x.IsDeleted && x.Status == DeliveryOrderStatus.Confirmed),
         };
     }
 
     public async Task<List<LowStockItemDto>> GetLowStockItemsAsync()
     {
         var items = await _db.ItemMasters
+            .AsNoTracking()
             .Where(x => x.IsActive && !x.IsDeleted && x.Stock <= x.MinStock)
             .ToListAsync();
 
@@ -66,10 +66,11 @@ public class InventoryService : IInventoryService
 
     // ─── Stock transactions ───────────────────────────────────────────────────
 
-    public async Task<List<StockTransactionDto>> GetStockHistoryAsync(
-        Guid? itemMasterId, int page, int perPage)
+    public async Task<PaginatedResponse<StockTransactionDto>> GetStockHistoryAsync(
+        Guid? itemMasterId, int page, int perPage, string? type = null)
     {
         var q = _db.StockTransactions
+            .AsNoTracking()
             .Include(x => x.ItemMaster)
             .Include(x => x.CreatedByUser)
             .AsQueryable();
@@ -77,12 +78,21 @@ public class InventoryService : IInventoryService
         if (itemMasterId.HasValue)
             q = q.Where(x => x.ItemMasterId == itemMasterId.Value);
 
-        return await q
+        if (!string.IsNullOrWhiteSpace(type) &&
+            Enum.TryParse<StockTransactionType>(type, true, out var parsedType))
+        {
+            q = q.Where(x => x.Type == parsedType);
+        }
+
+        var total = await q.CountAsync();
+        var data = await q
             .OrderByDescending(x => x.CreatedAt)
             .Skip((page - 1) * perPage)
             .Take(perPage)
             .Select(x => ToStockTxDto(x))
             .ToListAsync();
+
+        return PaginatedResponse<StockTransactionDto>.Create(data, total, page, perPage);
     }
 
     public async Task<StockTransactionDto> RecordStockInAsync(
@@ -123,15 +133,15 @@ public class InventoryService : IInventoryService
 
     // ─── Delivery orders ─────────────────────────────────────────────────────
 
-    public async Task<List<DeliveryOrderListDto>> GetDeliveryOrdersAsync(
+    public async Task<PaginatedResponse<DeliveryOrderListDto>> GetDeliveryOrdersAsync(
         int page, int perPage, string? search, string? status)
     {
-        var q = _db.DeliveryOrders
-            .Include(x => x.Customer)
-            .Include(x => x.SalesOrder)
-            .Include(x => x.CreatedByUser)
-            .Include(x => x.Items)
-            .AsQueryable();
+        // No .Include() at all here: every field below (including ItemCount) is projected
+        // directly in .Select(), so EF Core generates JOINs/a correlated COUNT subquery for
+        // exactly the columns needed instead of materializing full related entities — an
+        // earlier version called a ToListDto(x) helper post-Include, which silently loaded and
+        // discarded the entire Items collection just to read its Count.
+        var q = _db.DeliveryOrders.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -147,17 +157,33 @@ public class InventoryService : IInventoryService
             q = q.Where(x => x.Status == parsedStatus);
         }
 
-        return await q
+        var total = await q.CountAsync();
+        var data = await q
             .OrderByDescending(x => x.CreatedAt)
             .Skip((page - 1) * perPage)
             .Take(perPage)
-            .Select(x => ToListDto(x))
+            .Select(x => new DeliveryOrderListDto
+            {
+                Id = x.Id,
+                No = x.No,
+                SalesOrderNo = x.SalesOrder != null ? x.SalesOrder.No : null,
+                CustomerName = x.Customer != null ? x.Customer.Name : null,
+                DeliveryDate = x.DeliveryDate,
+                DeliveryAddress = x.DeliveryAddress,
+                Status = x.Status.ToString(),
+                ItemCount = x.Items.Count,
+                CreatedByName = x.CreatedByUser != null ? x.CreatedByUser.Name : string.Empty,
+                CreatedAt = x.CreatedAt,
+            })
             .ToListAsync();
+
+        return PaginatedResponse<DeliveryOrderListDto>.Create(data, total, page, perPage);
     }
 
     public async Task<DeliveryOrderDetailDto?> GetDeliveryOrderByIdAsync(Guid id)
     {
         var do_ = await _db.DeliveryOrders
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.SalesOrder)
             .Include(x => x.CreatedByUser)
@@ -447,20 +473,6 @@ public class InventoryService : IInventoryService
         StockAfter = x.StockAfter,
         RefNo = x.RefNo,
         Notes = x.Notes,
-        CreatedByName = x.CreatedByUser?.Name ?? string.Empty,
-        CreatedAt = x.CreatedAt,
-    };
-
-    private static DeliveryOrderListDto ToListDto(DeliveryOrder x) => new()
-    {
-        Id = x.Id,
-        No = x.No,
-        SalesOrderNo = x.SalesOrder?.No,
-        CustomerName = x.Customer?.Name,
-        DeliveryDate = x.DeliveryDate,
-        DeliveryAddress = x.DeliveryAddress,
-        Status = x.Status.ToString(),
-        ItemCount = x.Items.Count,
         CreatedByName = x.CreatedByUser?.Name ?? string.Empty,
         CreatedAt = x.CreatedAt,
     };

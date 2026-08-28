@@ -14,7 +14,7 @@ public class ExpenseCategoryService : IExpenseCategoryService
 
     public async Task<List<ExpenseCategoryDto>> ListAsync(bool? isActive = null)
     {
-        var q = _db.ExpenseCategories.Include(x => x.Account).AsQueryable();
+        var q = _db.ExpenseCategories.AsNoTracking().Include(x => x.Account).AsQueryable();
 
         if (isActive.HasValue)
             q = q.Where(x => x.IsActive == isActive.Value);
@@ -25,7 +25,7 @@ public class ExpenseCategoryService : IExpenseCategoryService
 
     public async Task<ExpenseCategoryDto?> GetByIdAsync(Guid id)
     {
-        var cat = await _db.ExpenseCategories.Include(x => x.Account).FirstOrDefaultAsync(x => x.Id == id);
+        var cat = await _db.ExpenseCategories.AsNoTracking().Include(x => x.Account).FirstOrDefaultAsync(x => x.Id == id);
         return cat is null ? null : ToDto(cat);
     }
 

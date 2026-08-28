@@ -16,6 +16,7 @@ public class QuotationService : IQuotationService
     public async Task<PaginatedResponse<QuotationListDto>> ListAsync(PaginationParams p)
     {
         var q = _db.Quotations
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.Sales)
             .AsQueryable();
@@ -52,6 +53,7 @@ public class QuotationService : IQuotationService
     public async Task<QuotationDto?> GetByIdAsync(Guid id)
     {
         var q = await _db.Quotations
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.Sales)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)

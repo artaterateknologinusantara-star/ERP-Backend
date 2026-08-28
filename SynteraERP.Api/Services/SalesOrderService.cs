@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.SalesOrder;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -21,6 +22,7 @@ public class SalesOrderService : ISalesOrderService
     public async Task<PaginatedResponse<SalesOrderListResponse>> GetListAsync(int page, int perPage, string? search, string? status)
     {
         var q = _db.SalesOrders
+            .AsNoTracking()
             .Include(x => x.Customer)
             .AsQueryable();
 
@@ -60,6 +62,7 @@ public class SalesOrderService : ISalesOrderService
     public async Task<SalesOrderDetailResponse?> GetByIdAsync(Guid id)
     {
         var so = await _db.SalesOrders
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.Sales)
             .Include(x => x.Items.OrderBy(i => i.SortOrder))
@@ -256,9 +259,13 @@ public class SalesOrderService : ISalesOrderService
 
     private async Task<Project> BuildProjectForSoAsync(SalesOrder so, decimal budget)
     {
-        var year  = DateTime.UtcNow.Year;
-        var count = await _db.Projects.CountAsync() + 1;
-        var code  = $"PRJ-{year}-{count:D3}";
+        // NOTE: unlike Branch/Customer/Supplier/ItemMaster's CreateAsync, this isn't wrapped in
+        // SequentialCodeHelper.RunWithRetryAsync — it's built and added to the SAME SaveChangesAsync
+        // as the SalesOrder itself (see CreateAsync/CreateFromQuotationAsync), so a naive retry here
+        // would also re-run SO creation and burn another SO number each time. The Code collision
+        // window on concurrent SO-creates therefore remains open; narrowing it needs a bigger reshape
+        // of the SO-create flow, not a proportionate fix for this pass.
+        var code  = await SequentialCodeHelper.NextYearCodeAsync(_db.Projects, "PRJ", 3, DateTime.UtcNow.Year);
         var name  = !string.IsNullOrWhiteSpace(so.ProjectName) ? so.ProjectName : so.No;
 
         return new Project

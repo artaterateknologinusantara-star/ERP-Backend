@@ -22,6 +22,7 @@ public class CustomerPoService : ICustomerPoService
     public async Task<PaginatedResponse<CustomerPoListDto>> ListAsync(PaginationParams p)
     {
         var q = _db.CustomerPOs
+            .AsNoTracking()
             .Include(c => c.Quotation).ThenInclude(q => q.Customer)
             .AsQueryable();
 
@@ -70,11 +71,13 @@ public class CustomerPoService : ICustomerPoService
     public async Task<CustomerPoDto?> GetByIdAsync(Guid id)
     {
         var cpo = await _db.CustomerPOs
+            .AsNoTracking()
             .Include(c => c.Quotation).ThenInclude(q => q.Customer)
             .FirstOrDefaultAsync(c => c.Id == id);
 
         if (cpo is null) return null;
         var so = await _db.SalesOrders
+            .AsNoTracking()
             .FirstOrDefaultAsync(s => s.QuotationId == cpo.QuotationId && !s.IsDeleted);
         return ToDto(cpo, so?.Id, so?.No);
     }
@@ -82,11 +85,13 @@ public class CustomerPoService : ICustomerPoService
     public async Task<CustomerPoDto?> GetByQuotationIdAsync(Guid quotationId)
     {
         var cpo = await _db.CustomerPOs
+            .AsNoTracking()
             .Include(c => c.Quotation).ThenInclude(q => q.Customer)
             .FirstOrDefaultAsync(c => c.QuotationId == quotationId);
 
         if (cpo is null) return null;
         var so = await _db.SalesOrders
+            .AsNoTracking()
             .FirstOrDefaultAsync(s => s.QuotationId == quotationId && !s.IsDeleted);
         return ToDto(cpo, so?.Id, so?.No);
     }

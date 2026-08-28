@@ -15,7 +15,7 @@ public class JournalPostingService : IJournalPostingService
 
     public async Task<PaginatedResponse<JournalEntryListDto>> ListAsync(JournalEntryQueryParams p)
     {
-        var q = _db.JournalEntries.Include(x => x.Lines).AsQueryable();
+        var q = _db.JournalEntries.AsNoTracking().Include(x => x.Lines).AsQueryable();
 
         if (p.DateFrom.HasValue)
         {
@@ -61,6 +61,7 @@ public class JournalPostingService : IJournalPostingService
     public async Task<JournalEntryDto?> GetByIdAsync(Guid id)
     {
         var entry = await _db.JournalEntries
+            .AsNoTracking()
             .Include(x => x.Lines)
                 .ThenInclude(l => l.Account)
             .FirstOrDefaultAsync(x => x.Id == id);
@@ -204,6 +205,7 @@ public class JournalPostingService : IJournalPostingService
         // TAMBAHAN yang menetralkan entri asal, bukan pengganti — kalau entri asal (Reversed)
         // dikecualikan, efek pembalikannya jadi dobel-hitung dan saldo tidak balance ke nol.
         var raw = await _db.JournalEntryLines
+            .AsNoTracking()
             .Include(l => l.JournalEntry)
             .Include(l => l.Account)
             .Where(l => l.JournalEntry.Status != JournalEntryStatus.Draft && l.JournalEntry.Date <= cutoff)

@@ -17,6 +17,7 @@ public class UserController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<ApiResponse<List<UserListDto>>>> List()
     {
         var users = await db.Users
+            .AsNoTracking()
             .Include(u => u.Role)
             .OrderBy(u => u.Name)
             .Select(u => ToDto(u))
@@ -40,7 +41,7 @@ public class UserController(AppDbContext db) : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<UserListDto>>> Get(Guid id)
     {
-        var user = await db.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
+        var user = await db.Users.AsNoTracking().Include(u => u.Role).FirstOrDefaultAsync(u => u.Id == id);
         if (user is null) return NotFound(ApiResponse<UserListDto>.Fail("User tidak ditemukan."));
         return Ok(ApiResponse<UserListDto>.Ok(ToDto(user)));
     }

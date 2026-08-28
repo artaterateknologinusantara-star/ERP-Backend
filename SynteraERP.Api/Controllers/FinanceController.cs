@@ -30,6 +30,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var invoices = await db.Invoices
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.SalesOrder)
             .Where(x => x.Amount > x.Paid)
@@ -69,6 +70,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var invoices = await db.Invoices
+            .AsNoTracking()
             .Where(x => x.Amount > x.Paid)
             .ToListAsync();
 
@@ -102,6 +104,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var pos = await db.PurchaseOrders
+            .AsNoTracking()
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseRequest)
             .Include(x => x.Payments)
@@ -140,23 +143,22 @@ public class FinanceController(AppDbContext db) : ControllerBase
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        var pos = await db.PurchaseOrders
-            .Where(x => x.Status == PurchaseOrderStatus.Ordered ||
-                        x.Status == PurchaseOrderStatus.PartialReceive ||
-                        x.Status == PurchaseOrderStatus.Completed)
-            .ToListAsync();
+        var q = db.PurchaseOrders.Where(x =>
+            x.Status == PurchaseOrderStatus.Ordered ||
+            x.Status == PurchaseOrderStatus.PartialReceive ||
+            x.Status == PurchaseOrderStatus.Completed);
 
         return Ok(new
         {
             success = true,
             data = new
             {
-                totalPending    = pos.Sum(x => x.Total),
-                ordered         = pos.Where(x => x.Status == PurchaseOrderStatus.Ordered).Sum(x => x.Total),
-                partialReceive  = pos.Where(x => x.Status == PurchaseOrderStatus.PartialReceive).Sum(x => x.Total),
-                completed       = pos.Where(x => x.Status == PurchaseOrderStatus.Completed).Sum(x => x.Total),
-                totalPos        = pos.Count,
-                overdueDelivery = pos.Count(x => x.DeliveryDate.HasValue && x.DeliveryDate.Value < today),
+                totalPending    = await q.SumAsync(x => x.Total),
+                ordered         = await q.Where(x => x.Status == PurchaseOrderStatus.Ordered).SumAsync(x => x.Total),
+                partialReceive  = await q.Where(x => x.Status == PurchaseOrderStatus.PartialReceive).SumAsync(x => x.Total),
+                completed       = await q.Where(x => x.Status == PurchaseOrderStatus.Completed).SumAsync(x => x.Total),
+                totalPos        = await q.CountAsync(),
+                overdueDelivery = await q.CountAsync(x => x.DeliveryDate.HasValue && x.DeliveryDate.Value < today),
             }
         });
     }
@@ -168,6 +170,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         [FromQuery] string? endDate)
     {
         var query = db.Payments
+            .AsNoTracking()
             .Include(x => x.Invoice)
                 .ThenInclude(inv => inv.Customer)
             .Where(x => !x.Invoice.IsDeleted)
@@ -206,6 +209,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         [FromQuery] string? endDate)
     {
         var query = db.POPayments
+            .AsNoTracking()
             .Include(x => x.PurchaseOrder)
                 .ThenInclude(po => po.Supplier)
             .AsQueryable();
@@ -243,31 +247,22 @@ public class FinanceController(AppDbContext db) : ControllerBase
         var firstOfMonth = new DateOnly(today.Year, today.Month, 1);
         var firstOfYear  = new DateOnly(today.Year, 1, 1);
 
-        var payments = await db.Payments
-            .Where(x => !x.Invoice.IsDeleted)
-            .ToListAsync();
-
-        var poPayments = await db.POPayments.ToListAsync();
-
-        var pos = await db.PurchaseOrders
-            .Where(x => x.Status != PurchaseOrderStatus.Draft &&
-                        x.Status != PurchaseOrderStatus.Cancelled)
-            .ToListAsync();
-
-        var invoices = await db.Invoices
-            .Where(x => x.Amount > x.Paid)
-            .ToListAsync();
-
-        var posAP = pos.Where(x =>
+        // Aggregated directly in SQL (Sum/Count) instead of pulling entire tables into memory —
+        // this endpoint only needs a handful of numbers for the dashboard tiles.
+        var payments = db.Payments.Where(x => !x.Invoice.IsDeleted);
+        var poPayments = db.POPayments.AsQueryable();
+        var invoices = db.Invoices.Where(x => x.Amount > x.Paid);
+        // Anything not Draft/Cancelled that's also Ordered/PartialReceive is just Ordered/PartialReceive.
+        var posAP = db.PurchaseOrders.Where(x =>
             x.Status == PurchaseOrderStatus.Ordered ||
-            x.Status == PurchaseOrderStatus.PartialReceive).ToList();
+            x.Status == PurchaseOrderStatus.PartialReceive);
 
-        var ciAll   = payments.Sum(x => x.Amount);
-        var ciMonth = payments.Where(x => x.PaymentDate >= firstOfMonth).Sum(x => x.Amount);
-        var ciYear  = payments.Where(x => x.PaymentDate >= firstOfYear).Sum(x => x.Amount);
-        var coAll   = poPayments.Sum(x => x.Amount);
-        var coMonth = poPayments.Where(x => x.PaymentDate >= firstOfMonth).Sum(x => x.Amount);
-        var coYear  = poPayments.Where(x => x.PaymentDate >= firstOfYear).Sum(x => x.Amount);
+        var ciAll   = await payments.SumAsync(x => x.Amount);
+        var ciMonth = await payments.Where(x => x.PaymentDate >= firstOfMonth).SumAsync(x => x.Amount);
+        var ciYear  = await payments.Where(x => x.PaymentDate >= firstOfYear).SumAsync(x => x.Amount);
+        var coAll   = await poPayments.SumAsync(x => x.Amount);
+        var coMonth = await poPayments.Where(x => x.PaymentDate >= firstOfMonth).SumAsync(x => x.Amount);
+        var coYear  = await poPayments.Where(x => x.PaymentDate >= firstOfYear).SumAsync(x => x.Amount);
 
         return Ok(new
         {
@@ -280,9 +275,9 @@ public class FinanceController(AppDbContext db) : ControllerBase
                 totalCashOutAllTime   = coAll,
                 totalCashOutThisMonth = coMonth,
                 totalCashOutThisYear  = coYear,
-                totalAR               = invoices.Sum(x => x.Amount - x.Paid),
-                overdueAR             = invoices.Where(x => x.DueDate < today).Sum(x => x.Amount - x.Paid),
-                totalAP               = posAP.Sum(x => x.Total),
+                totalAR               = await invoices.SumAsync(x => x.Amount - x.Paid),
+                overdueAR             = await invoices.Where(x => x.DueDate < today).SumAsync(x => x.Amount - x.Paid),
+                totalAP               = await posAP.SumAsync(x => x.Total),
                 netCashThisMonth      = ciMonth - coMonth,
                 netCashThisYear       = ciYear  - coYear,
             }
@@ -301,10 +296,12 @@ public class FinanceController(AppDbContext db) : ControllerBase
         var minDate = months[0];
 
         var payments = await db.Payments
+            .AsNoTracking()
             .Where(x => !x.Invoice.IsDeleted && x.PaymentDate >= minDate)
             .ToListAsync();
 
         var poPayments = await db.POPayments
+            .AsNoTracking()
             .Where(x => x.PaymentDate >= minDate)
             .ToListAsync();
 

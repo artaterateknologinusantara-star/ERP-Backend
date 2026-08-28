@@ -34,9 +34,10 @@ public class InventoryController : ControllerBase
     public async Task<IActionResult> GetStockHistory(
         [FromQuery] Guid? itemMasterId,
         [FromQuery] int page = 1,
-        [FromQuery] int perPage = 20)
+        [FromQuery] int perPage = 20,
+        [FromQuery] string? type = null)
     {
-        var result = await _svc.GetStockHistoryAsync(itemMasterId, page, perPage);
+        var result = await _svc.GetStockHistoryAsync(itemMasterId, page, perPage, type);
         return Ok(new { success = true, data = result });
     }
 

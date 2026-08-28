@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Supplier;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -15,7 +16,7 @@ public class SupplierService : ISupplierService
 
     public async Task<PaginatedResponse<SupplierDto>> ListAsync(PaginationParams p)
     {
-        var q = _db.Suppliers.AsQueryable();
+        var q = _db.Suppliers.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(p.Search))
         {
@@ -41,31 +42,31 @@ public class SupplierService : ISupplierService
 
     public async Task<SupplierDto?> GetByIdAsync(Guid id)
     {
-        var x = await _db.Suppliers.FindAsync(id);
+        var x = await _db.Suppliers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id);
         return x is null ? null : ToDto(x);
     }
 
-    public async Task<SupplierDto> CreateAsync(CreateSupplierRequest req)
-    {
-        var code = await GenerateCodeAsync();
-        var supplier = new Supplier
+    public Task<SupplierDto> CreateAsync(CreateSupplierRequest req) =>
+        SequentialCodeHelper.RunWithRetryAsync(_db, async () =>
         {
-            Code          = code,
-            Name          = req.Name,
-            ContactPerson = req.ContactPerson,
-            Phone         = req.Phone,
-            Email         = req.Email,
-            Address       = req.Address,
-            City          = req.City,
-            Npwp          = req.Npwp,
-            BankName      = req.BankName,
-            BankAccount   = req.BankAccount,
-            IsActive      = true,
-        };
-        _db.Suppliers.Add(supplier);
-        await _db.SaveChangesAsync();
-        return ToDto(supplier);
-    }
+            var supplier = new Supplier
+            {
+                Code          = await GenerateCodeAsync(),
+                Name          = req.Name,
+                ContactPerson = req.ContactPerson,
+                Phone         = req.Phone,
+                Email         = req.Email,
+                Address       = req.Address,
+                City          = req.City,
+                Npwp          = req.Npwp,
+                BankName      = req.BankName,
+                BankAccount   = req.BankAccount,
+                IsActive      = true,
+            };
+            _db.Suppliers.Add(supplier);
+            await _db.SaveChangesAsync();
+            return ToDto(supplier);
+        });
 
     public async Task<SupplierDto?> UpdateAsync(Guid id, UpdateSupplierRequest req)
     {
@@ -107,10 +108,9 @@ public class SupplierService : ISupplierService
         return true;
     }
 
-    private async Task<string> GenerateCodeAsync()
+    private Task<string> GenerateCodeAsync()
     {
-        var count = await _db.Suppliers.CountAsync() + 1;
-        return $"SUPP{count:D4}";
+        return SequentialCodeHelper.NextCodeAsync(_db.Suppliers, "SUPP", 4);
     }
 
     private static SupplierDto ToDto(Supplier x) => new()

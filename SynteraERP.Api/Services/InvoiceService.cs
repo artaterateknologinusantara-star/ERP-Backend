@@ -27,6 +27,7 @@ public class InvoiceService : IInvoiceService
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
         var q = _db.Invoices
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.SalesOrder)
             .AsQueryable();
@@ -59,6 +60,7 @@ public class InvoiceService : IInvoiceService
     public async Task<InvoiceDto?> GetByIdAsync(Guid id)
     {
         var inv = await _db.Invoices
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.SalesOrder)
             .Include(x => x.Payments)

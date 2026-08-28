@@ -24,6 +24,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
     public async Task<PaginatedResponse<SupplierInvoiceListDto>> ListAsync(SupplierInvoiceQueryParams p)
     {
         var q = _db.SupplierInvoices
+            .AsNoTracking()
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseOrder)
             .Include(x => x.Payments)
@@ -51,6 +52,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
     public async Task<SupplierInvoiceDto?> GetByIdAsync(Guid id)
     {
         var inv = await _db.SupplierInvoices
+            .AsNoTracking()
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseOrder)
             .Include(x => x.Payments)

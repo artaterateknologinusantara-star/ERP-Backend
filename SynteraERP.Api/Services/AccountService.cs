@@ -14,7 +14,7 @@ public class AccountService : IAccountService
 
     public async Task<List<AccountDto>> GetTreeAsync()
     {
-        var accounts = await _db.Accounts.OrderBy(x => x.Code).ToListAsync();
+        var accounts = await _db.Accounts.AsNoTracking().OrderBy(x => x.Code).ToListAsync();
         var dtoById = accounts.ToDictionary(x => x.Id, ToDto);
 
         var roots = new List<AccountDto>();
@@ -32,7 +32,7 @@ public class AccountService : IAccountService
 
     public async Task<AccountDto?> GetByIdAsync(Guid id)
     {
-        var x = await _db.Accounts.FindAsync(id);
+        var x = await _db.Accounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id);
         return x is null ? null : ToDto(x);
     }
 

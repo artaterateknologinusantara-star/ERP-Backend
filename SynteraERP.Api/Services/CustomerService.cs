@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Customer;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -15,7 +16,7 @@ public class CustomerService : ICustomerService
 
     public async Task<PaginatedResponse<CustomerDto>> ListAsync(CustomerParams p)
     {
-        var q = _db.Customers.AsQueryable();
+        var q = _db.Customers.AsNoTracking().AsQueryable();
 
         if (p.IsActive.HasValue)
             q = q.Where(c => c.IsActive == p.IsActive.Value);
@@ -44,31 +45,31 @@ public class CustomerService : ICustomerService
 
     public async Task<CustomerDto?> GetByIdAsync(Guid id)
     {
-        var c = await _db.Customers.FindAsync(id);
+        var c = await _db.Customers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
         return c is null ? null : ToDto(c);
     }
 
-    public async Task<CustomerDto> CreateAsync(CreateCustomerRequest request)
-    {
-        var code = await GenerateCodeAsync();
-        var customer = new Customer
+    public Task<CustomerDto> CreateAsync(CreateCustomerRequest request) =>
+        SequentialCodeHelper.RunWithRetryAsync(_db, async () =>
         {
-            Code = code,
-            Name = request.Name,
-            Industry = request.Industry,
-            ContactPerson = request.ContactPerson,
-            Phone = request.Phone,
-            Email = request.Email,
-            Address = request.Address,
-            City = request.City,
-            Npwp = request.Npwp,
-            IsActive = true,
-        };
+            var customer = new Customer
+            {
+                Code = await GenerateCodeAsync(),
+                Name = request.Name,
+                Industry = request.Industry,
+                ContactPerson = request.ContactPerson,
+                Phone = request.Phone,
+                Email = request.Email,
+                Address = request.Address,
+                City = request.City,
+                Npwp = request.Npwp,
+                IsActive = true,
+            };
 
-        _db.Customers.Add(customer);
-        await _db.SaveChangesAsync();
-        return ToDto(customer);
-    }
+            _db.Customers.Add(customer);
+            await _db.SaveChangesAsync();
+            return ToDto(customer);
+        });
 
     public async Task<CustomerDto?> UpdateAsync(Guid id, UpdateCustomerRequest request)
     {
@@ -111,10 +112,9 @@ public class CustomerService : ICustomerService
         return true;
     }
 
-    private async Task<string> GenerateCodeAsync()
+    private Task<string> GenerateCodeAsync()
     {
-        var count = await _db.Customers.CountAsync() + 1;
-        return $"CUST{count:D4}";
+        return SequentialCodeHelper.NextCodeAsync(_db.Customers, "CUST", 4);
     }
 
     private static CustomerDto ToDto(Customer c) => new()

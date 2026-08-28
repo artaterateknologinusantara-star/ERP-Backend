@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 
 namespace SynteraERP.Api.Controllers;
@@ -86,6 +87,7 @@ public class ProjectController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<ApiResponse<PaginatedResponse<ProjectListDto>>>> List([FromQuery] PaginationParams p)
     {
         var q = db.Projects
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.ProjectManager)
             .Include(x => x.Tasks)
@@ -115,6 +117,7 @@ public class ProjectController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<ApiResponse<ProjectDetailDto>>> Get(Guid id)
     {
         var p = await db.Projects
+            .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.SalesOrder)
             .Include(x => x.ProjectManager)
@@ -138,12 +141,14 @@ public class ProjectController(AppDbContext db) : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<ApiResponse<ProjectListDto>>> Create([FromBody] CreateProjectRequest req)
+    public Task<ActionResult<ApiResponse<ProjectListDto>>> Create([FromBody] CreateProjectRequest req) =>
+        SequentialCodeHelper.RunWithRetryAsync(db, () => CreateCoreAsync(req));
+
+    private async Task<ActionResult<ApiResponse<ProjectListDto>>> CreateCoreAsync(CreateProjectRequest req)
     {
-        var code = await GenerateCodeAsync();
         var project = new Project
         {
-            Code             = code,
+            Code             = await GenerateCodeAsync(),
             Name             = req.Name,
             CustomerId       = req.CustomerId,
             SalesOrderId     = req.SalesOrderId,
@@ -207,6 +212,7 @@ public class ProjectController(AppDbContext db) : ControllerBase
     public async Task<ActionResult<ApiResponse<ProjectCostDto>>> GetCost(Guid id)
     {
         var project = await db.Projects
+            .AsNoTracking()
             .Include(x => x.SalesOrder)
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -340,10 +346,6 @@ public class ProjectController(AppDbContext db) : ControllerBase
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private async Task<string> GenerateCodeAsync()
-    {
-        var year  = DateTime.UtcNow.Year;
-        var count = await db.Projects.CountAsync() + 1;
-        return $"PRJ-{year}-{count:D3}";
-    }
+    private Task<string> GenerateCodeAsync() =>
+        SequentialCodeHelper.NextYearCodeAsync(db.Projects, "PRJ", 3, DateTime.UtcNow.Year);
 }

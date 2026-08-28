@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.ItemMaster;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -15,7 +16,7 @@ public class ItemMasterService : IItemMasterService
 
     public async Task<PaginatedResponse<ItemMasterDto>> ListAsync(ItemMasterParams p)
     {
-        var q = _db.ItemMasters.Include(i => i.PreferredVendor).AsQueryable();
+        var q = _db.ItemMasters.AsNoTracking().Include(i => i.PreferredVendor).AsQueryable();
 
         if (p.IsActive.HasValue)
             q = q.Where(i => i.IsActive == p.IsActive.Value);
@@ -55,6 +56,7 @@ public class ItemMasterService : IItemMasterService
     public async Task<ItemMasterDto?> GetByIdAsync(Guid id)
     {
         var item = await _db.ItemMasters
+            .AsNoTracking()
             .Include(i => i.PreferredVendor)
             .FirstOrDefaultAsync(x => x.Id == id);
         return item is null ? null : ToDto(item);
@@ -80,13 +82,15 @@ public class ItemMasterService : IItemMasterService
             ((i.MarginType == MarginType.Percent && i.SellingPrice < i.PurchasePrice.Value * (1 + i.MarginMinimum.Value / 100))
              || (i.MarginType == MarginType.Nominal && i.SellingPrice < i.PurchasePrice.Value + i.MarginMinimum.Value)));
 
-    public async Task<ItemMasterDto> CreateAsync(CreateItemMasterRequest req)
+    public Task<ItemMasterDto> CreateAsync(CreateItemMasterRequest req) =>
+        SequentialCodeHelper.RunWithRetryAsync(_db, () => CreateCoreAsync(req));
+
+    private async Task<ItemMasterDto> CreateCoreAsync(CreateItemMasterRequest req)
     {
-        var code = await GenerateCodeAsync();
         Enum.TryParse<MarginType>(req.MarginType, true, out var marginType);
         var item = new ItemMaster
         {
-            Code             = code,
+            Code             = await GenerateCodeAsync(),
             Name             = req.Name,
             Description      = req.Description,
             Category         = req.Category,
@@ -221,10 +225,9 @@ public class ItemMasterService : IItemMasterService
         return true;
     }
 
-    private async Task<string> GenerateCodeAsync()
+    private Task<string> GenerateCodeAsync()
     {
-        var count = await _db.ItemMasters.CountAsync() + 1;
-        return $"ITM{count:D5}";
+        return SequentialCodeHelper.NextCodeAsync(_db.ItemMasters, "ITM", 5);
     }
 
     private static ItemMasterDto ToDto(ItemMaster item) => new()

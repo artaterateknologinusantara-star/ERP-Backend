@@ -1,13 +1,14 @@
+using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Inventory;
 
 namespace SynteraERP.Api.Services.Interfaces;
 
 public interface IInventoryService
 {
-    Task<List<StockTransactionDto>> GetStockHistoryAsync(Guid? itemMasterId, int page, int perPage);
+    Task<PaginatedResponse<StockTransactionDto>> GetStockHistoryAsync(Guid? itemMasterId, int page, int perPage, string? type = null);
     Task<StockTransactionDto> RecordStockInAsync(RecordStockInRequest request, Guid userId);
 
-    Task<List<DeliveryOrderListDto>> GetDeliveryOrdersAsync(int page, int perPage, string? search, string? status);
+    Task<PaginatedResponse<DeliveryOrderListDto>> GetDeliveryOrdersAsync(int page, int perPage, string? search, string? status);
     Task<DeliveryOrderDetailDto?> GetDeliveryOrderByIdAsync(Guid id);
     Task<DeliveryOrderDetailDto> CreateDeliveryOrderAsync(CreateDeliveryOrderRequest request, Guid userId);
     Task<DeliveryOrderDetailDto> ConfirmDeliveryOrderAsync(Guid id, Guid userId);

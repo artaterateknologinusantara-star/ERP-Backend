@@ -15,7 +15,7 @@ public class TaxRateService : ITaxRateService
 
     public async Task<PaginatedResponse<TaxRateDto>> ListAsync(PaginationParams p)
     {
-        var q = _db.TaxRates.AsQueryable();
+        var q = _db.TaxRates.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(p.Search))
         {
@@ -38,7 +38,7 @@ public class TaxRateService : ITaxRateService
 
     public async Task<TaxRateDto?> GetByIdAsync(Guid id)
     {
-        var x = await _db.TaxRates.FindAsync(id);
+        var x = await _db.TaxRates.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id);
         return x is null ? null : ToDto(x);
     }
 

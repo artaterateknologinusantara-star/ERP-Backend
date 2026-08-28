@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Branch;
 using SynteraERP.Api.DTOs.Common;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -15,7 +16,7 @@ public class BranchService : IBranchService
 
     public async Task<PaginatedResponse<BranchDto>> ListAsync(PaginationParams p)
     {
-        var q = _db.Branches.AsQueryable();
+        var q = _db.Branches.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(p.Search))
         {
@@ -39,26 +40,26 @@ public class BranchService : IBranchService
 
     public async Task<BranchDto?> GetByIdAsync(Guid id)
     {
-        var x = await _db.Branches.FindAsync(id);
+        var x = await _db.Branches.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id);
         return x is null ? null : ToDto(x);
     }
 
-    public async Task<BranchDto> CreateAsync(CreateBranchRequest req)
-    {
-        var code = await GenerateCodeAsync();
-        var branch = new Branch
+    public Task<BranchDto> CreateAsync(CreateBranchRequest req) =>
+        SequentialCodeHelper.RunWithRetryAsync(_db, async () =>
         {
-            Code     = code,
-            Name     = req.Name,
-            Address  = req.Address,
-            Phone    = req.Phone,
-            Manager  = req.Manager,
-            IsActive = true,
-        };
-        _db.Branches.Add(branch);
-        await _db.SaveChangesAsync();
-        return ToDto(branch);
-    }
+            var branch = new Branch
+            {
+                Code     = await GenerateCodeAsync(),
+                Name     = req.Name,
+                Address  = req.Address,
+                Phone    = req.Phone,
+                Manager  = req.Manager,
+                IsActive = true,
+            };
+            _db.Branches.Add(branch);
+            await _db.SaveChangesAsync();
+            return ToDto(branch);
+        });
 
     public async Task<BranchDto?> UpdateAsync(Guid id, UpdateBranchRequest req)
     {
@@ -86,11 +87,8 @@ public class BranchService : IBranchService
         return true;
     }
 
-    private async Task<string> GenerateCodeAsync()
-    {
-        var count = await _db.Branches.CountAsync() + 1;
-        return $"BR{count:D4}";
-    }
+    private Task<string> GenerateCodeAsync() =>
+        SequentialCodeHelper.NextCodeAsync(_db.Branches, "BR", 4);
 
     private static BranchDto ToDto(Branch x) => new()
     {
