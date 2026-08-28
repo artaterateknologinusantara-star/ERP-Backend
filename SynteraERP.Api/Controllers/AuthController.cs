@@ -46,6 +46,7 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse<UserProfileDto>.Ok(profile));
     }
 
+    [Authorize]
     [HttpGet("users")]
     public async Task<ActionResult<ApiResponse<List<UserProfileDto>>>> ListUsers()
     {
