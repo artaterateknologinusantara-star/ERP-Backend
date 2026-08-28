@@ -98,9 +98,19 @@ public class PurchaseOrderController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseOrderListDto>>>> List([FromQuery] PaginationParams p)
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseOrderListDto>>>> List(
+        [FromQuery] PaginationParams p, [FromQuery] Guid? purchaseRequestId, [FromQuery] string? purchaseRequestIds)
     {
-        var result = await _svc.ListAsync(p);
+        IEnumerable<Guid>? ids = null;
+        if (!string.IsNullOrWhiteSpace(purchaseRequestIds))
+        {
+            ids = purchaseRequestIds
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(s => Guid.TryParse(s, out _))
+                .Select(Guid.Parse);
+        }
+
+        var result = await _svc.ListAsync(p, purchaseRequestId, ids);
         return Ok(ApiResponse<PaginatedResponse<PurchaseOrderListDto>>.Ok(result));
     }
 

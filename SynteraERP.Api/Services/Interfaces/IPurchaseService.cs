@@ -16,7 +16,7 @@ public interface IPurchaseRequestService
 
 public interface IPurchaseOrderService
 {
-    Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p);
+    Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p, Guid? purchaseRequestId = null, IEnumerable<Guid>? purchaseRequestIds = null);
     Task<PurchaseOrderDto?> GetByIdAsync(Guid id);
     Task<PurchaseOrderDto> CreateAsync(CreatePurchaseOrderRequest request);
     Task<bool> UpdateStatusAsync(Guid id, string status);

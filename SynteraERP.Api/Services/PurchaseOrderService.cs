@@ -18,12 +18,23 @@ public class PurchaseOrderService : IPurchaseOrderService
         _journalPostingService = journalPostingService;
     }
 
-    public async Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p)
+    public async Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p, Guid? purchaseRequestId = null, IEnumerable<Guid>? purchaseRequestIds = null)
     {
         var q = _db.PurchaseOrders
             .Include(x => x.Supplier)
             .Include(x => x.PurchaseRequest)
             .AsQueryable();
+
+        if (purchaseRequestId.HasValue)
+        {
+            q = q.Where(x => x.PurchaseRequestId == purchaseRequestId.Value);
+        }
+
+        var idList = purchaseRequestIds?.ToList();
+        if (idList is { Count: > 0 })
+        {
+            q = q.Where(x => x.PurchaseRequestId.HasValue && idList.Contains(x.PurchaseRequestId.Value));
+        }
 
         if (!string.IsNullOrWhiteSpace(p.Search))
         {
