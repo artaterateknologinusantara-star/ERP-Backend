@@ -5,4 +5,5 @@ namespace SynteraERP.Api.DTOs.ItemMaster;
 public class ItemMasterParams : PaginationParams
 {
     public bool? IsActive { get; set; }
+    public bool? BelowMinimumMargin { get; set; }
 }

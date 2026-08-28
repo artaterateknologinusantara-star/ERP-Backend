@@ -20,6 +20,9 @@ public class ItemMasterService : IItemMasterService
         if (p.IsActive.HasValue)
             q = q.Where(i => i.IsActive == p.IsActive.Value);
 
+        if (p.BelowMinimumMargin == true)
+            q = ApplyBelowMinimumMarginFilter(q);
+
         if (!string.IsNullOrWhiteSpace(p.Search))
         {
             var search = p.Search.ToLower();
@@ -62,17 +65,25 @@ public class ItemMasterService : IItemMasterService
         var totalAll = await _db.ItemMasters.CountAsync();
         var totalActive = await _db.ItemMasters.CountAsync(i => i.IsActive);
         var lowStockCount = await _db.ItemMasters.CountAsync(i => i.IsActive && i.Stock <= i.MinStock);
+        var belowMinimumMarginCount = await ApplyBelowMinimumMarginFilter(_db.ItemMasters.AsQueryable()).CountAsync();
         return new ItemMasterStatsDto
         {
             TotalAll = totalAll,
             TotalActive = totalActive,
             LowStockCount = lowStockCount,
+            BelowMinimumMarginCount = belowMinimumMarginCount,
         };
     }
+
+    private static IQueryable<ItemMaster> ApplyBelowMinimumMarginFilter(IQueryable<ItemMaster> q) =>
+        q.Where(i => i.PurchasePrice.HasValue && i.MarginMinimum.HasValue && i.MarginType.HasValue &&
+            ((i.MarginType == MarginType.Percent && i.SellingPrice < i.PurchasePrice.Value * (1 + i.MarginMinimum.Value / 100))
+             || (i.MarginType == MarginType.Nominal && i.SellingPrice < i.PurchasePrice.Value + i.MarginMinimum.Value)));
 
     public async Task<ItemMasterDto> CreateAsync(CreateItemMasterRequest req)
     {
         var code = await GenerateCodeAsync();
+        Enum.TryParse<MarginType>(req.MarginType, true, out var marginType);
         var item = new ItemMaster
         {
             Code             = code,
@@ -86,6 +97,10 @@ public class ItemMasterService : IItemMasterService
             MinStock         = req.MinStock,
             SellingPrice     = req.SellingPrice,
             PurchasePrice    = req.PurchasePrice,
+            MarginType       = req.MarginType is null ? null : marginType,
+            MarginDefault    = req.MarginDefault,
+            MarginMinimum    = req.MarginMinimum,
+            IsSellingPriceManual = req.IsSellingPriceManual,
             PreferredVendorId= req.PreferredVendorId,
             Model            = req.Model,
             LeadTimeDays     = req.LeadTimeDays,
@@ -94,6 +109,10 @@ public class ItemMasterService : IItemMasterService
             ReorderPoint     = req.ReorderPoint,
             IsActive         = true,
         };
+
+        if (!item.IsSellingPriceManual && ItemPricingCalculator.ComputeAutoSellingPrice(item) is { } autoPrice)
+            item.SellingPrice = autoPrice;
+
         _db.ItemMasters.Add(item);
         await _db.SaveChangesAsync();
 
@@ -108,6 +127,8 @@ public class ItemMasterService : IItemMasterService
             .FirstOrDefaultAsync(x => x.Id == id);
         if (item is null) return null;
 
+        Enum.TryParse<MarginType>(req.MarginType, true, out var marginType);
+
         item.Name             = req.Name;
         item.Description      = req.Description;
         item.Category         = req.Category;
@@ -118,6 +139,10 @@ public class ItemMasterService : IItemMasterService
         item.MinStock         = req.MinStock;
         item.SellingPrice     = req.SellingPrice;
         item.PurchasePrice    = req.PurchasePrice;
+        item.MarginType       = req.MarginType is null ? null : marginType;
+        item.MarginDefault    = req.MarginDefault;
+        item.MarginMinimum    = req.MarginMinimum;
+        item.IsSellingPriceManual = req.IsSellingPriceManual;
         item.PreferredVendorId= req.PreferredVendorId;
         item.Model            = req.Model;
         item.LeadTimeDays     = req.LeadTimeDays;
@@ -126,10 +151,54 @@ public class ItemMasterService : IItemMasterService
         item.ReorderPoint     = req.ReorderPoint;
         item.UpdatedAt        = DateTimeOffset.UtcNow;
 
+        // Auto mode always reflects the current cost/margin — re-derive harga_jual on every save,
+        // not just when PurchasePrice itself changed (margin edits and manual→auto resets must also stick).
+        if (!item.IsSellingPriceManual && ItemPricingCalculator.ComputeAutoSellingPrice(item) is { } autoPrice)
+            item.SellingPrice = autoPrice;
+
         await _db.SaveChangesAsync();
 
         await _db.Entry(item).Reference(i => i.PreferredVendor).LoadAsync();
         return ToDto(item);
+    }
+
+    public async Task<BulkApplyMarginResultDto> BulkApplyAutoMarginAsync(BulkApplyMarginRequest req)
+    {
+        var q = _db.ItemMasters.Where(i => !i.IsSellingPriceManual);
+
+        if (req.IsActive.HasValue)
+            q = q.Where(i => i.IsActive == req.IsActive.Value);
+
+        if (!string.IsNullOrWhiteSpace(req.Search))
+        {
+            var search = req.Search.ToLower();
+            q = q.Where(i => i.Code.ToLower().Contains(search)
+                         || i.Name.ToLower().Contains(search)
+                         || (i.Category != null && i.Category.ToLower().Contains(search))
+                         || (i.Brand != null && i.Brand.ToLower().Contains(search))
+                         || (i.Warehouse != null && i.Warehouse.ToLower().Contains(search)));
+        }
+
+        var items = await q.ToListAsync();
+        var updated = 0;
+        var skipped = 0;
+
+        foreach (var item in items)
+        {
+            if (ItemPricingCalculator.ComputeAutoSellingPrice(item) is { } autoPrice)
+            {
+                item.SellingPrice = autoPrice;
+                item.UpdatedAt = DateTimeOffset.UtcNow;
+                updated++;
+            }
+            else
+            {
+                skipped++;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        return new BulkApplyMarginResultDto { Updated = updated, Skipped = skipped };
     }
 
     public async Task<bool> SetStatusAsync(Guid id, bool isActive)
@@ -173,6 +242,10 @@ public class ItemMasterService : IItemMasterService
         SellingPrice        = item.SellingPrice,
         PurchasePrice       = item.PurchasePrice,
         LastPurchasePrice   = item.LastPurchasePrice,
+        MarginType          = item.MarginType?.ToString().ToLowerInvariant(),
+        MarginDefault       = item.MarginDefault,
+        MarginMinimum       = item.MarginMinimum,
+        IsSellingPriceManual= item.IsSellingPriceManual,
         PreferredVendorId   = item.PreferredVendorId,
         PreferredVendorName = item.PreferredVendor?.Name,
         Model               = item.Model,

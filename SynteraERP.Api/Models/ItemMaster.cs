@@ -2,6 +2,8 @@ using SynteraERP.Api.Models.Common;
 
 namespace SynteraERP.Api.Models;
 
+public enum MarginType { Percent, Nominal }
+
 public class ItemMaster : BaseEntity
 {
     public string Code        { get; set; } = string.Empty;
@@ -18,6 +20,12 @@ public class ItemMaster : BaseEntity
     public decimal SellingPrice       { get; set; }
     public decimal? PurchasePrice     { get; set; }
     public decimal? LastPurchasePrice { get; set; }
+
+    // ── Margin (auto harga jual) ──
+    public MarginType? MarginType         { get; set; }
+    public decimal? MarginDefault         { get; set; }
+    public decimal? MarginMinimum         { get; set; }
+    public bool IsSellingPriceManual      { get; set; } = false;
 
     // ── Moving Average Cost (Fase 3 Accounting) ──
     public decimal CurrentAverageCost { get; set; } = 0;

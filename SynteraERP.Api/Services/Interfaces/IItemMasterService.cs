@@ -12,4 +12,5 @@ public interface IItemMasterService
     Task<ItemMasterDto?> UpdateAsync(Guid id, UpdateItemMasterRequest request);
     Task<bool> SetStatusAsync(Guid id, bool isActive);
     Task<bool> DeleteAsync(Guid id);
+    Task<BulkApplyMarginResultDto> BulkApplyAutoMarginAsync(BulkApplyMarginRequest request);
 }

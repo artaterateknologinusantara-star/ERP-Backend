@@ -20,6 +20,12 @@ public class ItemMasterDto
     public decimal? PurchasePrice { get; set; }
     public decimal? LastPurchasePrice { get; set; }
 
+    // ── Margin (auto harga jual) ──
+    public string? MarginType { get; set; }
+    public decimal? MarginDefault { get; set; }
+    public decimal? MarginMinimum { get; set; }
+    public bool IsSellingPriceManual { get; set; }
+
     // ── Vendor ──
     public Guid? PreferredVendorId { get; set; }
     public string? PreferredVendorName { get; set; }

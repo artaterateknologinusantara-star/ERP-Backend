@@ -5,4 +5,5 @@ public class ItemMasterStatsDto
     public int TotalActive { get; set; }
     public int TotalAll { get; set; }
     public int LowStockCount { get; set; }
+    public int BelowMinimumMarginCount { get; set; }
 }

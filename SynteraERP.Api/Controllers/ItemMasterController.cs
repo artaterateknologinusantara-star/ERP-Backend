@@ -52,6 +52,13 @@ public class ItemMasterController : ControllerBase
         return Ok(ApiResponse<ItemMasterDto>.Ok(item, "Item berhasil diperbarui."));
     }
 
+    [HttpPost("bulk-apply-margin")]
+    public async Task<ActionResult<ApiResponse<BulkApplyMarginResultDto>>> BulkApplyMargin([FromBody] BulkApplyMarginRequest request)
+    {
+        var result = await _svc.BulkApplyAutoMarginAsync(request);
+        return Ok(ApiResponse<BulkApplyMarginResultDto>.Ok(result, $"{result.Updated} item diperbarui, {result.Skipped} dilewati."));
+    }
+
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> SetStatus(Guid id, [FromBody] SetStatusRequest request)
     {
