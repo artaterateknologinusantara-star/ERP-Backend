@@ -53,8 +53,26 @@ public class PurchaseOrderService : IPurchaseOrderService
         };
 
         var total = await q.CountAsync();
+        // Inlined here (rather than calling the ToListDto helper, as GetByIdAsync/ToDto do) so
+        // ItemCount can be translated as a correlated COUNT subquery -- EF Core does not translate a
+        // collection .Count read inside a separate helper-method call, so routing this through
+        // ToListDto would silently leave ItemCount at 0 (the exact bug this fixes: it never showed a
+        // real count because the field wasn't set here at all before, and simply adding it while
+        // still calling ToListDto would look correct but stay broken).
         var data = await q.Skip(p.Skip).Take(p.PerPage)
-            .Select(x => ToListDto(x))
+            .Select(x => new PurchaseOrderListDto
+            {
+                Id                = x.Id,
+                No                = x.No,
+                Date              = x.Date,
+                SupplierName      = x.Supplier != null ? x.Supplier.Name : string.Empty,
+                PurchaseRequestNo = x.PurchaseRequest != null ? x.PurchaseRequest.No : null,
+                PurchaseRequestId = x.PurchaseRequestId,
+                Status            = x.Status == PurchaseOrderStatus.PartialReceive ? "Partial Receive" : x.Status.ToString(),
+                Total             = x.Total,
+                DeliveryDate      = x.DeliveryDate,
+                ItemCount         = x.Items.Count,
+            })
             .ToListAsync();
 
         return PaginatedResponse<PurchaseOrderListDto>.Create(data, total, p.Page, p.PerPage);
