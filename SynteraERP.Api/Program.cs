@@ -17,8 +17,13 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
 
 // ── Authentication / JWT ──────────────────────────────────────────────────────
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("Jwt:Key is missing from configuration.");
+// Not stored in appsettings.json. Supply it via `dotnet user-secrets set "Jwt:Key" "..."`
+// in Development, or a Jwt__Key environment variable in any other environment.
+var jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey))
+    throw new InvalidOperationException(
+        "Jwt:Key is missing. Set it via 'dotnet user-secrets set \"Jwt:Key\" \"...\"' " +
+        "(Development) or the Jwt__Key environment variable (other environments).");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>

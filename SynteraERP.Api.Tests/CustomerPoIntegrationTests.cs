@@ -51,6 +51,12 @@ public class CustomerPoIntegrationTests : IClassFixture<WebApplicationFactory<Pr
     {
         var connectionString = "Server=localhost,1433;Database=SynteraERP_Scratch;User Id=sa;Password=DevgvImMkAaOBHs4CP5kWRsLLyM!9q;TrustServerCertificate=True;Encrypt=False;";
 
+        // Jwt:Key is no longer stored in appsettings.json (moved to user-secrets/env var — see
+        // Program.cs). Program.cs reads it before the WebApplicationFactory test-config hooks
+        // ever get spliced in, so tests supply their own throwaway key via a real environment
+        // variable rather than depending on a developer's local secret store.
+        Environment.SetEnvironmentVariable("Jwt__Key", "test-only-signing-key-not-used-anywhere-else-32chars");
+
         var factory = _factory.WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
