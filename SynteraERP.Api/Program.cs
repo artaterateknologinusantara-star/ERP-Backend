@@ -75,6 +75,7 @@ builder.Services.AddScoped<SalesOrderPdfService>();
 builder.Services.AddScoped<InvoicePdfService>();
 builder.Services.AddScoped<ReportsPdfService>();
 builder.Services.AddScoped<ISystemResetService, SystemResetService>();
+builder.Services.AddHostedService<InvoiceOverdueStatusService>();
 
 // ── Controllers ───────────────────────────────────────────────────────────────
 builder.Services.AddControllers()

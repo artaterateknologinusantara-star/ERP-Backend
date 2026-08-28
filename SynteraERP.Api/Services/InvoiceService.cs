@@ -22,19 +22,9 @@ public class InvoiceService : IInvoiceService
 
     public async Task<PaginatedResponse<InvoiceListDto>> ListAsync(PaginationParams p)
     {
-        // Auto-update overdue status
+        // Status Overdue di-refresh oleh InvoiceOverdueStatusService (background job),
+        // bukan di sini, supaya endpoint GET ini murni read-only.
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var overdueItems = await _db.Invoices
-            .Where(x => !x.IsDeleted
-                && x.Status != InvoiceStatus.Paid
-                && x.DueDate < today
-                && x.Status != InvoiceStatus.Overdue)
-            .ToListAsync();
-        if (overdueItems.Any())
-        {
-            overdueItems.ForEach(x => x.Status = InvoiceStatus.Overdue);
-            await _db.SaveChangesAsync();
-        }
 
         var q = _db.Invoices
             .Include(x => x.Customer)
@@ -61,8 +51,7 @@ public class InvoiceService : IInvoiceService
         var data = await q.Skip(p.Skip).Take(p.PerPage)
             .ToListAsync();
 
-        var todayForAging = DateOnly.FromDateTime(DateTime.UtcNow);
-        var mapped = data.Select(x => ToListDto(x, todayForAging)).ToList();
+        var mapped = data.Select(x => ToListDto(x, today)).ToList();
 
         return PaginatedResponse<InvoiceListDto>.Create(mapped, total, p.Page, p.PerPage);
     }
