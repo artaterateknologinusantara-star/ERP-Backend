@@ -165,9 +165,6 @@ public class QuotationPdfService
                     AddRow("Tanggal", q.Date.ToString("dd MMMM yyyy"));
                     AddRow("Berlaku s/d", q.ValidUntil.ToString("dd MMMM yyyy"));
                     AddRow("Sales", q.Sales.Name);
-
-                    if (!string.IsNullOrWhiteSpace(q.PaymentTerms))
-                        AddRow("Term Pembayaran", q.PaymentTerms);
                 });
             });
 
@@ -326,10 +323,18 @@ public class QuotationPdfService
                 {
                     terms.Item().Text("SYARAT & KETENTUAN").Bold().FontSize(8).FontColor(Colors.Grey.Darken2);
                     terms.Item().PaddingTop(2)
-                        .Text(!string.IsNullOrWhiteSpace(company.FooterText)
-                            ? company.FooterText
-                            : "Penawaran ini berlaku 14 hari sejak tanggal dikeluarkan.")
+                        .Text(!string.IsNullOrWhiteSpace(q.TermsAndConditions)
+                            ? q.TermsAndConditions
+                            : !string.IsNullOrWhiteSpace(company.FooterText)
+                                ? company.FooterText
+                                : "Penawaran ini berlaku 14 hari sejak tanggal dikeluarkan.")
                         .FontSize(7.5f).FontColor(Colors.Grey.Darken1);
+
+                    if (!string.IsNullOrWhiteSpace(q.PaymentTerms))
+                    {
+                        terms.Item().PaddingTop(6).Text("TERM PEMBAYARAN").Bold().FontSize(8).FontColor(Colors.Grey.Darken2);
+                        terms.Item().PaddingTop(2).Text(q.PaymentTerms).FontSize(7.5f).FontColor(Colors.Grey.Darken1);
+                    }
                 });
 
                 row.ConstantItem(140).AlignCenter().Column(sig =>

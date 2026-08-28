@@ -83,6 +83,7 @@ public class QuotationService : IQuotationService
         quotation.ValidUntil = request.ValidUntil ?? default;
         quotation.Notes = request.Notes;
         quotation.PaymentTerms = request.PaymentTerms;
+        quotation.TermsAndConditions = request.TermsAndConditions;
         quotation.AdditionalNotes = request.AdditionalNotes;
         quotation.Discount = request.Discount;
         quotation.TaxRate = request.TaxRate;
@@ -132,6 +133,7 @@ public class QuotationService : IQuotationService
             ValidUntil = source.ValidUntil,
             Notes = source.Notes,
             PaymentTerms = source.PaymentTerms,
+            TermsAndConditions = source.TermsAndConditions,
             AdditionalNotes = source.AdditionalNotes,
             Discount = source.Discount,
             TaxRate = source.TaxRate,
@@ -223,6 +225,7 @@ public class QuotationService : IQuotationService
             ValidUntil = source.ValidUntil,
             Notes = source.Notes,
             PaymentTerms = source.PaymentTerms,
+            TermsAndConditions = source.TermsAndConditions,
             AdditionalNotes = source.AdditionalNotes,
             Discount = source.Discount,
             TaxRate = source.TaxRate,
@@ -353,6 +356,7 @@ public class QuotationService : IQuotationService
             ValidUntil = req.ValidUntil ?? default,
             Notes = req.Notes,
             PaymentTerms = req.PaymentTerms,
+            TermsAndConditions = req.TermsAndConditions,
             AdditionalNotes = req.AdditionalNotes,
             Discount = req.Discount,
             TaxRate = req.TaxRate,
@@ -437,6 +441,7 @@ public class QuotationService : IQuotationService
         SentAt = x.SentAt,
         Notes = x.Notes,
         PaymentTerms = x.PaymentTerms,
+        TermsAndConditions = x.TermsAndConditions,
         AdditionalNotes = x.AdditionalNotes,
         Discount = x.Discount,
         TaxRate = x.TaxRate,

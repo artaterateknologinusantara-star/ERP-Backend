@@ -38,6 +38,7 @@ public class QuotationDto : QuotationListDto
     public Guid SalesId { get; set; }
     public string? Notes { get; set; }
     public string? PaymentTerms { get; set; }
+    public string? TermsAndConditions { get; set; }
     public string? AdditionalNotes { get; set; }
     public decimal Discount { get; set; }
     public decimal TaxRate { get; set; }
@@ -91,6 +92,7 @@ public class SaveQuotationRequest
     public DateOnly? ValidUntil { get; set; }
     public string? Notes { get; set; }
     public string? PaymentTerms { get; set; }
+    public string? TermsAndConditions { get; set; }
     public string? AdditionalNotes { get; set; }
     public decimal Discount { get; set; } = 0;
     public decimal TaxRate { get; set; } = 11;

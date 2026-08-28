@@ -21,6 +21,7 @@ public class Quotation : BaseEntity
     public decimal TaxAmount { get; set; } = 0;
     public decimal GrandTotal { get; set; } = 0;
     public string? PaymentTerms { get; set; }
+    public string? TermsAndConditions { get; set; }
     public string? Notes { get; set; }
     public string? AdditionalNotes { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
