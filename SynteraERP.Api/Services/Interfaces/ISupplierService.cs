@@ -5,7 +5,7 @@ namespace SynteraERP.Api.Services.Interfaces;
 
 public interface ISupplierService
 {
-    Task<PaginatedResponse<SupplierDto>> ListAsync(PaginationParams p);
+    Task<PaginatedResponse<SupplierDto>> ListAsync(SupplierParams p);
     Task<SupplierDto?> GetByIdAsync(Guid id);
     Task<SupplierDto> CreateAsync(CreateSupplierRequest request);
     Task<SupplierDto?> UpdateAsync(Guid id, UpdateSupplierRequest request);

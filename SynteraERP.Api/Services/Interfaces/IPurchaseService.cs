@@ -5,7 +5,7 @@ namespace SynteraERP.Api.Services.Interfaces;
 
 public interface IPurchaseRequestService
 {
-    Task<PaginatedResponse<PurchaseRequestListDto>> ListAsync(PaginationParams p);
+    Task<PaginatedResponse<PurchaseRequestListDto>> ListAsync(PurchaseRequestQueryParams p);
     Task<PurchaseRequestDto?> GetByIdAsync(Guid id);
     Task<PurchaseRequestDto> CreateAsync(CreatePurchaseRequestRequest request);
     Task<bool> UpdateStatusAsync(Guid id, string status, Guid? userId = null);
@@ -16,7 +16,7 @@ public interface IPurchaseRequestService
 
 public interface IPurchaseOrderService
 {
-    Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p, Guid? purchaseRequestId = null, IEnumerable<Guid>? purchaseRequestIds = null);
+    Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PurchaseOrderQueryParams p, Guid? purchaseRequestId = null, IEnumerable<Guid>? purchaseRequestIds = null);
     Task<PurchaseOrderDto?> GetByIdAsync(Guid id);
     Task<PurchaseOrderDto> CreateAsync(CreatePurchaseOrderRequest request);
     Task<bool> UpdateStatusAsync(Guid id, string status);

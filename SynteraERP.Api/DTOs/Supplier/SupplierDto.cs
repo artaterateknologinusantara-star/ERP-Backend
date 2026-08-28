@@ -1,4 +1,11 @@
+using SynteraERP.Api.DTOs.Common;
+
 namespace SynteraERP.Api.DTOs.Supplier;
+
+public class SupplierParams : PaginationParams
+{
+    public bool? IsActive { get; set; }
+}
 
 public class SupplierDto
 {

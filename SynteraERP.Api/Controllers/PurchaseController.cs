@@ -21,7 +21,7 @@ public class PurchaseRequestController : ControllerBase
     public PurchaseRequestController(IPurchaseRequestService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseRequestListDto>>>> List([FromQuery] PaginationParams p)
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseRequestListDto>>>> List([FromQuery] PurchaseRequestQueryParams p)
     {
         var result = await _svc.ListAsync(p);
         return Ok(ApiResponse<PaginatedResponse<PurchaseRequestListDto>>.Ok(result));
@@ -99,7 +99,7 @@ public class PurchaseOrderController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseOrderListDto>>>> List(
-        [FromQuery] PaginationParams p, [FromQuery] Guid? purchaseRequestId, [FromQuery] string? purchaseRequestIds)
+        [FromQuery] PurchaseOrderQueryParams p, [FromQuery] Guid? purchaseRequestId, [FromQuery] string? purchaseRequestIds)
     {
         IEnumerable<Guid>? ids = null;
         if (!string.IsNullOrWhiteSpace(purchaseRequestIds))

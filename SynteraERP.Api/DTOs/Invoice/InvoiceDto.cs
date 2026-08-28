@@ -1,4 +1,11 @@
+using SynteraERP.Api.DTOs.Common;
+
 namespace SynteraERP.Api.DTOs.Invoice;
+
+public class InvoiceQueryParams : PaginationParams
+{
+    public string? Status { get; set; }
+}
 
 public class InvoiceListDto
 {

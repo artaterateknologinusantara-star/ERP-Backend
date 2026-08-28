@@ -25,7 +25,7 @@ public class InvoiceController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<PaginatedResponse<InvoiceListDto>>>> List([FromQuery] PaginationParams p)
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<InvoiceListDto>>>> List([FromQuery] InvoiceQueryParams p)
     {
         var result = await _svc.ListAsync(p);
         return Ok(ApiResponse<PaginatedResponse<InvoiceListDto>>.Ok(result));

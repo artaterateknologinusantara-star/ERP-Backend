@@ -1,4 +1,11 @@
+using SynteraERP.Api.DTOs.Common;
+
 namespace SynteraERP.Api.DTOs.Purchasing;
+
+public class PurchaseOrderQueryParams : PaginationParams
+{
+    public string? Status { get; set; }
+}
 
 public class PurchaseOrderListDto
 {

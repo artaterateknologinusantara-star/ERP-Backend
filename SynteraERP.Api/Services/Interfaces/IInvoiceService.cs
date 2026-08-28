@@ -5,7 +5,7 @@ namespace SynteraERP.Api.Services.Interfaces;
 
 public interface IInvoiceService
 {
-    Task<PaginatedResponse<InvoiceListDto>> ListAsync(PaginationParams p);
+    Task<PaginatedResponse<InvoiceListDto>> ListAsync(InvoiceQueryParams p);
     Task<InvoiceDto?> GetByIdAsync(Guid id);
     Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request);
     Task<InvoiceDto?> RecordPaymentAsync(Guid id, RecordPaymentRequest request);

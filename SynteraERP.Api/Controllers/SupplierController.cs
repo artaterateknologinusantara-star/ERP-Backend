@@ -16,7 +16,7 @@ public class SupplierController : ControllerBase
     public SupplierController(ISupplierService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<PaginatedResponse<SupplierDto>>>> List([FromQuery] PaginationParams p)
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<SupplierDto>>>> List([FromQuery] SupplierParams p)
     {
         var result = await _svc.ListAsync(p);
         return Ok(ApiResponse<PaginatedResponse<SupplierDto>>.Ok(result));

@@ -18,7 +18,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         _journalPostingService = journalPostingService;
     }
 
-    public async Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PaginationParams p, Guid? purchaseRequestId = null, IEnumerable<Guid>? purchaseRequestIds = null)
+    public async Task<PaginatedResponse<PurchaseOrderListDto>> ListAsync(PurchaseOrderQueryParams p, Guid? purchaseRequestId = null, IEnumerable<Guid>? purchaseRequestIds = null)
     {
         var q = _db.PurchaseOrders
             .AsNoTracking()
@@ -41,6 +41,14 @@ public class PurchaseOrderService : IPurchaseOrderService
         {
             var s = p.Search.ToLower();
             q = q.Where(x => x.No.ToLower().Contains(s) || x.Supplier.Name.ToLower().Contains(s));
+        }
+
+        // "Partial Receive" (the display string ToListDto/ToDto render) has a space
+        // PurchaseOrderStatus's enum name doesn't, so strip it before parsing.
+        if (!string.IsNullOrWhiteSpace(p.Status) &&
+            Enum.TryParse<PurchaseOrderStatus>(p.Status.Replace(" ", ""), true, out var statusFilter))
+        {
+            q = q.Where(x => x.Status == statusFilter);
         }
 
         q = p.SortBy switch

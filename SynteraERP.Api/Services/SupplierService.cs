@@ -14,7 +14,7 @@ public class SupplierService : ISupplierService
 
     public SupplierService(AppDbContext db) => _db = db;
 
-    public async Task<PaginatedResponse<SupplierDto>> ListAsync(PaginationParams p)
+    public async Task<PaginatedResponse<SupplierDto>> ListAsync(SupplierParams p)
     {
         var q = _db.Suppliers.AsNoTracking().AsQueryable();
 
@@ -26,6 +26,9 @@ public class SupplierService : ISupplierService
                            || (x.City != null && x.City.ToLower().Contains(s))
                            || (x.ContactPerson != null && x.ContactPerson.ToLower().Contains(s)));
         }
+
+        if (p.IsActive.HasValue)
+            q = q.Where(x => x.IsActive == p.IsActive.Value);
 
         q = p.SortBy switch
         {

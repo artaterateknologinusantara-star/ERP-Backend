@@ -20,7 +20,7 @@ public class InvoiceService : IInvoiceService
         _journalPostingService = journalPostingService;
     }
 
-    public async Task<PaginatedResponse<InvoiceListDto>> ListAsync(PaginationParams p)
+    public async Task<PaginatedResponse<InvoiceListDto>> ListAsync(InvoiceQueryParams p)
     {
         // Status Overdue di-refresh oleh InvoiceOverdueStatusService (background job),
         // bukan di sini, supaya endpoint GET ini murni read-only.
@@ -36,6 +36,15 @@ public class InvoiceService : IInvoiceService
         {
             var s = p.Search.ToLower();
             q = q.Where(x => x.No.ToLower().Contains(s) || x.Customer.Name.ToLower().Contains(s));
+        }
+
+        // "Partial Paid" (the display string ToListDto/ToDto render) has a space InvoiceStatus's enum
+        // name doesn't, so strip it before parsing -- same trick PurchaseOrderService's "Partial
+        // Receive" needs below.
+        if (!string.IsNullOrWhiteSpace(p.Status) &&
+            Enum.TryParse<InvoiceStatus>(p.Status.Replace(" ", ""), true, out var statusFilter))
+        {
+            q = q.Where(x => x.Status == statusFilter);
         }
 
         q = p.SortBy switch

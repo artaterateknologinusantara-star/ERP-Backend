@@ -13,7 +13,7 @@ public class PurchaseRequestService : IPurchaseRequestService
 
     public PurchaseRequestService(AppDbContext db) => _db = db;
 
-    public async Task<PaginatedResponse<PurchaseRequestListDto>> ListAsync(PaginationParams p)
+    public async Task<PaginatedResponse<PurchaseRequestListDto>> ListAsync(PurchaseRequestQueryParams p)
     {
         var q = _db.PurchaseRequests
             .AsNoTracking()
@@ -26,6 +26,12 @@ public class PurchaseRequestService : IPurchaseRequestService
         {
             var s = p.Search.ToLower();
             q = q.Where(x => x.No.ToLower().Contains(s) || x.RequestedByUser.Name.ToLower().Contains(s));
+        }
+
+        if (!string.IsNullOrWhiteSpace(p.Status) &&
+            Enum.TryParse<PurchaseRequestStatus>(p.Status, true, out var statusFilter))
+        {
+            q = q.Where(x => x.Status == statusFilter);
         }
 
         q = p.SortBy switch

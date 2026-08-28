@@ -15,6 +15,11 @@ public class ProjectController(AppDbContext db) : ControllerBase
 {
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
+    public class ProjectQueryParams : PaginationParams
+    {
+        public string? Status { get; set; }
+    }
+
     public record ProjectListDto(Guid Id, string Code, string Name, string CustomerName,
         string? ProjectManagerName, string Status, int Progress, decimal Budget,
         DateOnly StartDate, DateOnly? EndDate, int TaskCount, DateTimeOffset CreatedAt);
@@ -84,7 +89,7 @@ public class ProjectController(AppDbContext db) : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<PaginatedResponse<ProjectListDto>>>> List([FromQuery] PaginationParams p)
+    public async Task<ActionResult<ApiResponse<PaginatedResponse<ProjectListDto>>>> List([FromQuery] ProjectQueryParams p)
     {
         var q = db.Projects
             .AsNoTracking()
@@ -98,6 +103,12 @@ public class ProjectController(AppDbContext db) : ControllerBase
             var s = p.Search.ToLower();
             q = q.Where(x => x.Name.ToLower().Contains(s) || x.Code.ToLower().Contains(s)
                            || x.Customer.Name.ToLower().Contains(s));
+        }
+
+        if (!string.IsNullOrWhiteSpace(p.Status) &&
+            Enum.TryParse<ProjectStatus>(p.Status, true, out var statusFilter))
+        {
+            q = q.Where(x => x.Status == statusFilter);
         }
 
         q = q.OrderByDescending(x => x.CreatedAt);
