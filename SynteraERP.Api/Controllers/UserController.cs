@@ -8,7 +8,7 @@ using SynteraERP.Api.Models;
 
 namespace SynteraERP.Api.Controllers;
 
-[Authorize]
+[Authorize(Roles = "Administrator")]
 [ApiController]
 [Route("api/users")]
 public class UserController(AppDbContext db) : ControllerBase
