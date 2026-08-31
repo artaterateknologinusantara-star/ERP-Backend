@@ -28,6 +28,7 @@ public class JwtHelper
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
             new Claim(ClaimTypes.Name, user.Name),
             new Claim(ClaimTypes.Role, user.Role?.Name ?? string.Empty),
+            new Claim("roleId", user.RoleId.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 

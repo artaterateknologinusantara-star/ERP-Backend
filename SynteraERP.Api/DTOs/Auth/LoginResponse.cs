@@ -7,4 +7,5 @@ public class LoginResponse
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = string.Empty;
     public DateTimeOffset ExpiresAt { get; set; }
+    public List<ModulePermissionDto> Permissions { get; set; } = [];
 }

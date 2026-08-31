@@ -2,8 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using SynteraERP.Api.Data;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Purchasing;
 using SynteraERP.Api.Models;
@@ -17,8 +16,13 @@ namespace SynteraERP.Api.Controllers;
 public class PurchaseRequestController : ControllerBase
 {
     private readonly IPurchaseRequestService _svc;
+    private readonly IAuthorizationService _authz;
 
-    public PurchaseRequestController(IPurchaseRequestService svc) => _svc = svc;
+    public PurchaseRequestController(IPurchaseRequestService svc, IAuthorizationService authz)
+    {
+        _svc = svc;
+        _authz = authz;
+    }
 
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseRequestListDto>>>> List([FromQuery] PurchaseRequestQueryParams p)
@@ -69,6 +73,15 @@ public class PurchaseRequestController : ControllerBase
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> UpdateStatus(Guid id, [FromBody] UpdatePRStatusRequest request)
     {
+        // Purchase Request has no dedicated /approve endpoint — Approved/Rejected are set through
+        // this generic status setter, so the Approve-permission gate has to live here.
+        if (string.Equals(request.Status, nameof(PurchaseRequestStatus.Approved), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(request.Status, nameof(PurchaseRequestStatus.Rejected), StringComparison.OrdinalIgnoreCase))
+        {
+            var authResult = await _authz.AuthorizeAsync(User, new ModulePermissionRequirement(Modules.Purchasing, PermissionActions.Approve).PolicyName);
+            if (!authResult.Succeeded) return Forbid();
+        }
+
         var ok = await _svc.UpdateStatusAsync(id, request.Status);
         if (!ok) return BadRequest(ApiResponse.Fail("Status tidak valid atau Purchase Request tidak ditemukan."));
         return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
@@ -89,12 +102,10 @@ public class PurchaseRequestController : ControllerBase
 public class PurchaseOrderController : ControllerBase
 {
     private readonly IPurchaseOrderService _svc;
-    private readonly AppDbContext _db;
 
-    public PurchaseOrderController(IPurchaseOrderService svc, AppDbContext db)
+    public PurchaseOrderController(IPurchaseOrderService svc)
     {
         _svc = svc;
-        _db  = db;
     }
 
     [HttpGet]
@@ -187,94 +198,5 @@ public class PurchaseOrderController : ControllerBase
         var ok = await _svc.DeleteAsync(id);
         if (!ok) return NotFound(ApiResponse.Fail("Purchase Order tidak ditemukan."));
         return Ok(ApiResponse.Ok("Purchase Order berhasil dihapus."));
-    }
-
-    // TODO: remove after one-time backfill use
-    [Authorize(Roles = "Administrator")]
-    [HttpPost("admin/backfill-stock/{poId:guid}")]
-    public async Task<IActionResult> BackfillStock(Guid poId)
-    {
-        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub)
-               ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var userId = sub is not null && Guid.TryParse(sub, out var uid) ? uid : Guid.Empty;
-
-        var po = await _db.PurchaseOrders
-            .Include(x => x.Items)
-            .FirstOrDefaultAsync(x => x.Id == poId);
-
-        if (po is null) return NotFound(new { success = false, message = "PO tidak ditemukan." });
-
-        var results = new List<object>();
-
-        foreach (var item in po.Items.Where(x => x.ReceivedQty > 0))
-        {
-            ItemMaster? master = null;
-
-            if (item.ItemMasterId.HasValue)
-            {
-                master = await _db.ItemMasters.FindAsync(item.ItemMasterId.Value);
-            }
-            else
-            {
-                master = await _db.ItemMasters
-                    .FirstOrDefaultAsync(x =>
-                        x.Name.ToLower() == item.ItemName.ToLower() && x.IsActive);
-
-                if (master is not null)
-                    item.ItemMasterId = master.Id;
-            }
-
-            if (master is null)
-            {
-                results.Add(new { item = item.ItemName, status = "no match found" });
-                continue;
-            }
-
-            var existingTx = await _db.StockTransactions
-                .AnyAsync(x => x.RefId == po.Id
-                    && x.ItemMasterId == master.Id
-                    && x.Source == StockTransactionSource.PurchaseOrder);
-
-            if (existingTx)
-            {
-                results.Add(new { item = item.ItemName, status = "already processed" });
-                continue;
-            }
-
-            var stockBefore = master.Stock;
-            master.Stock += item.ReceivedQty;
-            master.LastPurchasePrice = item.Price;
-
-            if (master.PreferredVendorId == null)
-                master.PreferredVendorId = po.SupplierId;
-
-            master.UpdatedAt = DateTimeOffset.UtcNow;
-
-            _db.StockTransactions.Add(new StockTransaction
-            {
-                ItemMasterId    = master.Id,
-                Type            = StockTransactionType.StockIn,
-                Source          = StockTransactionSource.PurchaseOrder,
-                Qty             = item.ReceivedQty,
-                StockBefore     = stockBefore,
-                StockAfter      = master.Stock,
-                RefNo           = po.No,
-                RefId           = po.Id,
-                Notes           = $"[BACKFILL] Goods Receipt dari PO {po.No}",
-                CreatedByUserId = userId,
-            });
-
-            results.Add(new
-            {
-                item        = item.ItemName,
-                qty         = item.ReceivedQty,
-                stockBefore,
-                stockAfter  = master.Stock,
-                status      = "backfilled",
-            });
-        }
-
-        await _db.SaveChangesAsync();
-        return Ok(new { success = true, results });
     }
 }

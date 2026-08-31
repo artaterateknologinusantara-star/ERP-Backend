@@ -10,6 +10,8 @@ public class AppDbContext : DbContext
     // ─── Auth ────────────────────────────────────────────────────────────────
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     // ─── Master Data ──────────────────────────────────────────────────────────
     public DbSet<Customer> Customers => Set<Customer>();
@@ -729,6 +731,30 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // ─── Permission ───────────────────────────────────────────────────────
+        b.Entity<Permission>(e =>
+        {
+            e.HasIndex(p => new { p.RoleId, p.Module }).IsUnique();
+            e.Property(p => p.Module).HasMaxLength(50).IsRequired();
+
+            e.HasOne(p => p.Role)
+             .WithMany(r => r.Permissions)
+             .HasForeignKey(p => p.RoleId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── PasswordResetToken ───────────────────────────────────────────────
+        b.Entity<PasswordResetToken>(e =>
+        {
+            e.HasIndex(t => t.TokenHash).IsUnique();
+            e.Property(t => t.TokenHash).HasMaxLength(64).IsRequired();
+
+            e.HasOne(t => t.User)
+             .WithMany()
+             .HasForeignKey(t => t.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // ─── AuditLog ─────────────────────────────────────────────────────────
         b.Entity<AuditLog>(e =>
         {
@@ -765,6 +791,43 @@ public class AppDbContext : DbContext
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             }
+        );
+
+        // ─── Permission seed ──────────────────────────────────────────────────
+        // Default-deny: a role with no row for a module has zero access to it. Administrator gets
+        // every action on every module. Sales/Finance get ordinary CRUD on their own module but
+        // CanApprove=false everywhere — only Administrator can approve anything out of the box.
+        // Other roles created later via Role Management start with no permission rows at all.
+        var permSeedDate = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero);
+
+        Permission NewPermission(string idHex, Guid roleId, string module, bool view, bool create, bool edit, bool delete, bool approve) => new()
+        {
+            Id = new Guid($"80000000-0000-0000-0000-{idHex.PadLeft(12, '0')}"),
+            RoleId = roleId,
+            Module = module,
+            CanView = view,
+            CanCreate = create,
+            CanEdit = edit,
+            CanDelete = delete,
+            CanApprove = approve,
+            CreatedAt = permSeedDate,
+            UpdatedAt = permSeedDate,
+        };
+
+        b.Entity<Permission>().HasData(
+            // Administrator — full access, every module.
+            NewPermission("1", adminRoleId, Modules.Sales, true, true, true, true, true),
+            NewPermission("2", adminRoleId, Modules.Purchasing, true, true, true, true, true),
+            NewPermission("3", adminRoleId, Modules.Finance, true, true, true, true, true),
+            NewPermission("4", adminRoleId, Modules.Accounting, true, true, true, true, true),
+            NewPermission("5", adminRoleId, Modules.Inventory, true, true, true, true, true),
+            NewPermission("6", adminRoleId, Modules.Project, true, true, true, true, true),
+            NewPermission("7", adminRoleId, Modules.Settings, true, true, true, true, true),
+            // Sales — own module, no approve.
+            NewPermission("8", salesRoleId, Modules.Sales, true, true, true, false, false),
+            // Finance — own module + read-only Accounting, no approve.
+            NewPermission("9", financeRoleId, Modules.Finance, true, true, true, false, false),
+            NewPermission("a", financeRoleId, Modules.Accounting, true, false, false, false, false)
         );
 
         // NumberingConfig TIDAK LAGI di-seed lewat HasData() di sini — lihat NumberingConfigSeeder.cs.

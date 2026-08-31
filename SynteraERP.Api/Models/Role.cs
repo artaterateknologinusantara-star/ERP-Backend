@@ -9,4 +9,5 @@ public class Role : BaseEntity
     public bool IsActive { get; set; } = true;
 
     public ICollection<User> Users { get; set; } = [];
+    public ICollection<Permission> Permissions { get; set; } = [];
 }

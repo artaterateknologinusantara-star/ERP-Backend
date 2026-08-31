@@ -8,4 +8,5 @@ public class UserProfileDto
     public string Role { get; set; } = string.Empty;
     public bool IsActive { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
+    public List<ModulePermissionDto> Permissions { get; set; } = [];
 }

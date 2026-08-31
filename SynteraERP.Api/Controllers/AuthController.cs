@@ -32,6 +32,25 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse<LoginResponse>.Ok(result));
     }
 
+    // Admin-initiated only: there is no email delivery yet, so the raw token would otherwise be
+    // exposed to whoever calls this endpoint. Restricting to Administrator means the token is only
+    // ever seen by a trusted operator, who relays the reset link to the user out-of-band.
+    [Authorize(Roles = "Administrator")]
+    [HttpPost("forgot-password")]
+    public async Task<ActionResult<ApiResponse<ForgotPasswordResponse>>> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        var result = await _auth.ForgotPasswordAsync(request);
+        return Ok(ApiResponse<ForgotPasswordResponse>.Ok(result));
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<ActionResult<ApiResponse>> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        var ok = await _auth.ResetPasswordAsync(request);
+        if (!ok) return BadRequest(ApiResponse.Fail("Token tidak valid, sudah digunakan, atau kedaluwarsa."));
+        return Ok(ApiResponse.Ok("Password berhasil diubah. Silakan login dengan password baru."));
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<ActionResult<ApiResponse<UserProfileDto>>> Me()

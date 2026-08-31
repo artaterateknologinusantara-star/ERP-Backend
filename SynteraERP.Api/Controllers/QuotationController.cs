@@ -2,8 +2,10 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Quotation;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -16,11 +18,13 @@ public class QuotationController : ControllerBase
 {
     private readonly IQuotationService _svc;
     private readonly QuotationPdfService _pdfSvc;
+    private readonly IAuthorizationService _authz;
 
-    public QuotationController(IQuotationService svc, QuotationPdfService pdfSvc)
+    public QuotationController(IQuotationService svc, QuotationPdfService pdfSvc, IAuthorizationService authz)
     {
         _svc = svc;
         _pdfSvc = pdfSvc;
+        _authz = authz;
     }
 
     [HttpGet]
@@ -56,6 +60,16 @@ public class QuotationController : ControllerBase
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> UpdateStatus(Guid id, [FromBody] UpdateQuotationStatusRequest request)
     {
+        // Disetujui/Ditolak are also reachable via the dedicated /approve and /reject endpoints
+        // below (which carry the [RequirePermission] gate) — guard them here too so this generic
+        // status setter can't be used to bypass that gate.
+        if (string.Equals(request.Status, nameof(QuotationStatus.Disetujui), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(request.Status, nameof(QuotationStatus.Ditolak), StringComparison.OrdinalIgnoreCase))
+        {
+            var authResult = await _authz.AuthorizeAsync(User, new ModulePermissionRequirement(Modules.Sales, PermissionActions.Approve).PolicyName);
+            if (!authResult.Succeeded) return Forbid();
+        }
+
         var ok = await _svc.UpdateStatusAsync(id, request.Status);
         if (!ok) return BadRequest(ApiResponse.Fail("Status tidak valid atau quotation tidak ditemukan."));
         return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
@@ -89,6 +103,7 @@ public class QuotationController : ControllerBase
         return Ok(ApiResponse<QuotationDto>.Ok(result, "Revisi berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Approve)]
     [HttpPost("{id:guid}/approve")]
     public async Task<ActionResult<ApiResponse>> Approve(Guid id)
     {
@@ -102,6 +117,7 @@ public class QuotationController : ControllerBase
         return Ok(ApiResponse.Ok("Penawaran berhasil disetujui."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Approve)]
     [HttpPost("{id:guid}/reject")]
     public async Task<ActionResult<ApiResponse>> Reject(Guid id)
     {

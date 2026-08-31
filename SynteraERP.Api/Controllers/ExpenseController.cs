@@ -2,8 +2,10 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Expense;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -67,6 +69,7 @@ public class ExpenseController : ControllerBase
         return Ok(ApiResponse<ExpenseDto>.Ok(item, "Expense berhasil di-submit."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Approve)]
     [HttpPost("{id:guid}/approve")]
     public async Task<ActionResult<ApiResponse<ExpenseDto>>> Approve(Guid id)
     {
@@ -75,6 +78,7 @@ public class ExpenseController : ControllerBase
         return Ok(ApiResponse<ExpenseDto>.Ok(item, "Expense berhasil di-approve."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Approve)]
     [HttpPost("{id:guid}/reject")]
     public async Task<ActionResult<ApiResponse<ExpenseDto>>> Reject(Guid id, [FromBody] RejectExpenseRequest? request)
     {

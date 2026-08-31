@@ -12,11 +12,13 @@ public class CustomerPoService : ICustomerPoService
 {
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public CustomerPoService(AppDbContext db, IWebHostEnvironment env)
+    public CustomerPoService(AppDbContext db, IWebHostEnvironment env, IHttpContextAccessor httpContextAccessor)
     {
         _db = db;
         _env = env;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<PaginatedResponse<CustomerPoListDto>> ListAsync(PaginationParams p)
@@ -265,21 +267,13 @@ public class CustomerPoService : ICustomerPoService
             Reason = reason,
         };
 
-        // Attempt to capture current user from ambient context (CreatedBy/UpdatedBy pattern)
-        try
+        // Capture current user from ambient request context (CreatedBy/UpdatedBy pattern)
+        var httpContext = _httpContextAccessor.HttpContext;
+        if (httpContext?.User?.Identity?.IsAuthenticated == true)
         {
-            // If HttpContext is available via synchronous access, get user info
-            var httpContext = new HttpContextAccessor().HttpContext;
-            if (httpContext?.User?.Identity?.IsAuthenticated == true)
-            {
-                var uid = httpContext.User.Claims.FirstOrDefault(c => c.Type == "sub" || c.Type == "id")?.Value;
-                if (Guid.TryParse(uid, out var g)) history.ChangedBy = g;
-                history.ChangedByName = httpContext.User.Identity?.Name;
-            }
-        }
-        catch
-        {
-            // ignore; fallback to nulls
+            var uid = httpContext.User.Claims.FirstOrDefault(c => c.Type == "sub" || c.Type == "id")?.Value;
+            if (Guid.TryParse(uid, out var g)) history.ChangedBy = g;
+            history.ChangedByName = httpContext.User.Identity?.Name;
         }
 
         _db.CustomerPoHistories.Add(history);

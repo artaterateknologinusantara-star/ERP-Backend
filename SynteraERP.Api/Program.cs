@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Authorization;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Middleware;
@@ -41,7 +43,17 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddScoped<IAuthorizationHandler, ModulePermissionHandler>();
+builder.Services.AddAuthorization(opt =>
+{
+    foreach (var module in Modules.All)
+        foreach (var action in PermissionActions.All)
+        {
+            var requirement = new ModulePermissionRequirement(module, action);
+            opt.AddPolicy(requirement.PolicyName, policy => policy.Requirements.Add(requirement));
+        }
+});
+builder.Services.AddHttpContextAccessor();
 
 // ── CORS ───────────────────────────────────────────────────────────────────────
 builder.Services.AddCors(opt =>
