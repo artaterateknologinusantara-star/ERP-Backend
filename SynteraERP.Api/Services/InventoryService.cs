@@ -22,16 +22,13 @@ public class InventoryService : IInventoryService
 
     public async Task<InventoryStatsDto> GetStatsAsync()
     {
-        var activeItems = _db.ItemMasters.Where(x => x.IsActive && !x.IsDeleted);
-
-        var totalItems = await activeItems.CountAsync();
+        var allItems = _db.ItemMasters.Where(x => !x.IsDeleted);
+        var activeItems = allItems.Where(x => x.IsActive);
 
         return new InventoryStatsDto
         {
-            TotalItems = totalItems,
-            // activeItems is already filtered to IsActive, so this always equals TotalItems —
-            // preserved as-is from the original logic, not something this pass changes.
-            ActiveItems = totalItems,
+            TotalItems = await allItems.CountAsync(),
+            ActiveItems = await activeItems.CountAsync(),
             LowStockItems = await activeItems.CountAsync(x => x.Stock <= x.MinStock && x.Stock > 0),
             OutOfStockItems = await activeItems.CountAsync(x => x.Stock == 0),
             // Nilai stok dihitung dari PurchasePrice (COGS) jika tersedia, fallback ke SellingPrice
