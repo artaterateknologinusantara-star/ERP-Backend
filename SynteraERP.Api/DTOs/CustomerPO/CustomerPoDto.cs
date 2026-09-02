@@ -13,6 +13,7 @@ public class CustomerPoListDto
     public bool HasAttachment { get; set; }
     public Guid? SalesOrderId { get; set; }
     public string? SalesOrderNo { get; set; }
+    public bool HasHistory { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
 

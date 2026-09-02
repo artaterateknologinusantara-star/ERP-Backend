@@ -61,11 +61,22 @@ public class CustomerPoService : ICustomerPoService
                 soMap.TryAdd(s.QuotationId, (s.Id, s.No));
         }
 
+        // Load which CustomerPOs have history in one query, keyed by CustomerPoId
+        var customerPoIds = data.Select(c => c.Id).ToList();
+        var historyIds = customerPoIds.Count > 0
+            ? await _db.CustomerPoHistories
+                .Where(h => customerPoIds.Contains(h.CustomerPoId))
+                .Select(h => h.CustomerPoId)
+                .Distinct()
+                .ToListAsync()
+            : new List<Guid>();
+        var historySet = historyIds.ToHashSet();
+
         return PaginatedResponse<CustomerPoListDto>.Create(
             data.Select(c =>
             {
                 var found = soMap.TryGetValue(c.QuotationId, out var so);
-                return ToListDto(c, found ? so.Id : null, found ? so.No : null);
+                return ToListDto(c, found ? so.Id : null, found ? so.No : null, historySet.Contains(c.Id));
             }).ToList(),
             total, p.Page, p.PerPage);
     }
@@ -207,7 +218,7 @@ public class CustomerPoService : ICustomerPoService
             _ => "application/octet-stream",
         };
 
-    private static CustomerPoListDto ToListDto(CustomerPO c, Guid? soId, string? soNo) => new()
+    private static CustomerPoListDto ToListDto(CustomerPO c, Guid? soId, string? soNo, bool hasHistory) => new()
     {
         Id = c.Id,
         PoNo = c.PoNo,
@@ -220,6 +231,7 @@ public class CustomerPoService : ICustomerPoService
         HasAttachment = c.AttachmentPath is not null,
         SalesOrderId = soId,
         SalesOrderNo = soNo,
+        HasHistory = hasHistory,
         CreatedAt = c.CreatedAt,
     };
 
