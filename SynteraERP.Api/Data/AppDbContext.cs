@@ -742,6 +742,11 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(j => j.ReversedByEntryId)
              .OnDelete(DeleteBehavior.NoAction);
+
+            e.HasOne(j => j.PostedByUser)
+             .WithMany()
+             .HasForeignKey(j => j.PostedByUserId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ─── JournalEntryLine ─────────────────────────────────────────────────

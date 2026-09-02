@@ -11,7 +11,7 @@ public interface IJournalPostingService
 {
     Task<PaginatedResponse<JournalEntryListDto>> ListAsync(JournalEntryQueryParams p);
     Task<JournalEntryDto?> GetByIdAsync(Guid id);
-    Task<JournalEntryDto> CreateManualEntryAsync(CreateJournalEntryRequest request);
+    Task<JournalEntryDto> CreateManualEntryAsync(CreateJournalEntryRequest request, Guid createdByUserId);
 
     /// <summary>
     /// Wrapper tipis di atas CreateManualEntryAsync, khusus SourceType=OpeningBalance. Validasi
@@ -20,9 +20,17 @@ public interface IJournalPostingService
     /// per-SourceType (pola sama seperti keputusan desain GRNI di Fase 4) — dan supaya validasi ini
     /// tidak bisa "ketarik hilang" kalau CreateManualEntryAsync di-refactor nanti untuk keperluan lain.
     /// </summary>
-    Task<JournalEntryDto> CreateOpeningBalanceAsync(CreateOpeningBalanceRequest request);
+    Task<JournalEntryDto> CreateOpeningBalanceAsync(CreateOpeningBalanceRequest request, Guid createdByUserId);
 
-    Task<JournalEntryDto> ReverseAsync(Guid journalEntryId);
+    /// <summary>
+    /// Transisi Draft → Posted untuk journal entry manual yang sudah dibuat (Segregation of Duties:
+    /// pembuat dan penyetuju wajib beda step, digate PermissionActions.Approve di controller). Beda
+    /// dengan PostAsync di bawah, yang membuat entry BARU langsung Posted untuk auto-posting modul
+    /// lain.
+    /// </summary>
+    Task<JournalEntryDto> PostDraftEntryAsync(Guid id, Guid postedByUserId);
+
+    Task<JournalEntryDto> ReverseAsync(Guid journalEntryId, Guid reversedByUserId);
     Task<List<TrialBalanceRowDto>> GetTrialBalanceAsync(DateTimeOffset? asOfDate);
 
     /// <summary>

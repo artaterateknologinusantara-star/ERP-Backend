@@ -12,8 +12,10 @@ public class JournalEntry : BaseEntity
     public JournalEntryStatus Status { get; set; } = JournalEntryStatus.Draft;
     public Guid? ReversedByEntryId { get; set; }
     public DateTimeOffset? PostedAt { get; set; }
+    public Guid? PostedByUserId { get; set; }
 
     public JournalEntry? ReversedByEntry { get; set; }
+    public User? PostedByUser { get; set; }
     public ICollection<JournalEntryLine> Lines { get; set; } = [];
 }
 

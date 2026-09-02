@@ -66,10 +66,19 @@ public class JournalPostingService : IJournalPostingService
                 .ThenInclude(l => l.Account)
             .FirstOrDefaultAsync(x => x.Id == id);
 
-        return entry is null ? null : ToDto(entry);
+        if (entry is null) return null;
+
+        string? postedByName = null;
+        if (entry.PostedByUserId.HasValue)
+        {
+            var poster = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == entry.PostedByUserId.Value);
+            postedByName = poster?.Name;
+        }
+
+        return ToDto(entry, postedByName);
     }
 
-    public async Task<JournalEntryDto> CreateManualEntryAsync(CreateJournalEntryRequest req)
+    public async Task<JournalEntryDto> CreateManualEntryAsync(CreateJournalEntryRequest req, Guid createdByUserId)
     {
         if (req.Lines.Count == 0)
             throw new ArgumentException("Journal entry harus punya minimal 1 baris.");
@@ -84,8 +93,11 @@ public class JournalPostingService : IJournalPostingService
             throw new InvalidOperationException($"Journal entry tidak balance: Debit {totalDebit}, Credit {totalCredit}");
 
         var entryNumber = await NextEntryNumberAsync();
-        var postNow = req.PostImmediately;
 
+        // Segregation of Duties: create selalu berhenti di Draft, terlepas dari
+        // req.PostImmediately (field dipertahankan di DTO untuk backward-compat, tapi nilainya
+        // diabaikan di sini) — posting jadi langkah terpisah lewat PostDraftEntryAsync(id, postedByUserId),
+        // digate permission Approve di controller supaya pembuat dan penyetuju wajib beda user.
         var entry = new JournalEntry
         {
             EntryNumber = entryNumber,
@@ -93,8 +105,10 @@ public class JournalPostingService : IJournalPostingService
             Description = req.Description,
             SourceType  = sourceType,
             SourceId    = req.SourceId,
-            Status      = postNow ? JournalEntryStatus.Posted : JournalEntryStatus.Draft,
-            PostedAt    = postNow ? DateTimeOffset.UtcNow : null,
+            Status      = JournalEntryStatus.Draft,
+            PostedAt    = null,
+            PostedByUserId = null,
+            CreatedBy   = createdByUserId,
             Lines = req.Lines.Select(l => new JournalEntryLine
             {
                 AccountId = l.AccountId,
@@ -110,7 +124,7 @@ public class JournalPostingService : IJournalPostingService
         return (await GetByIdAsync(entry.Id))!;
     }
 
-    public async Task<JournalEntryDto> CreateOpeningBalanceAsync(CreateOpeningBalanceRequest req)
+    public async Task<JournalEntryDto> CreateOpeningBalanceAsync(CreateOpeningBalanceRequest req, Guid createdByUserId)
     {
         if (req.Lines.Count == 0)
             throw new ArgumentException("Opening Balance harus punya minimal 1 baris.");
@@ -146,17 +160,40 @@ public class JournalPostingService : IJournalPostingService
         // Date sebelum cut-off ini, yang bisa mengubah saldo "historis" yang seharusnya sudah final.
         // Diterima sebagai keterbatasan sementara (lihat 00_PROJECT_STATUS.md Known Gaps), akan
         // ditutup permanen oleh Period Closing.
+        //
+        // PERUBAHAN PERILAKU (SoD): Opening Balance sekarang juga berhenti di Draft seperti JE manual
+        // lain — perlu di-post manual lewat PostDraftEntryAsync sesudahnya, tidak lagi otomatis Posted.
         return await CreateManualEntryAsync(new CreateJournalEntryRequest
         {
             Date = req.Date,
             Description = string.IsNullOrWhiteSpace(req.Description) ? "Opening Balance" : req.Description,
             SourceType = nameof(JournalSourceType.OpeningBalance),
-            PostImmediately = true,
             Lines = req.Lines,
-        });
+        }, createdByUserId);
     }
 
-    public async Task<JournalEntryDto> ReverseAsync(Guid journalEntryId)
+    /// <summary>
+    /// Transisi Draft → Posted untuk journal entry manual (Segregation of Duties: langkah terpisah
+    /// dari CreateManualEntryAsync, digate permission Approve di controller).
+    /// </summary>
+    public async Task<JournalEntryDto> PostDraftEntryAsync(Guid id, Guid postedByUserId)
+    {
+        var entry = await _db.JournalEntries.FindAsync(id)
+            ?? throw new KeyNotFoundException("Journal entry tidak ditemukan.");
+
+        if (entry.Status != JournalEntryStatus.Draft)
+            throw new InvalidOperationException("Hanya entry berstatus Draft yang bisa di-post.");
+
+        entry.Status        = JournalEntryStatus.Posted;
+        entry.PostedAt      = DateTimeOffset.UtcNow;
+        entry.PostedByUserId = postedByUserId;
+        entry.UpdatedAt     = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync();
+        return (await GetByIdAsync(entry.Id))!;
+    }
+
+    public async Task<JournalEntryDto> ReverseAsync(Guid journalEntryId, Guid reversedByUserId)
     {
         var original = await _db.JournalEntries
             .Include(x => x.Lines)
@@ -177,6 +214,8 @@ public class JournalPostingService : IJournalPostingService
             SourceId    = original.Id,
             Status      = JournalEntryStatus.Posted,
             PostedAt    = DateTimeOffset.UtcNow,
+            PostedByUserId = reversedByUserId,
+            CreatedBy   = reversedByUserId,
             Lines = original.Lines.Select(l => new JournalEntryLine
             {
                 AccountId = l.AccountId,
@@ -291,7 +330,7 @@ public class JournalPostingService : IJournalPostingService
         return no;
     }
 
-    private static JournalEntryDto ToDto(JournalEntry x) => new()
+    private static JournalEntryDto ToDto(JournalEntry x, string? postedByName = null) => new()
     {
         Id                = x.Id,
         EntryNumber       = x.EntryNumber,
@@ -302,6 +341,7 @@ public class JournalPostingService : IJournalPostingService
         Status            = x.Status.ToString(),
         ReversedByEntryId = x.ReversedByEntryId,
         PostedAt          = x.PostedAt,
+        PostedByName      = postedByName,
         TotalDebit        = x.Lines.Sum(l => l.Debit),
         TotalCredit       = x.Lines.Sum(l => l.Credit),
         CreatedAt         = x.CreatedAt,
