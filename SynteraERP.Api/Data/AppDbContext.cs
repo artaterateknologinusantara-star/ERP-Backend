@@ -72,6 +72,9 @@ public class AppDbContext : DbContext
     // ─── Audit ────────────────────────────────────────────────────────────────
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
+    // ─── Demo Leads ───────────────────────────────────────────────────────────
+    public DbSet<DemoLead> DemoLeads => Set<DemoLead>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
@@ -96,6 +99,7 @@ public class AppDbContext : DbContext
         b.Entity<SupplierInvoice>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<ExpenseCategory>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<Expense>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<DemoLead>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -568,6 +572,18 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(x => x.CashBankAccountId)
              .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── Demo Leads ───────────────────────────────────────────────────────
+        b.Entity<DemoLead>(e =>
+        {
+            e.Property(x => x.FullName).HasMaxLength(150).IsRequired();
+            e.Property(x => x.WhatsappNumber).HasMaxLength(30).IsRequired();
+            e.Property(x => x.CompanyEmail).HasMaxLength(150).IsRequired();
+            e.Property(x => x.CompanyName).HasMaxLength(150).IsRequired();
+            e.Property(x => x.Industry).HasMaxLength(100).IsRequired();
+            e.Property(x => x.Need).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
         });
 
         // ─── StockTransaction ─────────────────────────────────────────────────
