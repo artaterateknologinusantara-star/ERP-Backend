@@ -59,7 +59,16 @@ public class QuotationService : IQuotationService
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
             .FirstOrDefaultAsync(x => x.Id == id);
 
-        return q is null ? null : ToDto(q);
+        if (q is null) return null;
+
+        string? approvedByName = null;
+        if (q.ApprovedBy.HasValue)
+        {
+            var approver = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == q.ApprovedBy.Value);
+            approvedByName = approver?.Name;
+        }
+
+        return ToDto(q, approvedByName);
     }
 
     public async Task<QuotationDto> CreateAsync(SaveQuotationRequest request)
@@ -424,7 +433,7 @@ public class QuotationService : IQuotationService
         HasCustomerPO = hasCustomerPO,
     };
 
-    private static QuotationDto ToDto(Models.Quotation x) => new()
+    private static QuotationDto ToDto(Models.Quotation x, string? approvedByName = null) => new()
     {
         Id = x.Id,
         No = x.No,
@@ -452,6 +461,8 @@ public class QuotationService : IQuotationService
         TotalBeforeTax = x.TotalBeforeTax,
         TaxAmount = x.TaxAmount,
         ParentId = x.ParentId,
+        ApprovedAt = x.ApprovedAt,
+        ApprovedByName = approvedByName,
         CreatedAt = x.CreatedAt,
         UpdatedAt = x.UpdatedAt,
         Tabs = x.Tabs.OrderBy(t => t.SortOrder).Select(t => new QuotationTabDto

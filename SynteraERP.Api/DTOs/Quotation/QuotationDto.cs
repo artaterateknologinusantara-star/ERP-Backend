@@ -47,6 +47,8 @@ public class QuotationDto : QuotationListDto
     public decimal TotalBeforeTax { get; set; }
     public decimal TaxAmount { get; set; }
     public Guid? ParentId { get; set; }
+    public DateTimeOffset? ApprovedAt { get; set; }
+    public string? ApprovedByName { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public List<QuotationTabDto> Tabs { get; set; } = [];

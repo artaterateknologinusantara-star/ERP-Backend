@@ -24,6 +24,7 @@ public class PurchaseRequestDto : PurchaseRequestListDto
 {
     public Guid RequestedBy { get; set; }
     public Guid? SalesOrderId { get; set; }
+    public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovedByName { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public int ItemsNeedingPriceVerification { get; set; }

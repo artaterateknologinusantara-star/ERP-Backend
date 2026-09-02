@@ -49,7 +49,12 @@ public class PurchaseRequestController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<ApiResponse<PurchaseRequestDto>>> Create([FromBody] CreatePurchaseRequestRequest request)
     {
-        var item = await _svc.CreateAsync(request);
+        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+               ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (sub is null || !Guid.TryParse(sub, out var userId))
+            return Unauthorized(ApiResponse<PurchaseRequestDto>.Fail("User tidak teridentifikasi."));
+
+        var item = await _svc.CreateAsync(request, userId);
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<PurchaseRequestDto>.Ok(item, "Purchase Request berhasil dibuat."));
     }
 
@@ -75,14 +80,21 @@ public class PurchaseRequestController : ControllerBase
     {
         // Purchase Request has no dedicated /approve endpoint — Approved/Rejected are set through
         // this generic status setter, so the Approve-permission gate has to live here.
+        Guid? userId = null;
         if (string.Equals(request.Status, nameof(PurchaseRequestStatus.Approved), StringComparison.OrdinalIgnoreCase)
             || string.Equals(request.Status, nameof(PurchaseRequestStatus.Rejected), StringComparison.OrdinalIgnoreCase))
         {
             var authResult = await _authz.AuthorizeAsync(User, new ModulePermissionRequirement(Modules.Purchasing, PermissionActions.Approve).PolicyName);
             if (!authResult.Succeeded) return Forbid();
+
+            var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                   ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (sub is null || !Guid.TryParse(sub, out var parsedUserId))
+                return Unauthorized(ApiResponse.Fail("User tidak teridentifikasi."));
+            userId = parsedUserId;
         }
 
-        var ok = await _svc.UpdateStatusAsync(id, request.Status);
+        var ok = await _svc.UpdateStatusAsync(id, request.Status, userId);
         if (!ok) return BadRequest(ApiResponse.Fail("Status tidak valid atau Purchase Request tidak ditemukan."));
         return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
     }

@@ -7,7 +7,7 @@ public interface IPurchaseRequestService
 {
     Task<PaginatedResponse<PurchaseRequestListDto>> ListAsync(PurchaseRequestQueryParams p);
     Task<PurchaseRequestDto?> GetByIdAsync(Guid id);
-    Task<PurchaseRequestDto> CreateAsync(CreatePurchaseRequestRequest request);
+    Task<PurchaseRequestDto> CreateAsync(CreatePurchaseRequestRequest request, Guid requestedBy);
     Task<bool> UpdateStatusAsync(Guid id, string status, Guid? userId = null);
     Task<bool> DeleteAsync(Guid id);
     Task<PurchaseRequestDto?> GenerateFromSoAsync(Guid soId, Guid requestedBy);

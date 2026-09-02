@@ -72,15 +72,18 @@ public class PurchaseRequestService : IPurchaseRequestService
         return ToDto(pr, approvedByName);
     }
 
-    public async Task<PurchaseRequestDto> CreateAsync(CreatePurchaseRequestRequest request)
+    public async Task<PurchaseRequestDto> CreateAsync(CreatePurchaseRequestRequest request, Guid requestedBy)
     {
+        if (requestedBy == Guid.Empty)
+            throw new InvalidOperationException("RequestedBy tidak valid — user tidak terautentikasi dengan benar.");
+
         var no = await NextNumberAsync();
         var pr = new Models.PurchaseRequest
         {
             No            = no,
-            RequestedBy   = request.RequestedBy,
+            RequestedBy   = requestedBy,
             SalesOrderId  = request.SalesOrderId,
-            Date          = request.Date,
+            Date          = DateOnly.FromDateTime(DateTime.UtcNow),
             Notes         = request.Notes,
             Status        = PurchaseRequestStatus.Draft,
             Items         = request.Items.Select(i => new PurchaseRequestItem
@@ -316,6 +319,7 @@ public class PurchaseRequestService : IPurchaseRequestService
             Notes           = x.Notes,
             RequestedBy     = x.RequestedBy,
             SalesOrderId    = x.SalesOrderId,
+            ApprovedAt      = x.ApprovedAt,
             ApprovedByName  = approvedByName,
             CreatedAt       = x.CreatedAt,
             ItemsNeedingPriceVerification = items.Count(i =>
