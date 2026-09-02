@@ -124,7 +124,12 @@ public class AppDbContext : DbContext
         // ─── Customer ─────────────────────────────────────────────────────────
         b.Entity<Customer>(e =>
         {
-            e.HasIndex(c => c.Code).IsUnique();
+            // Filtered so a soft-deleted row doesn't squat a Code forever: NextCodeAsync counts
+            // only non-deleted rows (Customer.HasQueryFilter below), so it will eventually generate
+            // a Code that a deleted row already holds — an unfiltered unique index then makes every
+            // create attempt at that Code fail deterministically (not just under a race), exactly
+            // as happened for Project (see SalesOrderService's from-quotation flow / PRJ-2026-005).
+            e.HasIndex(c => c.Code).IsUnique().HasFilter("[IsDeleted] = 0");
             e.Property(c => c.Code).HasMaxLength(20).IsRequired();
             e.Property(c => c.Name).HasMaxLength(200).IsRequired();
         });
@@ -132,7 +137,7 @@ public class AppDbContext : DbContext
         // ─── Supplier ─────────────────────────────────────────────────────────
         b.Entity<Supplier>(e =>
         {
-            e.HasIndex(s => s.Code).IsUnique();
+            e.HasIndex(s => s.Code).IsUnique().HasFilter("[IsDeleted] = 0");
             e.Property(s => s.Code).HasMaxLength(20).IsRequired();
             e.Property(s => s.Name).HasMaxLength(200).IsRequired();
         });
@@ -140,7 +145,7 @@ public class AppDbContext : DbContext
         // ─── Branch ───────────────────────────────────────────────────────────
         b.Entity<Branch>(e =>
         {
-            e.HasIndex(br => br.Code).IsUnique();
+            e.HasIndex(br => br.Code).IsUnique().HasFilter("[IsDeleted] = 0");
             e.Property(br => br.Code).HasMaxLength(20).IsRequired();
             e.Property(br => br.Name).HasMaxLength(200).IsRequired();
             e.Property(br => br.Address).HasMaxLength(500);
@@ -159,7 +164,7 @@ public class AppDbContext : DbContext
         // ─── ItemMaster ───────────────────────────────────────────────────────
         b.Entity<ItemMaster>(e =>
         {
-            e.HasIndex(i => i.Code).IsUnique();
+            e.HasIndex(i => i.Code).IsUnique().HasFilter("[IsDeleted] = 0");
             e.Property(i => i.Code).HasMaxLength(30).IsRequired();
             e.Property(i => i.Name).HasMaxLength(300).IsRequired();
             e.Property(i => i.Category).HasMaxLength(100);
@@ -303,6 +308,16 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(s => s.QuotationId)
              .OnDelete(DeleteBehavior.SetNull);
+
+            // Enforces "at most one SO per quotation" at the DB level — the app-level check in
+            // SalesOrderService.CreateFromQuotationAsync (look up an existing SO for the quotation,
+            // return it instead of creating another) has a TOCTOU race window under concurrent
+            // requests, e.g. a double-submit. The filtered index lets manually-created SOs (no
+            // quotation) keep NULL QuotationId without colliding with each other, AND excludes
+            // soft-deleted SOs — without "AND [IsDeleted] = 0" a cancelled/deleted SO would
+            // permanently lock its quotation out of ever getting a new SO (confirmed live: deleting
+            // an SO then retrying create-from-quotation failed with a raw duplicate-key error).
+            e.HasIndex(s => s.QuotationId).IsUnique().HasFilter("[QuotationId] IS NOT NULL AND [IsDeleted] = 0");
         });
 
         // ─── SalesOrderItem ───────────────────────────────────────────────────
@@ -638,7 +653,7 @@ public class AppDbContext : DbContext
         // ─── Project ──────────────────────────────────────────────────────────────
         b.Entity<Project>(e =>
         {
-            e.HasIndex(p => p.Code).IsUnique();
+            e.HasIndex(p => p.Code).IsUnique().HasFilter("[IsDeleted] = 0");
             e.Property(p => p.Code).HasMaxLength(30).IsRequired();
             e.Property(p => p.Name).HasMaxLength(300).IsRequired();
             e.Property(p => p.Budget).HasPrecision(18, 2);

@@ -1,3 +1,4 @@
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
@@ -56,8 +57,87 @@ public class SalesOrderService : ISalesOrderService
             })
             .ToListAsync();
 
+        await AttachPhasesAsync(data);
+
         return PaginatedResponse<SalesOrderListResponse>.Create(data, total, page, perPage);
     }
+
+    // Computes the same workflow phase as the "Progress SO" stepper on the detail page, in two
+    // batched queries scoped to just this page's SOs (not the fetch-everything-then-filter-client
+    // -side approach the detail page uses) so the list stays cheap regardless of PR/PO volume.
+    private async Task AttachPhasesAsync(List<SalesOrderListResponse> data)
+    {
+        var soIds = data
+            .Where(x => x.Status is "Open")
+            .Select(x => x.Id)
+            .ToList();
+
+        if (soIds.Count == 0)
+        {
+            foreach (var row in data)
+                row.Phase = ComputeStaticPhase(row.Status);
+            return;
+        }
+
+        var latestPRs = await _db.PurchaseRequests
+            .AsNoTracking()
+            .Where(pr => pr.SalesOrderId != null && soIds.Contains(pr.SalesOrderId.Value))
+            .OrderByDescending(pr => pr.CreatedAt)
+            .Select(pr => new { pr.Id, pr.SalesOrderId, pr.Status, ItemCount = pr.Items.Count })
+            .ToListAsync();
+
+        var latestPRBySo = latestPRs
+            .GroupBy(pr => pr.SalesOrderId!.Value)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var prIds = latestPRBySo.Values.Select(pr => pr.Id).ToList();
+        var poStatsByPr = new Dictionary<Guid, (bool HasPOs, bool AllCompleted)>();
+        if (prIds.Count > 0)
+        {
+            var pos = await _db.PurchaseOrders
+                .AsNoTracking()
+                .Where(po => po.PurchaseRequestId != null && prIds.Contains(po.PurchaseRequestId.Value))
+                .Select(po => new { po.PurchaseRequestId, po.Status })
+                .ToListAsync();
+
+            poStatsByPr = pos
+                .GroupBy(po => po.PurchaseRequestId!.Value)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (HasPOs: true, AllCompleted: g.All(po => po.Status == PurchaseOrderStatus.Completed)));
+        }
+
+        foreach (var row in data)
+        {
+            if (row.Status != "Open")
+            {
+                row.Phase = ComputeStaticPhase(row.Status);
+                continue;
+            }
+
+            if (!latestPRBySo.TryGetValue(row.Id, out var pr))
+            {
+                row.Phase = "pr-needed";
+                continue;
+            }
+
+            var (hasPOs, allCompleted) = poStatsByPr.TryGetValue(pr.Id, out var stats) ? stats : (false, false);
+            var prFullyDone = pr.Status == PurchaseRequestStatus.Ordered && allCompleted;
+
+            if (pr.ItemCount > 0 && !prFullyDone)
+                row.Phase = pr.Status == PurchaseRequestStatus.Ordered && hasPOs ? "gr-pending" : "pr-processing";
+            else
+                row.Phase = "do-ready";
+        }
+    }
+
+    private static string ComputeStaticPhase(string status) => status switch
+    {
+        "Cancelled" => "cancelled",
+        "Completed" => "completed",
+        "Delivered" => "invoice-ready",
+        _ => "do-ready",
+    };
 
     public async Task<SalesOrderDetailResponse?> GetByIdAsync(Guid id)
     {
@@ -137,9 +217,13 @@ public class SalesOrderService : ISalesOrderService
             Items = items,
         };
 
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         _db.SalesOrders.Add(so);
         _db.Projects.Add(await BuildProjectForSoAsync(so, grandTotal));
         await _db.SaveChangesAsync();
+
+        await tx.CommitAsync();
 
         return (await GetByIdAsync(so.Id))!;
     }
@@ -246,25 +330,53 @@ public class SalesOrderService : ISalesOrderService
             Items = soItems,
         };
 
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         _db.SalesOrders.Add(so);
-        _db.Projects.Add(await BuildProjectForSoAsync(so, grandTotal));
 
         if (quotation.Status == QuotationStatus.Disetujui)
             quotation.Status = QuotationStatus.Selesai;
 
-        await _db.SaveChangesAsync();
+        // SO, the quotation status flip, and Project are all added to the context before the one
+        // SaveChangesAsync below — not a separate save-then-retry for the Project. A prior version
+        // split them so a Project.Code collision could self-heal via
+        // SequentialCodeHelper.RunWithRetryAsync without burning a fresh SO number on retry. In
+        // practice that left orphan SOs with no Project behind whenever the retry budget was
+        // exhausted (observed twice during testing). One transaction means ANY failure here —
+        // QuotationId collision or otherwise — rolls back the SO too; the caller just retries the
+        // whole request, and the existingSO check above confirms there's nothing left to clean up.
+        _db.Projects.Add(await BuildProjectForSoAsync(so, grandTotal));
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsQuotationAlreadyHasSoViolation(ex))
+        {
+            // Two concurrent requests (e.g. a double-submit) can both pass the existingSO == null
+            // check above before either commits — the unique index on SalesOrders.QuotationId is
+            // what actually prevents the duplicate SO. The loser lands here instead of a raw 500;
+            // roll back (the failed insert leaves the transaction unusable for further writes) and
+            // hand back the winner's SO exactly like the existingSO check above would have.
+            await tx.RollbackAsync();
+            _db.ChangeTracker.Clear();
+            var winner = await _db.SalesOrders.FirstOrDefaultAsync(x => x.QuotationId == quotationId && !x.IsDeleted);
+            if (winner is null) throw;
+            return (await GetByIdAsync(winner.Id))!;
+        }
+
+        await tx.CommitAsync();
 
         return (await GetByIdAsync(so.Id))!;
     }
 
+    private static bool IsQuotationAlreadyHasSoViolation(DbUpdateException ex) =>
+        ex.InnerException is SqlException sqlEx
+        && (sqlEx.Number == 2601 || sqlEx.Number == 2627)
+        && sqlEx.Message.Contains("IX_SalesOrders_QuotationId", StringComparison.OrdinalIgnoreCase);
+
     private async Task<Project> BuildProjectForSoAsync(SalesOrder so, decimal budget)
     {
-        // NOTE: unlike Branch/Customer/Supplier/ItemMaster's CreateAsync, this isn't wrapped in
-        // SequentialCodeHelper.RunWithRetryAsync — it's built and added to the SAME SaveChangesAsync
-        // as the SalesOrder itself (see CreateAsync/CreateFromQuotationAsync), so a naive retry here
-        // would also re-run SO creation and burn another SO number each time. The Code collision
-        // window on concurrent SO-creates therefore remains open; narrowing it needs a bigger reshape
-        // of the SO-create flow, not a proportionate fix for this pass.
         var code  = await SequentialCodeHelper.NextYearCodeAsync(_db.Projects, "PRJ", 3, DateTime.UtcNow.Year);
         var name  = !string.IsNullOrWhiteSpace(so.ProjectName) ? so.ProjectName : so.No;
 
