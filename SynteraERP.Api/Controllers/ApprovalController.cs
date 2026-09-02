@@ -122,6 +122,32 @@ public class ApprovalController(AppDbContext db) : ControllerBase
             results.AddRange(supplierInvoices);
         }
 
+        if (approvableModules.Contains(Modules.Accounting))
+        {
+            // Amount dan CreatedByName dihitung dalam proyeksi (Sum/subquery correlated), bukan
+            // dengan .Include(j => j.Lines) lalu di-materialize dulu — pola sama seperti
+            // JournalPostingService.ListAsync, menghindari N+1 dan load baris yang tidak perlu.
+            var journalEntries = await db.JournalEntries
+                .AsNoTracking()
+                .Where(j => !j.IsDeleted && j.Status == JournalEntryStatus.Draft)
+                .OrderByDescending(j => j.Date)
+                .Select(j => new PendingApprovalDto
+                {
+                    Id = j.Id,
+                    Module = Modules.Accounting,
+                    Type = "JournalEntry",
+                    TypeLabel = "Jurnal Manual",
+                    No = j.EntryNumber,
+                    Title = j.Description,
+                    Amount = j.Lines.Sum(l => l.Debit),
+                    Date = DateOnly.FromDateTime(j.Date.Date),
+                    RequestedByName = db.Users.Where(u => u.Id == j.CreatedBy).Select(u => u.Name).FirstOrDefault() ?? string.Empty,
+                    DetailUrl = $"/journal-entry/{j.Id}",
+                })
+                .ToListAsync();
+            results.AddRange(journalEntries);
+        }
+
         return Ok(ApiResponse<List<PendingApprovalDto>>.Ok(results.OrderByDescending(x => x.Date).ToList()));
     }
 }

@@ -50,6 +50,7 @@ public class JournalPostingService : IJournalPostingService
                 Description = x.Description,
                 SourceType = x.SourceType.ToString(),
                 Status = x.Status.ToString(),
+                CreatedByName = _db.Users.Where(u => u.Id == x.CreatedBy).Select(u => u.Name).FirstOrDefault(),
                 TotalDebit = x.Lines.Sum(l => l.Debit),
                 TotalCredit = x.Lines.Sum(l => l.Credit),
             })
@@ -75,7 +76,14 @@ public class JournalPostingService : IJournalPostingService
             postedByName = poster?.Name;
         }
 
-        return ToDto(entry, postedByName);
+        string? createdByName = null;
+        if (entry.CreatedBy.HasValue)
+        {
+            var creator = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == entry.CreatedBy.Value);
+            createdByName = creator?.Name;
+        }
+
+        return ToDto(entry, postedByName, createdByName);
     }
 
     public async Task<JournalEntryDto> CreateManualEntryAsync(CreateJournalEntryRequest req, Guid createdByUserId)
@@ -330,7 +338,7 @@ public class JournalPostingService : IJournalPostingService
         return no;
     }
 
-    private static JournalEntryDto ToDto(JournalEntry x, string? postedByName = null) => new()
+    private static JournalEntryDto ToDto(JournalEntry x, string? postedByName = null, string? createdByName = null) => new()
     {
         Id                = x.Id,
         EntryNumber       = x.EntryNumber,
@@ -342,6 +350,7 @@ public class JournalPostingService : IJournalPostingService
         ReversedByEntryId = x.ReversedByEntryId,
         PostedAt          = x.PostedAt,
         PostedByName      = postedByName,
+        CreatedByName     = createdByName,
         TotalDebit        = x.Lines.Sum(l => l.Debit),
         TotalCredit       = x.Lines.Sum(l => l.Credit),
         CreatedAt         = x.CreatedAt,

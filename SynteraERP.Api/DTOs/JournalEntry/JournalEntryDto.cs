@@ -25,6 +25,7 @@ public class JournalEntryDto
     public Guid? ReversedByEntryId { get; set; }
     public DateTimeOffset? PostedAt { get; set; }
     public string? PostedByName { get; set; }
+    public string? CreatedByName { get; set; }
     public decimal TotalDebit { get; set; }
     public decimal TotalCredit { get; set; }
     public List<JournalEntryLineDto> Lines { get; set; } = [];
@@ -39,6 +40,7 @@ public class JournalEntryListDto
     public string Description { get; set; } = string.Empty;
     public string SourceType { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string? CreatedByName { get; set; }
     public decimal TotalDebit { get; set; }
     public decimal TotalCredit { get; set; }
 }
