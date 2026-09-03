@@ -62,9 +62,11 @@ public class SalesOrderService : ISalesOrderService
         return PaginatedResponse<SalesOrderListResponse>.Create(data, total, page, perPage);
     }
 
-    // Computes the same workflow phase as the "Progress SO" stepper on the detail page, in two
+    // Computes the same workflow phase as the "Progress SO" stepper on the detail page, in
     // batched queries scoped to just this page's SOs (not the fetch-everything-then-filter-client
     // -side approach the detail page uses) so the list stays cheap regardless of PR/PO volume.
+    // Decision logic itself lives in ComputeOpenPhase/ComputeStaticPhase, shared with GetByIdAsync's
+    // single-SO path below, so the two never drift apart.
     private async Task AttachPhasesAsync(List<SalesOrderListResponse> data)
     {
         var soIds = data
@@ -79,29 +81,36 @@ public class SalesOrderService : ISalesOrderService
             return;
         }
 
-        var latestPRs = await _db.PurchaseRequests
+        var allPRs = await _db.PurchaseRequests
             .AsNoTracking()
             .Where(pr => pr.SalesOrderId != null && soIds.Contains(pr.SalesOrderId.Value))
             .OrderByDescending(pr => pr.CreatedAt)
             .Select(pr => new { pr.Id, pr.SalesOrderId, pr.Status, ItemCount = pr.Items.Count })
             .ToListAsync();
 
-        var latestPRBySo = latestPRs
+        // Latest PR per SO decides the phase's PR-status/item-count inputs...
+        var latestPRBySo = allPRs
             .GroupBy(pr => pr.SalesOrderId!.Value)
             .ToDictionary(g => g.Key, g => g.First());
 
-        var prIds = latestPRBySo.Values.Select(pr => pr.Id).ToList();
-        var poStatsByPr = new Dictionary<Guid, (bool HasPOs, bool AllCompleted)>();
-        if (prIds.Count > 0)
+        // ...but hasPOs/allCompleted must look at POs from EVERY PR linked to the SO, not just the
+        // latest one — an SO can accumulate more than one PR over time, and a PO already Completed
+        // against an earlier PR still counts. Map every PR back to its SO so POs can be grouped at
+        // the SO level.
+        var soIdByPrId = allPRs.ToDictionary(pr => pr.Id, pr => pr.SalesOrderId!.Value);
+        var allPrIds = allPRs.Select(pr => pr.Id).ToList();
+
+        var poStatsBySo = new Dictionary<Guid, (bool HasPOs, bool AllCompleted)>();
+        if (allPrIds.Count > 0)
         {
             var pos = await _db.PurchaseOrders
                 .AsNoTracking()
-                .Where(po => po.PurchaseRequestId != null && prIds.Contains(po.PurchaseRequestId.Value))
+                .Where(po => po.PurchaseRequestId != null && allPrIds.Contains(po.PurchaseRequestId.Value))
                 .Select(po => new { po.PurchaseRequestId, po.Status })
                 .ToListAsync();
 
-            poStatsByPr = pos
-                .GroupBy(po => po.PurchaseRequestId!.Value)
+            poStatsBySo = pos
+                .GroupBy(po => soIdByPrId[po.PurchaseRequestId!.Value])
                 .ToDictionary(
                     g => g.Key,
                     g => (HasPOs: true, AllCompleted: g.All(po => po.Status == PurchaseOrderStatus.Completed)));
@@ -121,14 +130,49 @@ public class SalesOrderService : ISalesOrderService
                 continue;
             }
 
-            var (hasPOs, allCompleted) = poStatsByPr.TryGetValue(pr.Id, out var stats) ? stats : (false, false);
-            var prFullyDone = pr.Status == PurchaseRequestStatus.Ordered && allCompleted;
-
-            if (pr.ItemCount > 0 && !prFullyDone)
-                row.Phase = pr.Status == PurchaseRequestStatus.Ordered && hasPOs ? "gr-pending" : "pr-processing";
-            else
-                row.Phase = "do-ready";
+            var (hasPOs, allCompleted) = poStatsBySo.TryGetValue(row.Id, out var stats) ? stats : (false, false);
+            row.Phase = ComputeOpenPhase(pr.Status, pr.ItemCount, hasPOs, allCompleted);
         }
+    }
+
+    // Phase for a single SO's "Open" status — same decision inputs as AttachPhasesAsync above
+    // (latest PR's status/item count, plus hasPOs/allCompleted across every PR linked to the SO),
+    // just fetched directly for one SO instead of batched across a page of them.
+    private async Task<string> ComputeOpenPhaseForSoAsync(Guid soId)
+    {
+        var prs = await _db.PurchaseRequests
+            .AsNoTracking()
+            .Where(pr => pr.SalesOrderId == soId)
+            .OrderByDescending(pr => pr.CreatedAt)
+            .Select(pr => new { pr.Id, pr.Status, ItemCount = pr.Items.Count })
+            .ToListAsync();
+
+        if (prs.Count == 0) return "pr-needed";
+
+        var latestPr = prs[0];
+        var prIds = prs.Select(pr => pr.Id).ToList();
+
+        var poStatuses = await _db.PurchaseOrders
+            .AsNoTracking()
+            .Where(po => po.PurchaseRequestId != null && prIds.Contains(po.PurchaseRequestId.Value))
+            .Select(po => po.Status)
+            .ToListAsync();
+
+        var hasPOs = poStatuses.Count > 0;
+        var allCompleted = hasPOs && poStatuses.All(s => s == PurchaseOrderStatus.Completed);
+
+        return ComputeOpenPhase(latestPr.Status, latestPr.ItemCount, hasPOs, allCompleted);
+    }
+
+    private static string ComputeOpenPhase(PurchaseRequestStatus prStatus, int prItemCount, bool hasPOs, bool allCompleted)
+    {
+        var prHasItems = prItemCount > 0;
+        var prFullyDone = prStatus == PurchaseRequestStatus.Ordered && allCompleted;
+
+        if (prHasItems && !prFullyDone)
+            return prStatus == PurchaseRequestStatus.Ordered && hasPOs ? "gr-pending" : "pr-processing";
+
+        return "do-ready";
     }
 
     private static string ComputeStaticPhase(string status) => status switch
@@ -151,7 +195,9 @@ public class SalesOrderService : ISalesOrderService
         if (so is null) return null;
 
         var taxRate = await _taxRateService.GetDefaultRateAsync();
-        return ToDetailResponse(so, taxRate);
+        var statusStr = so.Status.ToString();
+        var phase = statusStr == "Open" ? await ComputeOpenPhaseForSoAsync(so.Id) : ComputeStaticPhase(statusStr);
+        return ToDetailResponse(so, taxRate, phase);
     }
 
     public async Task<SalesOrderDetailResponse> CreateAsync(CreateSalesOrderRequest request)
@@ -403,7 +449,7 @@ public class SalesOrderService : ISalesOrderService
         return no;
     }
 
-    private static SalesOrderDetailResponse ToDetailResponse(SalesOrder so, decimal taxRate)
+    private static SalesOrderDetailResponse ToDetailResponse(SalesOrder so, decimal taxRate, string phase)
     {
         var subTotal = so.Items.Any()
             ? Math.Round(so.Items.Sum(x => x.Amount), 2)
@@ -431,6 +477,7 @@ public class SalesOrderService : ISalesOrderService
             RefQuotation = so.RefQuotation,
             Notes = so.Notes,
             Status = so.Status.ToString(),
+            Phase = phase,
             SubTotal = subTotal,
             TaxAmount = taxAmount,
             GrandTotal = grandTotal,

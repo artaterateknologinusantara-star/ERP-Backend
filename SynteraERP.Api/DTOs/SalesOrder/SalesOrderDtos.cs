@@ -63,6 +63,9 @@ public class SalesOrderDetailResponse
     public string? RefQuotation { get; set; }
     public string? Notes { get; set; }
     public string Status { get; set; } = string.Empty;
+    // Same workflow phase as SalesOrderListResponse.Phase (pr-needed / pr-processing / gr-pending /
+    // do-ready / invoice-ready / completed / cancelled) — see SalesOrderService.ComputeOpenPhase.
+    public string Phase { get; set; } = string.Empty;
     public decimal SubTotal { get; set; }
     public decimal TaxAmount { get; set; }
     public decimal GrandTotal { get; set; }
@@ -79,6 +82,10 @@ public class SalesOrderListResponse
     public DateOnly Date { get; set; }
     public DateOnly? ExpectedDate { get; set; }
     public string Status { get; set; } = string.Empty;
+    // Same workflow phase shown by the "Progress SO" stepper on the detail page
+    // (pr-needed / pr-processing / gr-pending / do-ready / invoice-ready / completed / cancelled),
+    // computed here instead of Status so the list matches the detail page's progress.
+    public string Phase { get; set; } = string.Empty;
     public decimal GrandTotal { get; set; }
     public string? RefQuotation { get; set; }
 }
