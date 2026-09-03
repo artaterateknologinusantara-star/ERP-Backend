@@ -133,9 +133,6 @@ public class InvoiceService : IInvoiceService
             }
         }
 
-        _db.Invoices.Add(inv);
-        await _db.SaveChangesAsync();
-
         // Posting GL: Debit Piutang Usaha = Total, Kredit Pendapatan Penjualan = Subtotal, Kredit
         // Utang Pajak Keluaran = PPN. Subtotal/PPN dihitung persis sama seperti ToDto (reverse-calculate
         // dari Amount kalau tidak ada item SO) supaya angka jurnal selalu cocok dengan yang ditampilkan ke user.
@@ -147,17 +144,41 @@ public class InvoiceService : IInvoiceService
             ? Math.Round(subTotal * taxRate, 2)
             : inv.Amount - subTotal;
 
+        // Retensi: kalau SalesOrder terkait punya RetentionPercentage > 0, sebagian Piutang Usaha
+        // dipindah ke Piutang Retensi (1-2100) — dihitung dari subTotal PRE-TAX, PPN tetap tertagih
+        // penuh dan tidak ikut ditahan. Invoice tanpa SO atau RetentionPercentage = 0 tetap
+        // RetentionAmount = 0, sama persis dengan perilaku sebelum perubahan ini.
+        if (request.SalesOrderId.HasValue)
+        {
+            var salesOrder = await _db.SalesOrders.FindAsync(request.SalesOrderId.Value);
+            if (salesOrder is not null && salesOrder.RetentionPercentage > 0)
+                inv.RetentionAmount = Math.Round(subTotal * (salesOrder.RetentionPercentage / 100m), 2);
+        }
+
+        _db.Invoices.Add(inv);
+        await _db.SaveChangesAsync();
+
+        var postingLines = inv.RetentionAmount == 0
+            ? new PostingLine[]
+            {
+                new("1-2000", inv.Amount, 0, "Piutang Usaha"),
+                new("4-1000", 0, subTotal, "Pendapatan Penjualan"),
+                new("2-2000", 0, taxAmount, "Utang Pajak Keluaran (PPN Keluaran)"),
+            }
+            : new PostingLine[]
+            {
+                new("1-2000", inv.Amount - inv.RetentionAmount, 0, "Piutang Usaha"),
+                new("1-2100", inv.RetentionAmount, 0, "Piutang Retensi"),
+                new("4-1000", 0, subTotal, "Pendapatan Penjualan"),
+                new("2-2000", 0, taxAmount, "Utang Pajak Keluaran (PPN Keluaran)"),
+            };
+
         await _journalPostingService.PostAsync(
             $"Invoice AR {inv.No}",
             JournalSourceType.SalesInvoice,
             inv.Id,
             DateTimeOffset.UtcNow,
-            new PostingLine[]
-            {
-                new("1-2000", inv.Amount, 0, "Piutang Usaha"),
-                new("4-1000", 0, subTotal, "Pendapatan Penjualan"),
-                new("2-2000", 0, taxAmount, "Utang Pajak Keluaran (PPN Keluaran)"),
-            });
+            postingLines);
 
         await tx.CommitAsync();
         return (await GetByIdAsync(inv.Id))!;
@@ -172,6 +193,17 @@ public class InvoiceService : IInvoiceService
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (inv is null) return null;
+
+        // Cap: tidak boleh menagih lebih dari (Amount - retensi yang belum dilepas). Formula ini
+        // otomatis jadi cap terhadap Amount biasa untuk invoice tanpa retensi (RetentionAmount = 0),
+        // sekaligus menutup celah overpayment pra-existing yang tidak pernah divalidasi di sini
+        // (lihat SalesOrderPaymentService.ApplyToInvoiceAsync untuk pola pesan error yang sama).
+        var maxCollectible = inv.Amount - inv.RetentionAmount + inv.RetentionReleasedAmount;
+        if (inv.Paid + request.Amount > maxCollectible)
+            throw new InvalidOperationException(
+                $"Jumlah pembayaran (Rp {request.Amount:N0}) melebihi sisa yang bisa ditagih " +
+                $"(Rp {(maxCollectible - inv.Paid):N0}). " +
+                $"Retensi sebesar Rp {(inv.RetentionAmount - inv.RetentionReleasedAmount):N0} belum dilepas.");
 
         if (!Enum.TryParse<PaymentMethod>(request.Method, true, out var method))
             method = PaymentMethod.Transfer;
@@ -204,6 +236,51 @@ public class InvoiceService : IInvoiceService
             {
                 new("1-1001", request.Amount, 0, "Kas masuk dari pelunasan piutang"),
                 new("1-2000", 0, request.Amount, "Pelunasan Piutang Usaha"),
+            });
+
+        await tx.CommitAsync();
+        return (await GetByIdAsync(id))!;
+    }
+
+    public async Task<InvoiceDto?> ReleaseRetentionAsync(Guid id, RetentionReleaseRequest request)
+    {
+        if (request.Amount <= 0)
+            throw new InvalidOperationException("Jumlah retensi yang dilepas harus lebih besar dari 0.");
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        var inv = await _db.Invoices.FirstOrDefaultAsync(x => x.Id == id);
+        if (inv is null) return null;
+
+        var remainingRetention = inv.RetentionAmount - inv.RetentionReleasedAmount;
+        if (request.Amount > remainingRetention)
+            throw new InvalidOperationException(
+                $"Jumlah yang dilepas (Rp {request.Amount:N0}) melebihi sisa retensi yang bisa dilepas " +
+                $"(Rp {remainingRetention:N0}).");
+
+        var release = new RetentionRelease
+        {
+            InvoiceId = id,
+            ReleaseDate = request.ReleaseDate,
+            Amount = request.Amount,
+            Notes = request.Notes,
+        };
+
+        _db.RetentionReleases.Add(release);
+        inv.RetentionReleasedAmount += request.Amount;
+        inv.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync();
+
+        await _journalPostingService.PostAsync(
+            $"Pelepasan Retensi Invoice {inv.No}",
+            JournalSourceType.RetentionRelease,
+            release.Id,
+            request.ReleaseDate,
+            new PostingLine[]
+            {
+                new("1-2000", request.Amount, 0, "Piutang Usaha"),
+                new("1-2100", 0, request.Amount, "Piutang Retensi"),
             });
 
         await tx.CommitAsync();
@@ -259,6 +336,8 @@ public class InvoiceService : IInvoiceService
         Amount = x.Amount,
         Paid = x.Paid,
         Balance = x.Balance,
+        RetentionAmount = x.RetentionAmount,
+        RetentionReleasedAmount = x.RetentionReleasedAmount,
         AgingDays = (x.Status == InvoiceStatus.Overdue && x.DueDate < today)
             ? (today.DayNumber - x.DueDate.DayNumber)
             : 0,
@@ -287,6 +366,8 @@ public class InvoiceService : IInvoiceService
             Amount       = x.Amount,
             Paid         = x.Paid,
             Balance      = x.Balance,
+            RetentionAmount = x.RetentionAmount,
+            RetentionReleasedAmount = x.RetentionReleasedAmount,
             CustomerId   = x.CustomerId,
             SalesOrderId = x.SalesOrderId,
             Notes        = x.Notes,

@@ -18,6 +18,7 @@ public class SalesOrder : BaseEntity
     public string? Terms { get; set; }
     public DateOnly? ExpectedDate { get; set; }
     public string? RefQuotation { get; set; }
+    public decimal RetentionPercentage { get; set; } = 0;
 
     public Quotation? Quotation { get; set; }
     public Customer Customer { get; set; } = null!;

@@ -61,6 +61,14 @@ public class InvoiceController : ControllerBase
         return Ok(ApiResponse<InvoiceDto>.Ok(item, "Pembayaran berhasil dicatat."));
     }
 
+    [HttpPost("{id:guid}/retention-release")]
+    public async Task<ActionResult<ApiResponse<InvoiceDto>>> ReleaseRetention(Guid id, [FromBody] RetentionReleaseRequest request)
+    {
+        var item = await _svc.ReleaseRetentionAsync(id, request);
+        if (item is null) return NotFound(ApiResponse<InvoiceDto>.Fail("Invoice tidak ditemukan."));
+        return Ok(ApiResponse<InvoiceDto>.Ok(item, "Retensi berhasil dilepas."));
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {

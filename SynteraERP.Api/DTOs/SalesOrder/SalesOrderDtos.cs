@@ -24,6 +24,7 @@ public class CreateSalesOrderRequest
     public string? Terms { get; set; }
     public string? RefQuotation { get; set; }
     public string? Notes { get; set; }
+    public decimal RetentionPercentage { get; set; } = 0;
     public List<SalesOrderItemDto> Items { get; set; } = new();
 }
 
@@ -69,6 +70,7 @@ public class SalesOrderDetailResponse
     public decimal SubTotal { get; set; }
     public decimal TaxAmount { get; set; }
     public decimal GrandTotal { get; set; }
+    public decimal RetentionPercentage { get; set; }
     public List<SalesOrderItemResponse> Items { get; set; } = new();
     public DateTimeOffset CreatedAt { get; set; }
 }

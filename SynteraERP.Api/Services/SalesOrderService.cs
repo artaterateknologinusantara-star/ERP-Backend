@@ -202,6 +202,9 @@ public class SalesOrderService : ISalesOrderService
 
     public async Task<SalesOrderDetailResponse> CreateAsync(CreateSalesOrderRequest request)
     {
+        if (request.RetentionPercentage < 0 || request.RetentionPercentage > 100)
+            throw new ArgumentException("RetentionPercentage harus di antara 0 dan 100.");
+
         string? terms = request.Terms;
         string? refQuotation = request.RefQuotation;
 
@@ -260,6 +263,7 @@ public class SalesOrderService : ISalesOrderService
             QuotationId = request.QuotationId,
             Status = SalesOrderStatus.Open,
             Total = grandTotal,
+            RetentionPercentage = request.RetentionPercentage,
             Items = items,
         };
 
@@ -481,6 +485,7 @@ public class SalesOrderService : ISalesOrderService
             SubTotal = subTotal,
             TaxAmount = taxAmount,
             GrandTotal = grandTotal,
+            RetentionPercentage = so.RetentionPercentage,
             Items = so.Items.Select(i => new SalesOrderItemResponse
             {
                 Id = i.Id,

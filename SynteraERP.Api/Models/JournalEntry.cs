@@ -33,6 +33,7 @@ public enum JournalSourceType
     OpeningBalance,
     CustomerAdvanceReceived,
     CustomerAdvanceApplied,
+    RetentionRelease,
 }
 
 public enum JournalEntryStatus

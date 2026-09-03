@@ -19,6 +19,8 @@ public class InvoiceListDto
     public decimal Amount { get; set; }
     public decimal Paid { get; set; }
     public decimal Balance { get; set; }
+    public decimal RetentionAmount { get; set; }
+    public decimal RetentionReleasedAmount { get; set; }
     public int AgingDays { get; set; }
 }
 
@@ -85,4 +87,11 @@ public class InvoiceStatsResponse
     public int Outstanding { get; set; }
     public int Overdue { get; set; }
     public decimal TotalCollected { get; set; }
+}
+
+public class RetentionReleaseRequest
+{
+    public DateTimeOffset ReleaseDate { get; set; }
+    public decimal Amount { get; set; }
+    public string? Notes { get; set; }
 }

@@ -15,6 +15,8 @@ public class Invoice : BaseEntity
     public string? Notes { get; set; }
     public string? Terms { get; set; }
     public string? NomorFakturPajak { get; set; }
+    public decimal RetentionAmount { get; set; } = 0;
+    public decimal RetentionReleasedAmount { get; set; } = 0;
 
     public decimal Balance => Amount - Paid;
 

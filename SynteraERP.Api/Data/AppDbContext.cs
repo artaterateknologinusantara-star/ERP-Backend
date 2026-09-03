@@ -45,6 +45,7 @@ public class AppDbContext : DbContext
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<SalesOrderPayment> SalesOrderPayments => Set<SalesOrderPayment>();
     public DbSet<DownPaymentApplication> DownPaymentApplications => Set<DownPaymentApplication>();
+    public DbSet<RetentionRelease> RetentionReleases => Set<RetentionRelease>();
 
     // ─── Purchasing ───────────────────────────────────────────────────────────
     public DbSet<PurchaseRequest> PurchaseRequests => Set<PurchaseRequest>();
@@ -292,6 +293,7 @@ public class AppDbContext : DbContext
             e.Property(s => s.No).HasMaxLength(30).IsRequired();
             e.Property(s => s.ProjectName).HasMaxLength(300).IsRequired();
             e.Property(s => s.Total).HasPrecision(18, 2);
+            e.Property(s => s.RetentionPercentage).HasPrecision(5, 2);
             e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
 
             e.HasOne(s => s.Customer)
@@ -349,6 +351,8 @@ public class AppDbContext : DbContext
             e.Property(i => i.No).HasMaxLength(30).IsRequired();
             e.Property(i => i.Amount).HasPrecision(18, 2);
             e.Property(i => i.Paid).HasPrecision(18, 2);
+            e.Property(i => i.RetentionAmount).HasPrecision(18, 2);
+            e.Property(i => i.RetentionReleasedAmount).HasPrecision(18, 2);
             e.Property(i => i.Status).HasConversion<string>().HasMaxLength(20);
             e.Ignore(i => i.Balance);
 
@@ -406,6 +410,18 @@ public class AppDbContext : DbContext
              .WithMany(x => x.Applications)
              .HasForeignKey(x => x.SalesOrderPaymentId)
              .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.Invoice)
+             .WithMany()
+             .HasForeignKey(x => x.InvoiceId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── RetentionRelease ─────────────────────────────────────────────────
+        b.Entity<RetentionRelease>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
 
             e.HasOne(x => x.Invoice)
              .WithMany()
@@ -924,6 +940,7 @@ public class AppDbContext : DbContext
             NewAccount("4", "1-1003", "Bank Mandiri", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
             NewAccount("5", "1-1004", "Bank BNI", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
             NewAccount("6", "1-2000", "Piutang Usaha", AccountType.Asset, NormalBalanceType.Debit),
+            NewAccount("23", "1-2100", "Piutang Retensi", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("7", "1-3000", "Persediaan", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("21", "1-3500", "Barang Diterima Belum Ditagih (GRNI)", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("8", "1-4000", "Aset Tetap", AccountType.Asset, NormalBalanceType.Debit),

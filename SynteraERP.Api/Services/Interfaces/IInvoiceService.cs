@@ -9,6 +9,7 @@ public interface IInvoiceService
     Task<InvoiceDto?> GetByIdAsync(Guid id);
     Task<InvoiceDto> CreateAsync(CreateInvoiceRequest request);
     Task<InvoiceDto?> RecordPaymentAsync(Guid id, RecordPaymentRequest request);
+    Task<InvoiceDto?> ReleaseRetentionAsync(Guid id, RetentionReleaseRequest request);
     Task<bool> DeleteAsync(Guid id);
     Task<InvoiceStatsResponse> GetStatsAsync();
 }

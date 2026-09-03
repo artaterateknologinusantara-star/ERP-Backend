@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SynteraERP.Api.Data;
 
@@ -11,9 +12,11 @@ using SynteraERP.Api.Data;
 namespace SynteraERP.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260903133627_AddPiutangRetensiAccount")]
+    partial class AddPiutangRetensiAccount
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1446,14 +1449,6 @@ namespace SynteraERP.Api.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<decimal>("RetentionAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("RetentionReleasedAmount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<Guid?>("SalesOrderId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2678,47 +2673,6 @@ namespace SynteraERP.Api.Migrations
                     b.ToTable("QuotationTabs");
                 });
 
-            modelBuilder.Entity("SynteraERP.Api.Models.RetentionRelease", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("InvoiceId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTimeOffset>("ReleaseDate")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("InvoiceId");
-
-                    b.ToTable("RetentionReleases");
-                });
-
             modelBuilder.Entity("SynteraERP.Api.Models.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2762,32 +2716,32 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4730), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4650), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Full system access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Administrator",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4730), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4650), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4740), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4650), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Quotation and sales module access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Sales",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4740), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4650), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4740), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4650), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Invoice and payment access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Finance",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4740), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4650), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -2836,10 +2790,6 @@ namespace SynteraERP.Api.Migrations
 
                     b.Property<string>("RefQuotation")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<decimal>("RetentionPercentage")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
 
                     b.Property<Guid>("SalesId")
                         .HasColumnType("uniqueidentifier");
@@ -3382,14 +3332,14 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4800), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4710), new TimeSpan(0, 0, 0, 0, 0)),
                             Email = "admin@syntera.id",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Administrator",
                             PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
                             RoleId = new Guid("10000000-0000-0000-0000-000000000001"),
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 38, 1, 813, DateTimeKind.Unspecified).AddTicks(4800), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 3, 13, 36, 27, 62, DateTimeKind.Unspecified).AddTicks(4710), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -3823,17 +3773,6 @@ namespace SynteraERP.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Quotation");
-                });
-
-            modelBuilder.Entity("SynteraERP.Api.Models.RetentionRelease", b =>
-                {
-                    b.HasOne("SynteraERP.Api.Models.Invoice", "Invoice")
-                        .WithMany()
-                        .HasForeignKey("InvoiceId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Invoice");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.SalesOrder", b =>

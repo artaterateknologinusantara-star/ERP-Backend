@@ -33,7 +33,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
             .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.SalesOrder)
-            .Where(x => x.Amount > x.Paid)
+            .Where(x => (x.Amount - x.RetentionAmount + x.RetentionReleasedAmount) > x.Paid)
             .OrderBy(x => x.DueDate)
             .ToListAsync();
 
@@ -71,7 +71,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
 
         var invoices = await db.Invoices
             .AsNoTracking()
-            .Where(x => x.Amount > x.Paid)
+            .Where(x => (x.Amount - x.RetentionAmount + x.RetentionReleasedAmount) > x.Paid)
             .ToListAsync();
 
         var items = invoices.Select(x => new
@@ -251,7 +251,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
         // this endpoint only needs a handful of numbers for the dashboard tiles.
         var payments = db.Payments.Where(x => !x.Invoice.IsDeleted);
         var poPayments = db.POPayments.AsQueryable();
-        var invoices = db.Invoices.Where(x => x.Amount > x.Paid);
+        var invoices = db.Invoices.Where(x => (x.Amount - x.RetentionAmount + x.RetentionReleasedAmount) > x.Paid);
         // Anything not Draft/Cancelled that's also Ordered/PartialReceive is just Ordered/PartialReceive.
         var posAP = db.PurchaseOrders.Where(x =>
             x.Status == PurchaseOrderStatus.Ordered ||
