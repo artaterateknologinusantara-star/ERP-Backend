@@ -497,6 +497,7 @@ public class PurchaseOrderService : IPurchaseOrderService
                 Price        = i.Price,
                 Total        = i.Total,
                 ReceivedQty  = i.ReceivedQty,
+                InvoicedQty  = i.InvoicedQty,
                 ItemMasterId = i.ItemMasterId,
             }).ToList(),
             Payments = x.Payments.OrderBy(p => p.PaymentDate).Select(p => new POPaymentResponse

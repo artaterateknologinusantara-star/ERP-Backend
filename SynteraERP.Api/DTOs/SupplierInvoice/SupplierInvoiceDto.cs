@@ -44,6 +44,9 @@ public class SupplierInvoiceListDto
     public string SupplierName { get; set; } = string.Empty;
     public DateOnly InvoiceDate { get; set; }
     public DateOnly DueDate { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal PPNMasukan { get; set; }
+    public string? NomorFakturPajak { get; set; }
     public decimal Total { get; set; }
     public decimal Paid { get; set; }
     public decimal Balance { get; set; }

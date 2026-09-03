@@ -62,6 +62,7 @@ public class PurchaseOrderItemDto
     public decimal Price { get; set; }
     public decimal Total { get; set; }
     public decimal ReceivedQty { get; set; }
+    public decimal InvoicedQty { get; set; }
     public Guid? ItemMasterId { get; set; }
 }
 
