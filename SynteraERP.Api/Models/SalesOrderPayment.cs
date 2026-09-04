@@ -9,9 +9,11 @@ public class SalesOrderPayment
     public DateOnly PaymentDate { get; set; }
     public decimal Amount { get; set; }
     public PaymentMethod Method { get; set; }
+    public Guid? CashBankAccountId { get; set; }
     public string? Reference { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    public Account? CashBankAccount { get; set; }
     public ICollection<DownPaymentApplication> Applications { get; set; } = [];
 }

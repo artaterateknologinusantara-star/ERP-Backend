@@ -246,12 +246,15 @@ public class InvoiceService : IInvoiceService
         if (!Enum.TryParse<PaymentMethod>(request.Method, true, out var method))
             method = PaymentMethod.Transfer;
 
+        var (cashBankAccountId, cashBankAccountCode) = await ResolveCashBankAccountAsync(request.CashBankAccountId);
+
         var payment = new Payment
         {
             InvoiceId = id,
             PaymentDate = request.Date,
             Amount = request.Amount,
             Method = method,
+            CashBankAccountId = cashBankAccountId,
             Reference = request.Reference,
             Notes = request.Notes,
         };
@@ -262,9 +265,6 @@ public class InvoiceService : IInvoiceService
 
         await _db.SaveChangesAsync();
 
-        // Semua Cash In/Out saat ini diposting ke akun Kas (1-1001) karena Payment.Method/POPayment.Method
-        // tidak menyimpan info bank account spesifik. Perlu field bank account terstruktur di masa depan
-        // untuk rekonsiliasi kas/bank yang akurat.
         await _journalPostingService.PostAsync(
             $"Pembayaran Invoice {inv.No}",
             JournalSourceType.CashIn,
@@ -272,12 +272,41 @@ public class InvoiceService : IInvoiceService
             new DateTimeOffset(request.Date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
             new PostingLine[]
             {
-                new("1-1001", request.Amount, 0, "Kas masuk dari pelunasan piutang"),
+                new(cashBankAccountCode, request.Amount, 0, "Kas masuk dari pelunasan piutang"),
                 new("1-2000", 0, request.Amount, "Pelunasan Piutang Usaha"),
             });
 
         await tx.CommitAsync();
         return (await GetByIdAsync(id))!;
+    }
+
+    // Pola sama persis dengan ExpenseService.CreateAsync: kalau CashBankAccountId tidak diisi,
+    // default ke akun Kas (1-1001) supaya Cash In/Out lama yang tidak mengisi akun tetap
+    // ter-posting persis seperti sebelum field ini ada.
+    private async Task<(Guid Id, string Code)> ResolveCashBankAccountAsync(Guid? cashBankAccountId)
+    {
+        if (cashBankAccountId.HasValue)
+        {
+            var account = await _db.Accounts
+                .Where(x => x.Id == cashBankAccountId.Value && !x.IsDeleted)
+                .Select(x => new { x.Id, x.Code })
+                .FirstOrDefaultAsync();
+
+            if (account is null)
+                throw new InvalidOperationException("Akun Kas/Bank yang dipilih tidak ditemukan.");
+
+            return (account.Id, account.Code);
+        }
+
+        var defaultAccount = await _db.Accounts
+            .Where(x => x.Code == "1-1001" && !x.IsDeleted)
+            .Select(x => new { x.Id, x.Code })
+            .FirstOrDefaultAsync();
+
+        if (defaultAccount is null)
+            throw new InvalidOperationException("Akun default Kas (1-1001) tidak ditemukan di Chart of Accounts.");
+
+        return (defaultAccount.Id, defaultAccount.Code);
     }
 
     public async Task<InvoiceDto?> ReleaseRetentionAsync(Guid id, RetentionReleaseRequest request)
@@ -420,6 +449,7 @@ public class InvoiceService : IInvoiceService
                 PaymentDate = p.PaymentDate,
                 Amount      = p.Amount,
                 Method      = p.Method.ToString(),
+                CashBankAccountId = p.CashBankAccountId,
                 Reference   = p.Reference,
                 Notes       = p.Notes,
             }).ToList(),

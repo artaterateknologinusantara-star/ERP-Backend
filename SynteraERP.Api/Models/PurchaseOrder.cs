@@ -28,9 +28,12 @@ public class POPayment
     public DateOnly PaymentDate { get; set; }
     public decimal Amount { get; set; }
     public string Method { get; set; } = string.Empty;
+    public Guid? CashBankAccountId { get; set; }
     public string? Reference { get; set; }
     public string? Notes { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+    public Account? CashBankAccount { get; set; }
 }
 
 public class PurchaseOrderItem

@@ -7,6 +7,7 @@ public class SalesOrderPaymentDto
     public DateOnly PaymentDate { get; set; }
     public decimal Amount { get; set; }
     public string Method { get; set; } = string.Empty;
+    public Guid? CashBankAccountId { get; set; }
     public string? Reference { get; set; }
     public string? Notes { get; set; }
     public decimal AmountApplied { get; set; }
@@ -19,6 +20,7 @@ public class RecordDownPaymentRequest
     public DateOnly? PaymentDate { get; set; }
     public decimal Amount { get; set; }
     public string Method { get; set; } = "Transfer";
+    public Guid? CashBankAccountId { get; set; }
     public string? Reference { get; set; }
     public string? Notes { get; set; }
 }

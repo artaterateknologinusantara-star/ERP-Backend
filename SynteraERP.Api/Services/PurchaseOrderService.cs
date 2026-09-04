@@ -157,25 +157,25 @@ public class PurchaseOrderService : IPurchaseOrderService
             .FirstOrDefaultAsync()
             ?? throw new InvalidOperationException("Purchase Order tidak ditemukan.");
 
+        var (cashBankAccountId, cashBankAccountCode) = await ResolveCashBankAccountAsync(request.CashBankAccountId);
+
         var payment = new POPayment
         {
-            Id              = Guid.NewGuid(),
-            PurchaseOrderId = poId,
-            PaymentDate     = request.PaymentDate,
-            Amount          = request.Amount,
-            Method          = request.Method,
-            Reference       = request.Reference,
-            Notes           = request.Notes,
+            Id                = Guid.NewGuid(),
+            PurchaseOrderId   = poId,
+            PaymentDate       = request.PaymentDate,
+            Amount            = request.Amount,
+            Method            = request.Method,
+            CashBankAccountId = cashBankAccountId,
+            Reference         = request.Reference,
+            Notes             = request.Notes,
         };
 
         _db.POPayments.Add(payment);
         await _db.SaveChangesAsync();
 
-        // Semua Cash In/Out saat ini diposting ke akun Kas (1-1001) karena Payment.Method/POPayment.Method
-        // tidak menyimpan info bank account spesifik. Perlu field bank account terstruktur di masa depan
-        // untuk rekonsiliasi kas/bank yang akurat.
-        // Catatan tambahan: POPayment.Method adalah string bebas (bukan enum terstruktur seperti
-        // Payment.Method di sisi AR) - potential cleanup di masa depan, tidak diperbaiki di Fase 2 ini.
+        // Catatan: POPayment.Method adalah string bebas (bukan enum terstruktur seperti
+        // Payment.Method di sisi AR) - potential cleanup di masa depan, tidak diperbaiki di sini.
         await _journalPostingService.PostAsync(
             $"Pembayaran PO {poNo}",
             JournalSourceType.CashOut,
@@ -184,21 +184,51 @@ public class PurchaseOrderService : IPurchaseOrderService
             new PostingLine[]
             {
                 new("2-1000", request.Amount, 0, "Pelunasan Utang Usaha"),
-                new("1-1001", 0, request.Amount, "Kas keluar untuk pembayaran PO"),
+                new(cashBankAccountCode, 0, request.Amount, "Kas keluar untuk pembayaran PO"),
             });
 
         return payment;
     }
 
+    // Pola sama persis dengan ExpenseService.CreateAsync: kalau CashBankAccountId tidak diisi,
+    // default ke akun Kas (1-1001) supaya Cash Out lama yang tidak mengisi akun tetap ter-posting
+    // persis seperti sebelum field ini ada.
+    private async Task<(Guid Id, string Code)> ResolveCashBankAccountAsync(Guid? cashBankAccountId)
+    {
+        if (cashBankAccountId.HasValue)
+        {
+            var account = await _db.Accounts
+                .Where(x => x.Id == cashBankAccountId.Value && !x.IsDeleted)
+                .Select(x => new { x.Id, x.Code })
+                .FirstOrDefaultAsync();
+
+            if (account is null)
+                throw new InvalidOperationException("Akun Kas/Bank yang dipilih tidak ditemukan.");
+
+            return (account.Id, account.Code);
+        }
+
+        var defaultAccount = await _db.Accounts
+            .Where(x => x.Code == "1-1001" && !x.IsDeleted)
+            .Select(x => new { x.Id, x.Code })
+            .FirstOrDefaultAsync();
+
+        if (defaultAccount is null)
+            throw new InvalidOperationException("Akun default Kas (1-1001) tidak ditemukan di Chart of Accounts.");
+
+        return (defaultAccount.Id, defaultAccount.Code);
+    }
+
     private static POPaymentResponse ToPaymentResponse(POPayment payment) => new()
     {
-        Id          = payment.Id,
-        PaymentDate = payment.PaymentDate,
-        Amount      = payment.Amount,
-        Method      = payment.Method,
-        Reference   = payment.Reference,
-        Notes       = payment.Notes,
-        CreatedAt   = payment.CreatedAt,
+        Id                = payment.Id,
+        PaymentDate       = payment.PaymentDate,
+        Amount            = payment.Amount,
+        Method            = payment.Method,
+        CashBankAccountId = payment.CashBankAccountId,
+        Reference         = payment.Reference,
+        Notes             = payment.Notes,
+        CreatedAt         = payment.CreatedAt,
     };
 
     public async Task<PurchaseOrderDto> CreateAsync(CreatePurchaseOrderRequest request)

@@ -387,6 +387,11 @@ public class AppDbContext : DbContext
              .WithMany(i => i.Payments)
              .HasForeignKey(p => p.InvoiceId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(p => p.CashBankAccount)
+             .WithMany()
+             .HasForeignKey(p => p.CashBankAccountId)
+             .OnDelete(DeleteBehavior.Restrict)
+             .IsRequired(false);
         });
 
         // ─── Down Payment Customer ──────────────────────────────────────────────
@@ -400,6 +405,12 @@ public class AppDbContext : DbContext
              .WithMany(s => s.DownPayments)
              .HasForeignKey(x => x.SalesOrderId)
              .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(x => x.CashBankAccount)
+             .WithMany()
+             .HasForeignKey(x => x.CashBankAccountId)
+             .OnDelete(DeleteBehavior.Restrict)
+             .IsRequired(false);
         });
 
         b.Entity<DownPaymentApplication>(e =>
@@ -511,6 +522,11 @@ public class AppDbContext : DbContext
              .WithMany(x => x.Payments)
              .HasForeignKey(x => x.PurchaseOrderId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.CashBankAccount)
+             .WithMany()
+             .HasForeignKey(x => x.CashBankAccountId)
+             .OnDelete(DeleteBehavior.Restrict)
+             .IsRequired(false);
         });
 
         // ─── SupplierInvoice (Fase 4) ───────────────────────────────────────────
