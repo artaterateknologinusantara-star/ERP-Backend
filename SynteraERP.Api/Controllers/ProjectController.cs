@@ -49,7 +49,8 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         string Name, Guid CustomerId, Guid? SalesOrderId,
         Guid? ProjectManagerId, DateOnly StartDate, DateOnly? EndDate,
         decimal Budget, int Progress, string Status, string? Notes,
-        string? RevenueRecognitionMethod = null, decimal? EstimatedTotalCost = null);
+        string? RevenueRecognitionMethod = null, decimal? EstimatedTotalCost = null,
+        bool ConfirmRevenueTrueUp = false);
 
     public record CreateTaskRequest(
         string Title, string? Description,
@@ -222,6 +223,78 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         if (validationError is not null)
             throw new InvalidOperationException(validationError);
 
+        // True-up (Fase B3): kalau Project POC ditutup (→Completed) sebelum % completion mencapai
+        // 100 dari sisi Catat Progres manual, sisa pendapatan yang belum diakui WAJIB diakui sekaligus
+        // di titik penutupan - kalau tidak, sisanya hilang permanen (tidak ada lagi kesempatan Catat
+        // Progres untuk Project yang sudah Completed). Butuh konfirmasi eksplisit dari user dulu
+        // (ConfirmRevenueTrueUp) karena ini mem-posting jurnal - request pertama tanpa konfirmasi
+        // HARUS murni informatif (400/409), TIDAK BOLEH mengubah project/db apa pun.
+        var isCompletingNow = status == ProjectStatus.Completed && project.Status != ProjectStatus.Completed;
+        if (isCompletingNow && project.RevenueRecognitionMethod == RevenueRecognitionMethod.PercentageOfCompletion)
+        {
+            var contractValue = await ComputeContractValueAsync(project.SalesOrderId);
+            var lastRecognition = await db.ProjectRevenueRecognitions
+                .Where(r => r.ProjectId == project.Id)
+                .OrderByDescending(r => r.RecognitionDate)
+                .FirstOrDefaultAsync();
+            var cumulativeSoFar = lastRecognition?.CumulativeRevenueRecognized ?? 0;
+            var remainingRevenue = Math.Round(contractValue - cumulativeSoFar, 2);
+
+            if (remainingRevenue > 0.01m)
+            {
+                if (!req.ConfirmRevenueTrueUp)
+                {
+                    // ApiResponse<T> sudah punya Data yang tetap bisa dipakai walau Success=false
+                    // (lihat ApiResponse<T>.Fail() cuma helper, propertinya sendiri tidak dibatasi) -
+                    // jadi tidak perlu shape response baru, cukup construct manual di sini.
+                    return Conflict(new ApiResponse<object>
+                    {
+                        Success = false,
+                        Message = $"Menutup proyek ini akan mengakui sisa pendapatan Rp {remainingRevenue:N0}. Konfirmasi untuk lanjutkan.",
+                        Data = new
+                        {
+                            requiresConfirmation = true,
+                            remainingRevenue,
+                            contractValue,
+                            currentPercentage = contractValue > 0 ? Math.Round(cumulativeSoFar / contractValue * 100, 2) : 0,
+                        },
+                    });
+                }
+
+                await using var tx = await db.Database.BeginTransactionAsync();
+
+                var actualCostFresh = await ComputeActualCostToDateAsync(project.SalesOrderId);
+                var prr = new ProjectRevenueRecognition
+                {
+                    ProjectId                   = project.Id,
+                    RecognitionDate             = DateTimeOffset.UtcNow,
+                    ActualCostToDate            = actualCostFresh,
+                    PercentageComplete          = 100,
+                    CumulativeRevenueRecognized = contractValue,
+                    IncrementalRevenueThisEntry = remainingRevenue,
+                };
+                db.ProjectRevenueRecognitions.Add(prr);
+                await db.SaveChangesAsync();
+
+                var journalId = await journalPostingService.PostAsync(
+                    $"Pengakuan Pendapatan Penutupan Proyek {project.Code} (true-up ke 100%)",
+                    JournalSourceType.RevenueRecognition,
+                    prr.Id,
+                    DateTimeOffset.UtcNow,
+                    new PostingLine[]
+                    {
+                        new("1-2200", remainingRevenue, 0, "Piutang Belum Ditagih"),
+                        new("4-1000", 0, remainingRevenue, "Pendapatan Penjualan"),
+                    });
+
+                prr.JournalEntryId = journalId;
+                project.UnbilledRevenueBalance += remainingRevenue;
+                await db.SaveChangesAsync();
+
+                await tx.CommitAsync();
+            }
+        }
+
         project.Name             = req.Name;
         project.CustomerId       = req.CustomerId;
         project.SalesOrderId     = req.SalesOrderId;
@@ -334,37 +407,11 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         if (project.SalesOrderId is null)
             throw new InvalidOperationException("Project ini tidak terhubung ke Sales Order.");
 
-        var soId = project.SalesOrderId.Value;
-
-        // ActualCostToDate ("ReceivedCost") - pola JOIN sama persis dengan VendorPayment di GetCost
-        // (PurchaseRequest → PurchaseOrder), targetnya diganti ke PurchaseOrderItem.ReceivedQty*Price.
-        var prIds = await db.PurchaseRequests
-            .Where(pr => pr.SalesOrderId == soId)
-            .Select(pr => pr.Id)
-            .ToListAsync();
-
-        decimal actualCostToDate = 0;
-        if (prIds.Count > 0)
-        {
-            var poIds = await db.PurchaseOrders
-                .Where(po => po.PurchaseRequestId.HasValue && prIds.Contains(po.PurchaseRequestId.Value))
-                .Select(po => po.Id)
-                .ToListAsync();
-
-            if (poIds.Count > 0)
-                actualCostToDate = await db.PurchaseOrderItems
-                    .Where(item => poIds.Contains(item.POId))
-                    .SumAsync(item => (decimal?)(item.ReceivedQty * item.Price)) ?? 0;
-        }
-
+        var actualCostToDate = await ComputeActualCostToDateAsync(project.SalesOrderId);
         var percentageComplete = Math.Min(100m,
             Math.Round(actualCostToDate / project.EstimatedTotalCost.Value * 100, 2));
 
-        // ContractValue = SUM(SalesOrderItem.Amount), pre-tax - BUKAN SalesOrder.Total (yang include PPN).
-        var contractValue = await db.SalesOrderItems
-            .Where(i => i.SalesOrderId == soId)
-            .SumAsync(i => (decimal?)i.Amount) ?? 0;
-
+        var contractValue = await ComputeContractValueAsync(project.SalesOrderId);
         var cumulativeNew = Math.Round(contractValue * percentageComplete / 100, 2);
 
         var prevEntry = await db.ProjectRevenueRecognitions
@@ -562,5 +609,41 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         }
 
         return null;
+    }
+
+    // ActualCostToDate ("ReceivedCost") - pola JOIN sama persis dengan VendorPayment di GetCost
+    // (PurchaseRequest → PurchaseOrder), targetnya diganti ke PurchaseOrderItem.ReceivedQty*Price.
+    // Dipakai baik oleh RecordRevenueRecognition maupun true-up di Update (Fase B3).
+    private async Task<decimal> ComputeActualCostToDateAsync(Guid? salesOrderId)
+    {
+        if (salesOrderId is null) return 0;
+
+        var prIds = await db.PurchaseRequests
+            .Where(pr => pr.SalesOrderId == salesOrderId.Value)
+            .Select(pr => pr.Id)
+            .ToListAsync();
+
+        if (prIds.Count == 0) return 0;
+
+        var poIds = await db.PurchaseOrders
+            .Where(po => po.PurchaseRequestId.HasValue && prIds.Contains(po.PurchaseRequestId.Value))
+            .Select(po => po.Id)
+            .ToListAsync();
+
+        if (poIds.Count == 0) return 0;
+
+        return await db.PurchaseOrderItems
+            .Where(item => poIds.Contains(item.POId))
+            .SumAsync(item => (decimal?)(item.ReceivedQty * item.Price)) ?? 0;
+    }
+
+    // ContractValue = SUM(SalesOrderItem.Amount), pre-tax - BUKAN SalesOrder.Total (yang include PPN).
+    private async Task<decimal> ComputeContractValueAsync(Guid? salesOrderId)
+    {
+        if (salesOrderId is null) return 0;
+
+        return await db.SalesOrderItems
+            .Where(i => i.SalesOrderId == salesOrderId.Value)
+            .SumAsync(i => (decimal?)i.Amount) ?? 0;
     }
 }
