@@ -69,6 +69,7 @@ public class AppDbContext : DbContext
     // ─── Project ──────────────────────────────────────────────────────────────
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectTask> ProjectTasks => Set<ProjectTask>();
+    public DbSet<ProjectRevenueRecognition> ProjectRevenueRecognitions => Set<ProjectRevenueRecognition>();
 
     // ─── Audit ────────────────────────────────────────────────────────────────
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -674,6 +675,10 @@ public class AppDbContext : DbContext
             e.Property(p => p.Name).HasMaxLength(300).IsRequired();
             e.Property(p => p.Budget).HasPrecision(18, 2);
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.RevenueRecognitionMethod).HasConversion<string>().HasMaxLength(30);
+            e.Property(p => p.EstimatedTotalCost).HasPrecision(18, 2);
+            e.Property(p => p.UnbilledRevenueBalance).HasPrecision(18, 2);
+            e.Property(p => p.OverbilledBalance).HasPrecision(18, 2);
             e.HasQueryFilter(p => !p.IsDeleted);
 
             e.HasOne(p => p.Customer).WithMany()
@@ -700,6 +705,20 @@ public class AppDbContext : DbContext
             e.HasOne(t => t.AssignedTo).WithMany()
              .HasForeignKey(t => t.AssignedToId)
              .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ─── ProjectRevenueRecognition ───────────────────────────────────────────
+        b.Entity<ProjectRevenueRecognition>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ActualCostToDate).HasPrecision(18, 2);
+            e.Property(x => x.PercentageComplete).HasPrecision(5, 2);
+            e.Property(x => x.CumulativeRevenueRecognized).HasPrecision(18, 2);
+            e.Property(x => x.IncrementalRevenueThisEntry).HasPrecision(18, 2);
+
+            e.HasOne(x => x.Project).WithMany()
+             .HasForeignKey(x => x.ProjectId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ─── CompanySettings ─────────────────────────────────────────────────────
@@ -941,6 +960,7 @@ public class AppDbContext : DbContext
             NewAccount("5", "1-1004", "Bank BNI", AccountType.Asset, NormalBalanceType.Debit, acctKasBankId),
             NewAccount("6", "1-2000", "Piutang Usaha", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("23", "1-2100", "Piutang Retensi", AccountType.Asset, NormalBalanceType.Debit),
+            NewAccount("24", "1-2200", "Piutang Belum Ditagih", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("7", "1-3000", "Persediaan", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("21", "1-3500", "Barang Diterima Belum Ditagih (GRNI)", AccountType.Asset, NormalBalanceType.Debit),
             NewAccount("8", "1-4000", "Aset Tetap", AccountType.Asset, NormalBalanceType.Debit),
@@ -949,6 +969,7 @@ public class AppDbContext : DbContext
             NewAccount("a", "2-2000", "Utang Pajak Keluaran (PPN Keluaran)", AccountType.Liability, NormalBalanceType.Credit),
             NewAccount("b", "2-3000", "Utang Pajak Masukan (PPN Masukan)", AccountType.Liability, NormalBalanceType.Credit),
             NewAccount("22", "2-4000", "Uang Muka Pelanggan", AccountType.Liability, NormalBalanceType.Credit),
+            NewAccount("25", "2-4100", "Termin Diterima Dimuka", AccountType.Liability, NormalBalanceType.Credit),
             // EKUITAS
             NewAccount("c", "3-1000", "Modal", AccountType.Equity, NormalBalanceType.Credit),
             // PENDAPATAN

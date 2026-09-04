@@ -5,13 +5,14 @@ using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
+using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
 
 [Authorize]
 [ApiController]
 [Route("api/projects")]
-public class ProjectController(AppDbContext db) : ControllerBase
+public class ProjectController(AppDbContext db, IJournalPostingService journalPostingService) : ControllerBase
 {
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,9 @@ public class ProjectController(AppDbContext db) : ControllerBase
         Guid? ProjectManagerId, string? ProjectManagerName,
         string Status, int Progress, decimal Budget,
         DateOnly StartDate, DateOnly? EndDate, string? Notes,
-        DateTimeOffset CreatedAt, List<TaskDto> Tasks);
+        DateTimeOffset CreatedAt, List<TaskDto> Tasks,
+        string RevenueRecognitionMethod, decimal? EstimatedTotalCost,
+        decimal UnbilledRevenueBalance, decimal OverbilledBalance);
 
     public record TaskDto(Guid Id, string Title, string? Description,
         Guid? AssignedToId, string? AssignedToName,
@@ -39,12 +42,14 @@ public class ProjectController(AppDbContext db) : ControllerBase
     public record CreateProjectRequest(
         string Name, Guid CustomerId, Guid? SalesOrderId,
         Guid? ProjectManagerId, DateOnly StartDate, DateOnly? EndDate,
-        decimal Budget, string? Notes);
+        decimal Budget, string? Notes,
+        string? RevenueRecognitionMethod = null, decimal? EstimatedTotalCost = null);
 
     public record UpdateProjectRequest(
         string Name, Guid CustomerId, Guid? SalesOrderId,
         Guid? ProjectManagerId, DateOnly StartDate, DateOnly? EndDate,
-        decimal Budget, int Progress, string Status, string? Notes);
+        decimal Budget, int Progress, string Status, string? Notes,
+        string? RevenueRecognitionMethod = null, decimal? EstimatedTotalCost = null);
 
     public record CreateTaskRequest(
         string Title, string? Description,
@@ -67,6 +72,17 @@ public class ProjectController(AppDbContext db) : ControllerBase
         decimal OutstandingAR,
         decimal OutstandingAP,
         decimal EstimatedMargin);
+
+    public record RevenueRecognitionResultDto(
+        decimal PercentageComplete,
+        decimal IncrementalRevenue,
+        decimal CumulativeRevenueRecognized,
+        decimal ActualCostToDate);
+
+    public record ProjectRevenueRecognitionDto(
+        Guid Id, DateTimeOffset RecognitionDate, decimal ActualCostToDate,
+        decimal PercentageComplete, decimal CumulativeRevenueRecognized,
+        decimal IncrementalRevenueThisEntry, Guid? JournalEntryId, string? JournalEntryNo);
 
     // ── Endpoints ─────────────────────────────────────────────────────────────
 
@@ -146,7 +162,9 @@ public class ProjectController(AppDbContext db) : ControllerBase
             p.StartDate, p.EndDate, p.Notes, p.CreatedAt,
             p.Tasks.Select(t => new TaskDto(t.Id, t.Title, t.Description,
                 t.AssignedToId, t.AssignedTo?.Name,
-                t.Status.ToString(), t.Priority.ToString(), t.DueDate, t.SortOrder)).ToList());
+                t.Status.ToString(), t.Priority.ToString(), t.DueDate, t.SortOrder)).ToList(),
+            p.RevenueRecognitionMethod.ToString(), p.EstimatedTotalCost,
+            p.UnbilledRevenueBalance, p.OverbilledBalance);
 
         return Ok(ApiResponse<ProjectDetailDto>.Ok(dto));
     }
@@ -157,6 +175,12 @@ public class ProjectController(AppDbContext db) : ControllerBase
 
     private async Task<ActionResult<ApiResponse<ProjectListDto>>> CreateCoreAsync(CreateProjectRequest req)
     {
+        var method = ParseRevenueRecognitionMethod(req.RevenueRecognitionMethod);
+        var validationError = await ValidateRevenueRecognitionAndSalesOrderAsync(
+            req.SalesOrderId, excludeProjectId: null, method, req.EstimatedTotalCost);
+        if (validationError is not null)
+            throw new InvalidOperationException(validationError);
+
         var project = new Project
         {
             Code             = await GenerateCodeAsync(),
@@ -169,6 +193,8 @@ public class ProjectController(AppDbContext db) : ControllerBase
             Budget           = req.Budget,
             Notes            = req.Notes,
             Status           = ProjectStatus.Planning,
+            RevenueRecognitionMethod = method,
+            EstimatedTotalCost       = req.EstimatedTotalCost,
         };
         db.Projects.Add(project);
         await db.SaveChangesAsync();
@@ -190,6 +216,12 @@ public class ProjectController(AppDbContext db) : ControllerBase
         if (!Enum.TryParse<ProjectStatus>(req.Status, out var status))
             return BadRequest(ApiResponse<object>.Fail("Status tidak valid."));
 
+        var method = ParseRevenueRecognitionMethod(req.RevenueRecognitionMethod);
+        var validationError = await ValidateRevenueRecognitionAndSalesOrderAsync(
+            req.SalesOrderId, excludeProjectId: id, method, req.EstimatedTotalCost);
+        if (validationError is not null)
+            throw new InvalidOperationException(validationError);
+
         project.Name             = req.Name;
         project.CustomerId       = req.CustomerId;
         project.SalesOrderId     = req.SalesOrderId;
@@ -200,6 +232,8 @@ public class ProjectController(AppDbContext db) : ControllerBase
         project.Progress         = Math.Clamp(req.Progress, 0, 100);
         project.Status           = status;
         project.Notes            = req.Notes;
+        project.RevenueRecognitionMethod = method;
+        project.EstimatedTotalCost       = req.EstimatedTotalCost;
         project.UpdatedAt        = DateTimeOffset.UtcNow;
 
         await db.SaveChangesAsync();
@@ -278,6 +312,137 @@ public class ProjectController(AppDbContext db) : ControllerBase
             OutstandingAR:    customerBilling - customerPayment,
             OutstandingAP:    procurementCost - vendorPayment,
             EstimatedMargin:  revenue - vendorPayment)));
+    }
+
+    // ── Revenue Recognition (Percentage of Completion) ──────────────────────────
+
+    [HttpPost("{id:guid}/revenue-recognition")]
+    public async Task<ActionResult<ApiResponse<RevenueRecognitionResultDto>>> RecordRevenueRecognition(Guid id)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var project = await db.Projects.FirstOrDefaultAsync(x => x.Id == id);
+        if (project is null)
+            return NotFound(ApiResponse<RevenueRecognitionResultDto>.Fail("Project tidak ditemukan."));
+
+        // Re-check di sini juga (bukan cuma di Create/Update) - data yang sudah ada sebelum validasi
+        // di poin 3 ditambahkan bisa saja belum konsisten.
+        if (project.RevenueRecognitionMethod != RevenueRecognitionMethod.PercentageOfCompletion)
+            throw new InvalidOperationException("Project ini tidak memakai metode Percentage of Completion.");
+        if (project.EstimatedTotalCost is null || project.EstimatedTotalCost <= 0)
+            throw new InvalidOperationException("Project ini belum punya Estimated Total Cost yang valid.");
+        if (project.SalesOrderId is null)
+            throw new InvalidOperationException("Project ini tidak terhubung ke Sales Order.");
+
+        var soId = project.SalesOrderId.Value;
+
+        // ActualCostToDate ("ReceivedCost") - pola JOIN sama persis dengan VendorPayment di GetCost
+        // (PurchaseRequest → PurchaseOrder), targetnya diganti ke PurchaseOrderItem.ReceivedQty*Price.
+        var prIds = await db.PurchaseRequests
+            .Where(pr => pr.SalesOrderId == soId)
+            .Select(pr => pr.Id)
+            .ToListAsync();
+
+        decimal actualCostToDate = 0;
+        if (prIds.Count > 0)
+        {
+            var poIds = await db.PurchaseOrders
+                .Where(po => po.PurchaseRequestId.HasValue && prIds.Contains(po.PurchaseRequestId.Value))
+                .Select(po => po.Id)
+                .ToListAsync();
+
+            if (poIds.Count > 0)
+                actualCostToDate = await db.PurchaseOrderItems
+                    .Where(item => poIds.Contains(item.POId))
+                    .SumAsync(item => (decimal?)(item.ReceivedQty * item.Price)) ?? 0;
+        }
+
+        var percentageComplete = Math.Min(100m,
+            Math.Round(actualCostToDate / project.EstimatedTotalCost.Value * 100, 2));
+
+        // ContractValue = SUM(SalesOrderItem.Amount), pre-tax - BUKAN SalesOrder.Total (yang include PPN).
+        var contractValue = await db.SalesOrderItems
+            .Where(i => i.SalesOrderId == soId)
+            .SumAsync(i => (decimal?)i.Amount) ?? 0;
+
+        var cumulativeNew = Math.Round(contractValue * percentageComplete / 100, 2);
+
+        var prevEntry = await db.ProjectRevenueRecognitions
+            .Where(x => x.ProjectId == id)
+            .OrderByDescending(x => x.RecognitionDate)
+            .ThenByDescending(x => x.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        var cumulativePrev = prevEntry?.CumulativeRevenueRecognized ?? 0;
+        var incrementalRevenue = cumulativeNew - cumulativePrev;
+
+        if (incrementalRevenue <= 0)
+            throw new InvalidOperationException(
+                "Tidak ada progres baru untuk diakui (% completion tidak bertambah sejak pencatatan terakhir).");
+
+        var entry = new ProjectRevenueRecognition
+        {
+            ProjectId                    = id,
+            RecognitionDate              = DateTimeOffset.UtcNow,
+            ActualCostToDate             = actualCostToDate,
+            PercentageComplete           = percentageComplete,
+            CumulativeRevenueRecognized  = cumulativeNew,
+            IncrementalRevenueThisEntry  = incrementalRevenue,
+        };
+        db.ProjectRevenueRecognitions.Add(entry);
+        await db.SaveChangesAsync();
+
+        var journalEntryId = await journalPostingService.PostAsync(
+            $"Pengakuan Pendapatan Proyek {project.Code} ({percentageComplete:0.00}%)",
+            JournalSourceType.RevenueRecognition,
+            entry.Id,
+            DateTimeOffset.UtcNow,
+            new PostingLine[]
+            {
+                new("1-2200", incrementalRevenue, 0, "Piutang Belum Ditagih"),
+                new("4-1000", 0, incrementalRevenue, "Pendapatan Penjualan"),
+            });
+
+        entry.JournalEntryId = journalEntryId;
+        project.UnbilledRevenueBalance += incrementalRevenue;
+        project.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        await tx.CommitAsync();
+
+        return Ok(ApiResponse<RevenueRecognitionResultDto>.Ok(new RevenueRecognitionResultDto(
+            PercentageComplete:          percentageComplete,
+            IncrementalRevenue:          incrementalRevenue,
+            CumulativeRevenueRecognized: cumulativeNew,
+            ActualCostToDate:            actualCostToDate),
+            "Progres pendapatan berhasil dicatat."));
+    }
+
+    [HttpGet("{id:guid}/revenue-recognition")]
+    public async Task<ActionResult<ApiResponse<List<ProjectRevenueRecognitionDto>>>> ListRevenueRecognition(Guid id)
+    {
+        if (!await db.Projects.AnyAsync(p => p.Id == id))
+            return NotFound(ApiResponse<List<ProjectRevenueRecognitionDto>>.Fail("Project tidak ditemukan."));
+
+        var rows = await db.ProjectRevenueRecognitions
+            .AsNoTracking()
+            .Where(x => x.ProjectId == id)
+            .OrderBy(x => x.RecognitionDate)
+            .ToListAsync();
+
+        var journalEntryIds = rows.Where(x => x.JournalEntryId.HasValue)
+            .Select(x => x.JournalEntryId!.Value).ToList();
+        var journalNumbers = await db.JournalEntries
+            .Where(j => journalEntryIds.Contains(j.Id))
+            .ToDictionaryAsync(j => j.Id, j => j.EntryNumber);
+
+        var result = rows.Select(x => new ProjectRevenueRecognitionDto(
+            x.Id, x.RecognitionDate, x.ActualCostToDate, x.PercentageComplete,
+            x.CumulativeRevenueRecognized, x.IncrementalRevenueThisEntry, x.JournalEntryId,
+            x.JournalEntryId.HasValue && journalNumbers.TryGetValue(x.JournalEntryId.Value, out var no)
+                ? no : null)).ToList();
+
+        return Ok(ApiResponse<List<ProjectRevenueRecognitionDto>>.Ok(result));
     }
 
     // ── Tasks ─────────────────────────────────────────────────────────────────
@@ -359,4 +524,43 @@ public class ProjectController(AppDbContext db) : ControllerBase
 
     private Task<string> GenerateCodeAsync() =>
         SequentialCodeHelper.NextYearCodeAsync(db.Projects, "PRJ", 3, DateTime.UtcNow.Year);
+
+    private static RevenueRecognitionMethod ParseRevenueRecognitionMethod(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return RevenueRecognitionMethod.Immediate;
+        if (!Enum.TryParse<RevenueRecognitionMethod>(raw, true, out var method))
+            throw new InvalidOperationException($"Revenue Recognition Method '{raw}' tidak valid.");
+        return method;
+    }
+
+    // Dipakai di Create dan Update - hardening loophole yang ditemukan investigasi (POST /api/projects
+    // dan PUT /api/projects/{id} sebelumnya bisa memasang SalesOrderId yang sama ke lebih dari satu
+    // Project tanpa ditolak). Project Cancelled/Completed dianggap tidak lagi "menyandera" SO-nya.
+    private async Task<string?> ValidateRevenueRecognitionAndSalesOrderAsync(
+        Guid? salesOrderId, Guid? excludeProjectId,
+        RevenueRecognitionMethod method, decimal? estimatedTotalCost)
+    {
+        if (method == RevenueRecognitionMethod.PercentageOfCompletion)
+        {
+            if (salesOrderId is null)
+                return "Metode Percentage of Completion butuh Project terhubung ke Sales Order.";
+            if (estimatedTotalCost is null || estimatedTotalCost <= 0)
+                return "Metode Percentage of Completion butuh Estimated Total Cost yang valid.";
+        }
+
+        if (salesOrderId is not null)
+        {
+            var activeStatuses = new[] { ProjectStatus.Planning, ProjectStatus.Running, ProjectStatus.OnHold };
+            var conflict = await db.Projects
+                .Where(p => p.SalesOrderId == salesOrderId.Value
+                         && activeStatuses.Contains(p.Status)
+                         && (!excludeProjectId.HasValue || p.Id != excludeProjectId.Value))
+                .Select(p => new { p.Code, p.Name })
+                .FirstOrDefaultAsync();
+            if (conflict is not null)
+                return $"Sales Order ini sudah dipakai Project lain: {conflict.Code} - {conflict.Name}.";
+        }
+
+        return null;
+    }
 }

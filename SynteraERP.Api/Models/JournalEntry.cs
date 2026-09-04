@@ -34,6 +34,7 @@ public enum JournalSourceType
     CustomerAdvanceReceived,
     CustomerAdvanceApplied,
     RetentionRelease,
+    RevenueRecognition,
 }
 
 public enum JournalEntryStatus

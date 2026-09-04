@@ -16,6 +16,11 @@ public class Project : BaseEntity
     public ProjectStatus Status { get; set; } = ProjectStatus.Planning;
     public string? Notes { get; set; }
 
+    public RevenueRecognitionMethod RevenueRecognitionMethod { get; set; } = RevenueRecognitionMethod.Immediate;
+    public decimal? EstimatedTotalCost { get; set; }
+    public decimal UnbilledRevenueBalance { get; set; } = 0;
+    public decimal OverbilledBalance { get; set; } = 0;
+
     public Customer Customer { get; set; } = null!;
     public SalesOrder? SalesOrder { get; set; }
     public User? ProjectManager { get; set; }
@@ -23,3 +28,5 @@ public class Project : BaseEntity
 }
 
 public enum ProjectStatus { Planning, Running, OnHold, Completed, Cancelled }
+
+public enum RevenueRecognitionMethod { Immediate = 0, PercentageOfCompletion = 1 }

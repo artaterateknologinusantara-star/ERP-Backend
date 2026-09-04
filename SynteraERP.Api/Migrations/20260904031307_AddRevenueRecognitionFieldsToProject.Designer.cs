@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SynteraERP.Api.Data;
 
@@ -11,9 +12,11 @@ using SynteraERP.Api.Data;
 namespace SynteraERP.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260904031307_AddRevenueRecognitionFieldsToProject")]
+    partial class AddRevenueRecognitionFieldsToProject
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2213,59 +2216,6 @@ namespace SynteraERP.Api.Migrations
                     b.ToTable("Projects");
                 });
 
-            modelBuilder.Entity("SynteraERP.Api.Models.ProjectRevenueRecognition", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("ActualCostToDate")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("CumulativeRevenueRecognized")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal>("IncrementalRevenueThisEntry")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<Guid?>("JournalEntryId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("PercentageComplete")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<Guid>("ProjectId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTimeOffset>("RecognitionDate")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProjectId");
-
-                    b.ToTable("ProjectRevenueRecognitions");
-                });
-
             modelBuilder.Entity("SynteraERP.Api.Models.ProjectTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2856,32 +2806,32 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3560), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5510), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Full system access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Administrator",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3560), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5510), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3560), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5510), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Quotation and sales module access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Sales",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3560), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5510), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3570), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5520), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Invoice and payment access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Finance",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3570), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5520), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -3476,14 +3426,14 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3660), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5580), new TimeSpan(0, 0, 0, 0, 0)),
                             Email = "admin@syntera.id",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Administrator",
                             PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
                             RoleId = new Guid("10000000-0000-0000-0000-000000000001"),
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 41, 165, DateTimeKind.Unspecified).AddTicks(3660), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 4, 3, 13, 7, 508, DateTimeKind.Unspecified).AddTicks(5580), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -3761,17 +3711,6 @@ namespace SynteraERP.Api.Migrations
                     b.Navigation("ProjectManager");
 
                     b.Navigation("SalesOrder");
-                });
-
-            modelBuilder.Entity("SynteraERP.Api.Models.ProjectRevenueRecognition", b =>
-                {
-                    b.HasOne("SynteraERP.Api.Models.Project", "Project")
-                        .WithMany()
-                        .HasForeignKey("ProjectId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("Project");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.ProjectTask", b =>
