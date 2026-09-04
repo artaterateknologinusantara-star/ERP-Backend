@@ -158,27 +158,65 @@ public class InvoiceService : IInvoiceService
         _db.Invoices.Add(inv);
         await _db.SaveChangesAsync();
 
-        var postingLines = inv.RetentionAmount == 0
-            ? new PostingLine[]
-            {
-                new("1-2000", inv.Amount, 0, "Piutang Usaha"),
-                new("4-1000", 0, subTotal, "Pendapatan Penjualan"),
-                new("2-2000", 0, taxAmount, "Utang Pajak Keluaran (PPN Keluaran)"),
-            }
-            : new PostingLine[]
-            {
-                new("1-2000", inv.Amount - inv.RetentionAmount, 0, "Piutang Usaha"),
-                new("1-2100", inv.RetentionAmount, 0, "Piutang Retensi"),
-                new("4-1000", 0, subTotal, "Pendapatan Penjualan"),
-                new("2-2000", 0, taxAmount, "Utang Pajak Keluaran (PPN Keluaran)"),
-            };
+        // Project POC (Fase B2): kalau SO invoice ini terhubung ke Project ber-status aktif
+        // (bukan Cancelled) dengan RevenueRecognitionMethod=PercentageOfCompletion, sisi Kredit
+        // invoice TIDAK boleh mengakui Pendapatan Penjualan lagi - itu sudah diakui lebih dulu
+        // lewat endpoint Catat Progres (Fase B1). Kredit di sini murni reklas dari "Piutang Belum
+        // Ditagih" (1-2200, kalau progres sudah tercatat lebih dulu) dan/atau "Termin Diterima
+        // Dimuka" (2-4100, kalau invoice mendahului progres yang tercatat - overbilling). Project
+        // null atau method Immediate (mayoritas transaksi) HARUS tetap 100% jalur lama.
+        Project? project = inv.SalesOrderId.HasValue
+            ? await _db.Projects.FirstOrDefaultAsync(p =>
+                p.SalesOrderId == inv.SalesOrderId.Value && p.Status != ProjectStatus.Cancelled)
+            : null;
+
+        var lines = new List<PostingLine>();
+
+        // Sisi Debit - tidak berubah dari Fase A.
+        if (inv.RetentionAmount > 0)
+        {
+            lines.Add(new("1-2000", inv.Amount - inv.RetentionAmount, 0, "Piutang Usaha"));
+            lines.Add(new("1-2100", inv.RetentionAmount, 0, "Piutang Retensi"));
+        }
+        else
+        {
+            lines.Add(new("1-2000", inv.Amount, 0, "Piutang Usaha"));
+        }
+
+        // Sisi Kredit - bercabang untuk Project POC.
+        var isPoc = project != null && project.RevenueRecognitionMethod == RevenueRecognitionMethod.PercentageOfCompletion;
+        if (isPoc)
+        {
+            var fromUnbilled = Math.Min(subTotal, project!.UnbilledRevenueBalance);
+            var overbillPortion = subTotal - fromUnbilled;
+
+            if (fromUnbilled > 0)
+                lines.Add(new("1-2200", 0, fromUnbilled, "Piutang Belum Ditagih"));
+            if (overbillPortion > 0)
+                lines.Add(new("2-4100", 0, overbillPortion, "Termin Diterima Dimuka"));
+
+            project.UnbilledRevenueBalance -= fromUnbilled;
+            project.OverbilledBalance += overbillPortion;
+            // Sengaja TIDAK ada baris Kredit ke 4-1000 Pendapatan Penjualan di cabang ini -
+            // pendapatan sudah diakui lewat Catat Progres. Menambahkannya di sini akan
+            // menghitung pendapatan dua kali untuk SO yang sama.
+        }
+        else
+        {
+            lines.Add(new("4-1000", 0, subTotal, "Pendapatan Penjualan"));
+        }
+
+        lines.Add(new("2-2000", 0, taxAmount, "Utang Pajak Keluaran (PPN Keluaran)"));
+
+        if (isPoc)
+            await _db.SaveChangesAsync();
 
         await _journalPostingService.PostAsync(
             $"Invoice AR {inv.No}",
             JournalSourceType.SalesInvoice,
             inv.Id,
             DateTimeOffset.UtcNow,
-            postingLines);
+            lines);
 
         await tx.CommitAsync();
         return (await GetByIdAsync(inv.Id))!;
