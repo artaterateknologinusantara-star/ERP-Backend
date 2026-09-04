@@ -93,6 +93,7 @@ builder.Services.AddScoped<InvoicePdfService>();
 builder.Services.AddScoped<ReportsPdfService>();
 builder.Services.AddScoped<ISystemResetService, SystemResetService>();
 builder.Services.AddScoped<IDemoLeadService, DemoLeadService>();
+builder.Services.AddScoped<IBankReconciliationService, BankReconciliationService>();
 builder.Services.AddHostedService<InvoiceOverdueStatusService>();
 builder.Services.AddHostedService<DatabaseBackupService>();
 

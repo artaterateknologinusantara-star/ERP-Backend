@@ -61,6 +61,10 @@ public class AppDbContext : DbContext
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
 
+    // ─── Bank Reconciliation ──────────────────────────────────────────────────
+    public DbSet<BankStatementImport> BankStatementImports => Set<BankStatementImport>();
+    public DbSet<BankStatementLine> BankStatementLines => Set<BankStatementLine>();
+
     // ─── Inventory ────────────────────────────────────────────────────────────
     public DbSet<StockTransaction> StockTransactions { get; set; }
     public DbSet<DeliveryOrder> DeliveryOrders { get; set; }
@@ -102,6 +106,8 @@ public class AppDbContext : DbContext
         b.Entity<ExpenseCategory>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<Expense>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<DemoLead>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<BankStatementImport>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<BankStatementLine>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -620,6 +626,43 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(x => x.CashBankAccountId)
              .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ─── Bank Reconciliation ─────────────────────────────────────────────
+        b.Entity<BankStatementImport>(e =>
+        {
+            e.Property(x => x.FileName).HasMaxLength(255).IsRequired();
+            e.Property(x => x.FilePath).HasMaxLength(500).IsRequired();
+            e.Property(x => x.StatementEndingBalance).HasPrecision(18, 2);
+
+            e.HasOne(x => x.Account)
+             .WithMany()
+             .HasForeignKey(x => x.AccountId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<BankStatementLine>(e =>
+        {
+            e.Property(x => x.Description).HasMaxLength(500).IsRequired();
+            e.Property(x => x.ReferenceNumber).HasMaxLength(100);
+            e.Property(x => x.Amount).HasPrecision(18, 2);
+            e.Property(x => x.MatchStatus).HasConversion<string>().HasMaxLength(20);
+
+            e.HasOne(x => x.Import)
+             .WithMany(x => x.Lines)
+             .HasForeignKey(x => x.BankStatementImportId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<Account>()
+             .WithMany()
+             .HasForeignKey(x => x.AccountId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne<JournalEntryLine>()
+             .WithMany()
+             .HasForeignKey(x => x.MatchedJournalEntryLineId)
+             .OnDelete(DeleteBehavior.Restrict)
+             .IsRequired(false);
         });
 
         // ─── Demo Leads ───────────────────────────────────────────────────────
