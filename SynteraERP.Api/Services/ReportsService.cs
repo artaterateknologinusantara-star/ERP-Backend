@@ -56,6 +56,7 @@ public class ReportsService : IReportsService
             .GroupBy(x => new { x.AccountId, x.AccountCode, x.AccountName, x.AccountType })
             .Select(g => new
             {
+                g.Key.AccountId,
                 g.Key.AccountCode,
                 g.Key.AccountName,
                 g.Key.AccountType,
@@ -68,13 +69,13 @@ public class ReportsService : IReportsService
         var revenues = grouped
             .Where(x => x.AccountType == AccountType.Revenue)
             .OrderBy(x => x.AccountCode)
-            .Select(x => new IncomeStatementAccountRowDto { AccountCode = x.AccountCode, AccountName = x.AccountName, Amount = x.Amount })
+            .Select(x => new IncomeStatementAccountRowDto { AccountId = x.AccountId, AccountCode = x.AccountCode, AccountName = x.AccountName, Amount = x.Amount })
             .ToList();
 
         var expenses = grouped
             .Where(x => x.AccountType == AccountType.Expense)
             .OrderBy(x => x.AccountCode)
-            .Select(x => new IncomeStatementAccountRowDto { AccountCode = x.AccountCode, AccountName = x.AccountName, Amount = x.Amount })
+            .Select(x => new IncomeStatementAccountRowDto { AccountId = x.AccountId, AccountCode = x.AccountCode, AccountName = x.AccountName, Amount = x.Amount })
             .ToList();
 
         var totalRevenue = revenues.Sum(x => x.Amount);
@@ -118,6 +119,7 @@ public class ReportsService : IReportsService
             .GroupBy(x => new { x.AccountId, x.AccountCode, x.AccountName, x.AccountType })
             .Select(g => new
             {
+                g.Key.AccountId,
                 g.Key.AccountCode,
                 g.Key.AccountName,
                 g.Key.AccountType,
@@ -129,19 +131,19 @@ public class ReportsService : IReportsService
         var assets = grouped
             .Where(x => x.AccountType == AccountType.Asset)
             .OrderBy(x => x.AccountCode)
-            .Select(x => new BalanceSheetAccountRowDto { AccountCode = x.AccountCode, AccountName = x.AccountName, Balance = x.TotalDebit - x.TotalCredit })
+            .Select(x => new BalanceSheetAccountRowDto { AccountId = x.AccountId, AccountCode = x.AccountCode, AccountName = x.AccountName, Balance = x.TotalDebit - x.TotalCredit })
             .ToList();
 
         var liabilities = grouped
             .Where(x => x.AccountType == AccountType.Liability)
             .OrderBy(x => x.AccountCode)
-            .Select(x => new BalanceSheetAccountRowDto { AccountCode = x.AccountCode, AccountName = x.AccountName, Balance = x.TotalCredit - x.TotalDebit })
+            .Select(x => new BalanceSheetAccountRowDto { AccountId = x.AccountId, AccountCode = x.AccountCode, AccountName = x.AccountName, Balance = x.TotalCredit - x.TotalDebit })
             .ToList();
 
         var equities = grouped
             .Where(x => x.AccountType == AccountType.Equity)
             .OrderBy(x => x.AccountCode)
-            .Select(x => new BalanceSheetAccountRowDto { AccountCode = x.AccountCode, AccountName = x.AccountName, Balance = x.TotalCredit - x.TotalDebit })
+            .Select(x => new BalanceSheetAccountRowDto { AccountId = x.AccountId, AccountCode = x.AccountCode, AccountName = x.AccountName, Balance = x.TotalCredit - x.TotalDebit })
             .ToList();
 
         // Laba Rugi Berjalan (Belum Ditutup): sistem ini belum punya proses Period Closing (item roadmap

@@ -2,6 +2,7 @@ namespace SynteraERP.Api.DTOs.Reports;
 
 public class IncomeStatementAccountRowDto
 {
+    public Guid AccountId { get; set; }
     public string AccountCode { get; set; } = string.Empty;
     public string AccountName { get; set; } = string.Empty;
     public decimal Amount { get; set; }
@@ -20,6 +21,7 @@ public class IncomeStatementDto
 
 public class BalanceSheetAccountRowDto
 {
+    public Guid AccountId { get; set; }
     public string AccountCode { get; set; } = string.Empty;
     public string AccountName { get; set; } = string.Empty;
     public decimal Balance { get; set; }
