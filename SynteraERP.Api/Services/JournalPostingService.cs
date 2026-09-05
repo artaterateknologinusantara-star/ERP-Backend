@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.JournalEntry;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -94,8 +95,8 @@ public class JournalPostingService : IJournalPostingService
         if (!Enum.TryParse<JournalSourceType>(req.SourceType, true, out var sourceType))
             throw new ArgumentException($"SourceType '{req.SourceType}' tidak valid.");
 
-        var totalDebit  = Math.Round(req.Lines.Sum(l => l.Debit), 2);
-        var totalCredit = Math.Round(req.Lines.Sum(l => l.Credit), 2);
+        var totalDebit  = MoneyMath.Round(req.Lines.Sum(l => l.Debit));
+        var totalCredit = MoneyMath.Round(req.Lines.Sum(l => l.Credit));
 
         if (totalDebit != totalCredit)
             throw new InvalidOperationException($"Journal entry tidak balance: Debit {totalDebit}, Credit {totalCredit}");
@@ -297,8 +298,8 @@ public class JournalPostingService : IJournalPostingService
 
         var accountByCode = accounts.ToDictionary(a => a.Code);
 
-        var totalDebit  = Math.Round(lines.Sum(l => l.Debit), 2);
-        var totalCredit = Math.Round(lines.Sum(l => l.Credit), 2);
+        var totalDebit  = MoneyMath.Round(lines.Sum(l => l.Debit));
+        var totalCredit = MoneyMath.Round(lines.Sum(l => l.Credit));
         if (totalDebit != totalCredit)
             throw new InvalidOperationException($"Journal entry tidak balance: Debit {totalDebit}, Credit {totalCredit}");
 

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Invoice;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -127,8 +128,8 @@ public class InvoiceService : IInvoiceService
                 }).ToList();
 
                 // Recalculate Amount dari items
-                var subTotalForItems  = Math.Round(inv.Items.Sum(x => x.Amount), 2);
-                var taxAmountForItems = Math.Round(subTotalForItems * taxRate, 2);
+                var subTotalForItems  = MoneyMath.Round(inv.Items.Sum(x => x.Amount));
+                var taxAmountForItems = MoneyMath.Round(subTotalForItems * taxRate);
                 inv.Amount             = subTotalForItems + taxAmountForItems;
             }
         }
@@ -138,10 +139,10 @@ public class InvoiceService : IInvoiceService
         // dari Amount kalau tidak ada item SO) supaya angka jurnal selalu cocok dengan yang ditampilkan ke user.
         var hasItems = inv.Items != null && inv.Items.Any();
         var subTotal = hasItems
-            ? Math.Round(inv.Items!.Sum(i => i.Amount), 2)
-            : Math.Round(inv.Amount / (1 + taxRate), 2);
+            ? MoneyMath.Round(inv.Items!.Sum(i => i.Amount))
+            : MoneyMath.Round(inv.Amount / (1 + taxRate));
         var taxAmount = hasItems
-            ? Math.Round(subTotal * taxRate, 2)
+            ? MoneyMath.Round(subTotal * taxRate)
             : inv.Amount - subTotal;
 
         // Retensi: kalau SalesOrder terkait punya RetentionPercentage > 0, sebagian Piutang Usaha
@@ -152,7 +153,7 @@ public class InvoiceService : IInvoiceService
         {
             var salesOrder = await _db.SalesOrders.FindAsync(request.SalesOrderId.Value);
             if (salesOrder is not null && salesOrder.RetentionPercentage > 0)
-                inv.RetentionAmount = Math.Round(subTotal * (salesOrder.RetentionPercentage / 100m), 2);
+                inv.RetentionAmount = MoneyMath.Round(subTotal * (salesOrder.RetentionPercentage / 100m));
         }
 
         _db.Invoices.Add(inv);
@@ -415,10 +416,10 @@ public class InvoiceService : IInvoiceService
         // Compute subTotal / taxAmount dari items jika ada, otherwise reverse dari Amount
         var hasItems  = x.Items != null && x.Items.Any();
         var subTotal  = hasItems
-            ? Math.Round(x.Items!.Sum(i => i.Amount), 2)
-            : Math.Round(x.Amount / (1 + taxRate), 2);
+            ? MoneyMath.Round(x.Items!.Sum(i => i.Amount))
+            : MoneyMath.Round(x.Amount / (1 + taxRate));
         var taxAmount = hasItems
-            ? Math.Round(subTotal * taxRate, 2)
+            ? MoneyMath.Round(subTotal * taxRate)
             : x.Amount - subTotal;
 
         return new InvoiceDto

@@ -3,6 +3,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using SynteraERP.Api.Data;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 
 namespace SynteraERP.Api.Services;
@@ -52,10 +53,10 @@ public class InvoicePdfService
 
         var hasInvItems = invoice.Items != null && invoice.Items.Any();
         decimal subTotal  = hasInvItems
-            ? Math.Round(invoice.Items!.Sum(x => x.Amount), 2)
-            : Math.Round(invoice.Amount / 1.11m, 2);
+            ? MoneyMath.Round(invoice.Items!.Sum(x => x.Amount))
+            : MoneyMath.Round(invoice.Amount / 1.11m);
         decimal taxAmount = hasInvItems
-            ? Math.Round(subTotal * 0.11m, 2)
+            ? MoneyMath.Round(subTotal * 0.11m)
             : invoice.Amount - subTotal;
         decimal balance   = invoice.Amount - invoice.Paid;
 

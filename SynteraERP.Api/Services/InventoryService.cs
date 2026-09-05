@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Inventory;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -279,7 +280,7 @@ public class InventoryService : IInventoryService
             doItem.ItemMaster.UpdatedAt = DateTimeOffset.UtcNow;
 
             // COGS = Qty x CurrentAverageCost dibekukan SAAT konfirmasi ini, tidak dihitung ulang nanti.
-            totalCogs += Math.Round(doItem.Qty * doItem.ItemMaster.CurrentAverageCost, 2);
+            totalCogs += MoneyMath.Round(doItem.Qty * doItem.ItemMaster.CurrentAverageCost);
 
             _db.StockTransactions.Add(new StockTransaction
             {

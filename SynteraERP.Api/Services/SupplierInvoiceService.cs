@@ -3,6 +3,7 @@ using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Purchasing;
 using SynteraERP.Api.DTOs.SupplierInvoice;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -96,7 +97,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
 
             poItem.InvoicedQty += line.Qty;
 
-            var amount = Math.Round(line.Qty * poItem.Price, 2);
+            var amount = MoneyMath.Round(line.Qty * poItem.Price);
             subtotal += amount;
 
             invoiceItems.Add(new SupplierInvoiceItem
@@ -107,7 +108,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
             });
         }
 
-        subtotal = Math.Round(subtotal, 2);
+        subtotal = MoneyMath.Round(subtotal);
         var total = subtotal + request.PPNMasukan;
 
         var no = await NextNumberAsync();

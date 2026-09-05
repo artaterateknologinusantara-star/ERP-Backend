@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Purchasing;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -96,7 +97,7 @@ public class PurchaseRequestService : IPurchaseRequestService
             }).ToList(),
         };
 
-        pr.Total = pr.Items.Sum(i => i.Qty * i.EstPrice);
+        pr.Total = MoneyMath.Round(pr.Items.Sum(i => i.Qty * i.EstPrice));
 
         _db.PurchaseRequests.Add(pr);
         await _db.SaveChangesAsync();
@@ -244,7 +245,7 @@ public class PurchaseRequestService : IPurchaseRequestService
             Items        = items,
         };
 
-        pr.Total = pr.Items.Sum(i => i.Qty * i.EstPrice);
+        pr.Total = MoneyMath.Round(pr.Items.Sum(i => i.Qty * i.EstPrice));
 
         _db.PurchaseRequests.Add(pr);
         await _db.SaveChangesAsync();

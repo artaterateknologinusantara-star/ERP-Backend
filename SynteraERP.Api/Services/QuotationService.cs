@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Quotation;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -406,12 +407,12 @@ public class QuotationService : IQuotationService
     private static void RecalcTotals(Models.Quotation q)
     {
         var allItems = q.Tabs.SelectMany(t => t.Groups).SelectMany(g => g.Items).ToList();
-        q.TotalMaterial = allItems.Sum(i => i.Qty * i.MaterialPrice);
-        q.TotalService = allItems.Sum(i => i.Qty * i.ServicePrice);
+        q.TotalMaterial = MoneyMath.Round(allItems.Sum(i => i.Qty * i.MaterialPrice));
+        q.TotalService = MoneyMath.Round(allItems.Sum(i => i.Qty * i.ServicePrice));
         var subtotal = q.TotalMaterial + q.TotalService;
-        var discountAmount = subtotal * q.Discount / 100;
+        var discountAmount = MoneyMath.Round(subtotal * q.Discount / 100);
         q.TotalBeforeTax = subtotal - discountAmount;
-        q.TaxAmount = q.TotalBeforeTax * q.TaxRate / 100;
+        q.TaxAmount = MoneyMath.Round(q.TotalBeforeTax * q.TaxRate / 100);
         q.GrandTotal = q.TotalBeforeTax + q.TaxAmount;
     }
 

@@ -19,6 +19,13 @@ public class PurchaseOrderListDto
     public decimal Total { get; set; }
     public DateOnly? DeliveryDate { get; set; }
     public int ItemCount { get; set; }
+
+    // True kalau ada minimal 1 SupplierInvoice aktif (bukan soft-deleted, bukan Cancelled) untuk PO
+    // ini. Dipakai FE untuk badge "Diterima, Belum Ditagih" saat Status == Completed tapi ini false -
+    // Completed untuk PO berarti "barang sudah diterima penuh" (auto-set di ReceiveGoodsAsync), BUKAN
+    // "sudah ditagih supplier" - dua hal ini sengaja didesain independen (lihat pola GRNI di
+    // ReceiveGoodsAsync), jadi field ini murni indikator monitoring, bukan gate.
+    public bool HasActiveSupplierInvoice { get; set; }
 }
 
 public class PurchaseOrderDto : PurchaseOrderListDto

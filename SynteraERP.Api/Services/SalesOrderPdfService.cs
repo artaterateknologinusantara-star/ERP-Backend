@@ -3,6 +3,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using SynteraERP.Api.Data;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 
 namespace SynteraERP.Api.Services;
@@ -48,8 +49,8 @@ public class SalesOrderPdfService
 
         decimal subTotal = so.Items.Any()
             ? so.Items.Sum(x => x.Amount)
-            : Math.Round(so.Total / 1.11m, 2);
-        decimal taxAmount = Math.Round(subTotal * 11 / 100, 2);
+            : MoneyMath.Round(so.Total / 1.11m);
+        decimal taxAmount = MoneyMath.Round(subTotal * 11 / 100);
         decimal grandTotal = subTotal + taxAmount;
 
         QuestPDF.Settings.License = LicenseType.Community;

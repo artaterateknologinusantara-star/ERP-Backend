@@ -223,13 +223,30 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         if (validationError is not null)
             throw new InvalidOperationException(validationError);
 
+        var isCompletingNow = status == ProjectStatus.Completed && project.Status != ProjectStatus.Completed;
+
+        // Project tidak boleh Completed tanpa Invoice aktif sama sekali - berlaku untuk KEDUA
+        // RevenueRecognitionMethod (Immediate maupun PercentageOfCompletion), TERPISAH dari true-up
+        // di bawah. True-up cuma menghitung sisa pendapatan yang belum diakui dari SalesOrder.Total,
+        // sama sekali tidak menyentuh keberadaan Invoice - jadi Project ber-method Immediate (semua
+        // 15 Project live saat ini pakai method ini) tidak pernah tersentuh true-up sama sekali dan
+        // butuh pengecekan sendiri di sini. Project tanpa SalesOrderId otomatis gagal (Invoice selalu
+        // terhubung lewat SalesOrderId, jadi tidak mungkin ada Invoice tanpa SO).
+        if (isCompletingNow)
+        {
+            var hasActiveInvoice = project.SalesOrderId.HasValue &&
+                await db.Invoices.AnyAsync(i => i.SalesOrderId == project.SalesOrderId.Value && !i.IsDeleted);
+            if (!hasActiveInvoice)
+                throw new InvalidOperationException(
+                    "Project tidak bisa diselesaikan karena belum ada Invoice aktif untuk Sales Order terkait.");
+        }
+
         // True-up (Fase B3): kalau Project POC ditutup (→Completed) sebelum % completion mencapai
         // 100 dari sisi Catat Progres manual, sisa pendapatan yang belum diakui WAJIB diakui sekaligus
         // di titik penutupan - kalau tidak, sisanya hilang permanen (tidak ada lagi kesempatan Catat
         // Progres untuk Project yang sudah Completed). Butuh konfirmasi eksplisit dari user dulu
         // (ConfirmRevenueTrueUp) karena ini mem-posting jurnal - request pertama tanpa konfirmasi
         // HARUS murni informatif (400/409), TIDAK BOLEH mengubah project/db apa pun.
-        var isCompletingNow = status == ProjectStatus.Completed && project.Status != ProjectStatus.Completed;
         if (isCompletingNow && project.RevenueRecognitionMethod == RevenueRecognitionMethod.PercentageOfCompletion)
         {
             var contractValue = await ComputeContractValueAsync(project.SalesOrderId);
@@ -238,8 +255,11 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
                 .OrderByDescending(r => r.RecognitionDate)
                 .FirstOrDefaultAsync();
             var cumulativeSoFar = lastRecognition?.CumulativeRevenueRecognized ?? 0;
-            var remainingRevenue = Math.Round(contractValue - cumulativeSoFar, 2);
+            var remainingRevenue = MoneyMath.Round(contractValue - cumulativeSoFar);
 
+            // Dead-band 0.01m ini peninggalan era rounding 2-desimal (sen) - sejak MoneyMath.Round
+            // membulatkan semua nilai uang ke 0 desimal, residual terkecil yang mungkin adalah
+            // Rp1, jadi threshold ini tetap benar (1 > 0.01) tapi granularitasnya sekarang whole-Rupiah.
             if (remainingRevenue > 0.01m)
             {
                 if (!req.ConfirmRevenueTrueUp)
@@ -412,7 +432,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
             Math.Round(actualCostToDate / project.EstimatedTotalCost.Value * 100, 2));
 
         var contractValue = await ComputeContractValueAsync(project.SalesOrderId);
-        var cumulativeNew = Math.Round(contractValue * percentageComplete / 100, 2);
+        var cumulativeNew = MoneyMath.Round(contractValue * percentageComplete / 100);
 
         var prevEntry = await db.ProjectRevenueRecognitions
             .Where(x => x.ProjectId == id)

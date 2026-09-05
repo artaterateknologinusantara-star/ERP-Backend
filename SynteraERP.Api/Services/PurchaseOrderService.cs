@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Purchasing;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -80,6 +81,8 @@ public class PurchaseOrderService : IPurchaseOrderService
                 Total             = x.Total,
                 DeliveryDate      = x.DeliveryDate,
                 ItemCount         = x.Items.Count,
+                HasActiveSupplierInvoice = _db.SupplierInvoices.Any(si =>
+                    si.PurchaseOrderId == x.Id && !si.IsDeleted && si.Status != SupplierInvoiceStatus.Cancelled),
             })
             .ToListAsync();
 
@@ -96,7 +99,11 @@ public class PurchaseOrderService : IPurchaseOrderService
             .Include(x => x.Payments.OrderBy(p => p.PaymentDate))
             .FirstOrDefaultAsync(x => x.Id == id);
 
-        return po is null ? null : ToDto(po);
+        if (po is null) return null;
+
+        var hasActiveSupplierInvoice = await _db.SupplierInvoices.AnyAsync(si =>
+            si.PurchaseOrderId == id && !si.IsDeleted && si.Status != SupplierInvoiceStatus.Cancelled);
+        return ToDto(po, hasActiveSupplierInvoice);
     }
 
     public async Task<POPaymentResponse> RecordPaymentAsync(Guid poId, RecordPOPaymentRequest request)
@@ -252,7 +259,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             }).ToList(),
         };
 
-        po.Total = po.Items.Sum(i => i.Qty * i.Price);
+        po.Total = MoneyMath.Round(po.Items.Sum(i => i.Qty * i.Price));
 
         _db.PurchaseOrders.Add(po);
         await _db.SaveChangesAsync();
@@ -301,9 +308,8 @@ public class PurchaseOrderService : IPurchaseOrderService
                     var unitCostPembelian = item.Price;
 
                     // Moving Average: NewAvgCost = ((QtyLama*AvgCostLama) + (QtyMasuk*UnitCost)) / (QtyLama+QtyMasuk)
-                    master.CurrentAverageCost = Math.Round(
-                        ((stockBefore * master.CurrentAverageCost) + (qtyMasuk * unitCostPembelian)) / (stockBefore + qtyMasuk),
-                        2);
+                    master.CurrentAverageCost = MoneyMath.Round(
+                        ((stockBefore * master.CurrentAverageCost) + (qtyMasuk * unitCostPembelian)) / (stockBefore + qtyMasuk));
 
                     master.Stock += qtyMasuk;
                     master.LastPurchasePrice = item.Price;
@@ -327,7 +333,7 @@ public class PurchaseOrderService : IPurchaseOrderService
                         CreatedByUserId = userId,
                     });
 
-                    totalStockInValue += Math.Round(qtyMasuk * unitCostPembelian, 2);
+                    totalStockInValue += MoneyMath.Round(qtyMasuk * unitCostPembelian);
                 }
             }
             // Item PO tanpa ItemMasterId (nama barang bebas tanpa link ke Item Master) sengaja dilewati
@@ -430,7 +436,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             Items          = poItems,
         };
 
-        po.Total = po.Items.Sum(i => i.Qty * i.Price);
+        po.Total = MoneyMath.Round(po.Items.Sum(i => i.Qty * i.Price));
 
         // Status PR dihitung otomatis (pola sama seperti PurchaseOrderStatus.PartialReceive di
         // ReceiveGoodsAsync) - BUKAN lewat UpdateStatusAsync manual, supaya tidak ada jalur lain yang
@@ -499,7 +505,7 @@ public class PurchaseOrderService : IPurchaseOrderService
         DeliveryDate      = x.DeliveryDate,
     };
 
-    private static PurchaseOrderDto ToDto(Models.PurchaseOrder x)
+    private static PurchaseOrderDto ToDto(Models.PurchaseOrder x, bool hasActiveSupplierInvoice)
     {
         var totalPaid = x.Payments.Sum(p => p.Amount);
         return new PurchaseOrderDto
@@ -518,6 +524,7 @@ public class PurchaseOrderService : IPurchaseOrderService
             CreatedAt         = x.CreatedAt,
             TotalPaid         = totalPaid,
             Balance           = x.Total - totalPaid,
+            HasActiveSupplierInvoice = hasActiveSupplierInvoice,
             Items = x.Items.Select(i => new PurchaseOrderItemDto
             {
                 Id           = i.Id,

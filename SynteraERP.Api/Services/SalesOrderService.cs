@@ -236,14 +236,14 @@ public class SalesOrderService : ISalesOrderService
             Uom = dto.Uom,
             UnitPrice = dto.UnitPrice,
             Discount = dto.Discount,
-            Amount = Math.Round(dto.Qty * dto.UnitPrice * (1 - dto.Discount / 100), 2),
+            Amount = MoneyMath.Round(dto.Qty * dto.UnitPrice * (1 - dto.Discount / 100)),
             Notes = dto.Notes,
             SortOrder = dto.SortOrder,
         }).ToList();
 
         var taxRate = await _taxRateService.GetDefaultRateAsync();
-        var subTotal = Math.Round(items.Sum(x => x.Amount), 2);
-        var taxAmount = Math.Round(subTotal * taxRate, 2);
+        var subTotal = MoneyMath.Round(items.Sum(x => x.Amount));
+        var taxAmount = MoneyMath.Round(subTotal * taxRate);
         var grandTotal = subTotal + taxAmount;
 
         var no = await NextNumberAsync();
@@ -285,6 +285,18 @@ public class SalesOrderService : ISalesOrderService
 
         if (!Enum.TryParse<SalesOrderStatus>(status, true, out var parsed))
             throw new ArgumentException($"Status '{status}' tidak valid.");
+
+        // SO tidak boleh Completed tanpa Invoice aktif sama sekali - sistem ini terintegrasi
+        // end-to-end, jadi "selesai" tanpa dokumen turunan berarti tidak pernah ditagih.
+        // IsDeleted difilter karena Invoice soft-deleted bukan invoice aktif (lihat kasus
+        // SO.ARN-26.0016 - invoice-nya ada tapi IsDeleted, jadi harus tetap dianggap tanpa invoice).
+        if (parsed == SalesOrderStatus.Completed)
+        {
+            var hasActiveInvoice = await _db.Invoices.AnyAsync(i => i.SalesOrderId == id && !i.IsDeleted);
+            if (!hasActiveInvoice)
+                throw new InvalidOperationException(
+                    "Sales Order tidak bisa diselesaikan karena belum ada Invoice aktif.");
+        }
 
         so.Status = parsed;
         so.UpdatedAt = DateTimeOffset.UtcNow;
@@ -351,15 +363,15 @@ public class SalesOrderService : ISalesOrderService
             Uom = item.Unit,
             UnitPrice = item.MaterialPrice + item.ServicePrice,
             Discount = 0,
-            Amount = Math.Round(item.Qty * (item.MaterialPrice + item.ServicePrice), 2),
+            Amount = MoneyMath.Round(item.Qty * (item.MaterialPrice + item.ServicePrice)),
             QtyShipped = 0,
             Notes = item.Description,
             SortOrder = index,
         }).ToList();
 
         var taxRate = await _taxRateService.GetDefaultRateAsync();
-        var subTotal = Math.Round(soItems.Sum(x => x.Amount), 2);
-        var taxAmount = Math.Round(subTotal * taxRate, 2);
+        var subTotal = MoneyMath.Round(soItems.Sum(x => x.Amount));
+        var taxAmount = MoneyMath.Round(subTotal * taxRate);
         var grandTotal = subTotal + taxAmount;
 
         var no = await NextNumberAsync();
@@ -456,10 +468,10 @@ public class SalesOrderService : ISalesOrderService
     private static SalesOrderDetailResponse ToDetailResponse(SalesOrder so, decimal taxRate, string phase)
     {
         var subTotal = so.Items.Any()
-            ? Math.Round(so.Items.Sum(x => x.Amount), 2)
-            : Math.Round(so.Total / (1 + taxRate), 2);
+            ? MoneyMath.Round(so.Items.Sum(x => x.Amount))
+            : MoneyMath.Round(so.Total / (1 + taxRate));
 
-        var taxAmount = Math.Round(subTotal * taxRate, 2);
+        var taxAmount = MoneyMath.Round(subTotal * taxRate);
         var grandTotal = so.Items.Any() ? subTotal + taxAmount : so.Total;
 
         return new SalesOrderDetailResponse
