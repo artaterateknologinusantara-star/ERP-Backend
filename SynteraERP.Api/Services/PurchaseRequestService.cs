@@ -293,6 +293,10 @@ public class PurchaseRequestService : IPurchaseRequestService
         Total           = x.Total,
         Notes           = x.Notes,
         ItemCount       = x.Items.Count,
+        // Item yang masih menyisakan sisa belum di-PO-kan -- dipakai list untuk menandai
+        // PartiallyOrdered secara actionable (lihat StatusBadge kedua di PurchaseRequestTable),
+        // bukan hanya lewat status header yang tidak bilang berapa item.
+        RemainingItemCount = x.Items.Count(i => i.Qty - i.OrderedQty > 0),
     };
 
     private static PurchaseRequestDto ToDto(Models.PurchaseRequest x, string? approvedByName = null)

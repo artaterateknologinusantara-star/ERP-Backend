@@ -18,6 +18,7 @@ public class PurchaseRequestListDto
     public decimal Total { get; set; }
     public string? Notes { get; set; }
     public int ItemCount { get; set; }
+    public int RemainingItemCount { get; set; }
 }
 
 public class PurchaseRequestDto : PurchaseRequestListDto
