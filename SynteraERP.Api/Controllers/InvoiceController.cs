@@ -53,6 +53,14 @@ public class InvoiceController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<InvoiceDto>.Ok(item, "Invoice berhasil dibuat."));
     }
 
+    [HttpPatch("{id:guid}/send")]
+    public async Task<ActionResult<ApiResponse<InvoiceDto>>> MarkAsSent(Guid id)
+    {
+        var item = await _svc.MarkAsSentAsync(id);
+        if (item is null) return NotFound(ApiResponse<InvoiceDto>.Fail("Invoice tidak ditemukan."));
+        return Ok(ApiResponse<InvoiceDto>.Ok(item, "Invoice berhasil dikirim."));
+    }
+
     [HttpPost("{id:guid}/payments")]
     public async Task<ActionResult<ApiResponse<InvoiceDto>>> RecordPayment(Guid id, [FromBody] RecordPaymentRequest request)
     {

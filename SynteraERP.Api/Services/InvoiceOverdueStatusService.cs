@@ -46,6 +46,7 @@ public class InvoiceOverdueStatusService : BackgroundService
 
         var updated = await db.Invoices
             .Where(x => !x.IsDeleted
+                && x.Status != InvoiceStatus.Draft
                 && x.Status != InvoiceStatus.Paid
                 && x.Status != InvoiceStatus.Overdue
                 && x.DueDate < today)

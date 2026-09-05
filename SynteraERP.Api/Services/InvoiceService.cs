@@ -223,6 +223,26 @@ public class InvoiceService : IInvoiceService
         return (await GetByIdAsync(inv.Id))!;
     }
 
+    // Transisi eksplisit Draft -> Sent. Sebelum ini, tidak ada endpoint yang pernah men-set
+    // InvoiceStatus.Sent sama sekali -- invoice Draft yang lewat due date langsung melompat ke
+    // Overdue (lihat InvoiceOverdueStatusService), dan RecordPaymentAsync tidak menolak
+    // pembayaran ke invoice yang belum "dikirim".
+    public async Task<InvoiceDto?> MarkAsSentAsync(Guid id)
+    {
+        var inv = await _db.Invoices.FirstOrDefaultAsync(x => x.Id == id);
+        if (inv is null) return null;
+
+        if (inv.Status != InvoiceStatus.Draft)
+            throw new InvalidOperationException(
+                $"Invoice dengan status {inv.Status} tidak bisa ditandai sebagai Sent. Hanya invoice Draft yang bisa dikirim.");
+
+        inv.Status = InvoiceStatus.Sent;
+        inv.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return await GetByIdAsync(id);
+    }
+
     public async Task<InvoiceDto?> RecordPaymentAsync(Guid id, RecordPaymentRequest request)
     {
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -232,6 +252,13 @@ public class InvoiceService : IInvoiceService
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (inv is null) return null;
+
+        if (inv.Status == InvoiceStatus.Draft)
+            throw new InvalidOperationException(
+                "Invoice belum dikirim — kirim invoice dulu sebelum mencatat pembayaran.");
+
+        if (inv.Status == InvoiceStatus.Paid)
+            throw new InvalidOperationException("Invoice sudah lunas.");
 
         // Cap: tidak boleh menagih lebih dari (Amount - retensi yang belum dilepas). Formula ini
         // otomatis jadi cap terhadap Amount biasa untuk invoice tanpa retensi (RetentionAmount = 0),

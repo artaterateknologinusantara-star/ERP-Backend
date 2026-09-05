@@ -308,6 +308,22 @@ public class SalesOrderService : ISalesOrderService
         var so = await _db.SalesOrders.FindAsync(id)
             ?? throw new KeyNotFoundException("Sales Order tidak ditemukan.");
 
+        // Cegah dangling FK: Project/Invoice/PurchaseRequest yang masih aktif dan mengacu ke SO
+        // ini akan kehilangan referensi (SalesOrderId tetap menunjuk ke baris yang soft-deleted,
+        // karena constraint SetNull di AppDbContext cuma berlaku untuk physical delete, bukan
+        // soft-delete) kalau SO ini dihapus begitu saja.
+        if (await _db.Projects.AnyAsync(p => p.SalesOrderId == id && !p.IsDeleted))
+            throw new InvalidOperationException(
+                "Sales Order tidak bisa dihapus karena masih ada Project aktif yang mengacu ke sini.");
+
+        if (await _db.Invoices.AnyAsync(i => i.SalesOrderId == id && !i.IsDeleted))
+            throw new InvalidOperationException(
+                "Sales Order tidak bisa dihapus karena masih ada Invoice aktif yang mengacu ke sini.");
+
+        if (await _db.PurchaseRequests.AnyAsync(r => r.SalesOrderId == id && !r.IsDeleted))
+            throw new InvalidOperationException(
+                "Sales Order tidak bisa dihapus karena masih ada Purchase Request aktif yang mengacu ke sini.");
+
         so.IsDeleted = true;
         so.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
