@@ -182,12 +182,21 @@ public class CompanySettingsService : ICompanySettingsService
         return new RegeneratePrefixesResponse
         {
             UpdatedCount = updatedCount,
-            NumberingConfigs = configs
-                .OrderBy(c => c.DocType)
-                .Select(c => new NumberingConfigDto { DocType = c.DocType, Prefix = c.Prefix, LastNumber = c.LastNumber })
-                .ToList(),
+            NumberingConfigs = ToNumberingConfigDtos(configs),
         };
     }
+
+    public async Task<List<NumberingConfigDto>> GetNumberingConfigsAsync()
+    {
+        var configs = await _db.NumberingConfigs.ToListAsync();
+        return ToNumberingConfigDtos(configs);
+    }
+
+    private static List<NumberingConfigDto> ToNumberingConfigDtos(IEnumerable<Models.NumberingConfig> configs) =>
+        configs
+            .OrderBy(c => c.DocType)
+            .Select(c => new NumberingConfigDto { DocType = c.DocType, Prefix = c.Prefix, LastNumber = c.LastNumber })
+            .ToList();
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 

@@ -12,4 +12,5 @@ public interface ICompanySettingsService
     Task<(byte[] data, string contentType, string fileName)?> GetLogoAsync();
     Task<CompanySettingsDto> DeleteLogoAsync();
     Task<RegeneratePrefixesResponse> RegeneratePrefixesAsync();
+    Task<List<NumberingConfigDto>> GetNumberingConfigsAsync();
 }

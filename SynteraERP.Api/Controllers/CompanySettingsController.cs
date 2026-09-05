@@ -89,4 +89,11 @@ public class CompanySettingsController : ControllerBase
         return Ok(ApiResponse<RegeneratePrefixesResponse>.Ok(result,
             $"Prefix diperbarui untuk {result.UpdatedCount} tipe dokumen. Nomor dokumen yang sudah ada tidak berubah."));
     }
+
+    [HttpGet("numbering-configs")]
+    public async Task<ActionResult<ApiResponse<List<NumberingConfigDto>>>> GetNumberingConfigs()
+    {
+        var result = await _svc.GetNumberingConfigsAsync();
+        return Ok(ApiResponse<List<NumberingConfigDto>>.Ok(result));
+    }
 }
