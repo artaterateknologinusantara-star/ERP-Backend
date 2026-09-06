@@ -61,6 +61,13 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
 
     public record ProjectStatsDto(int Total, int Running, int OnHold, int Completed, int Planning);
 
+    public record UserLookupDto(Guid Id, string Name);
+
+    public record ProjectTaskListDto(Guid Id, string Title,
+        Guid ProjectId, string ProjectCode, string ProjectName,
+        Guid? AssignedToId, string? AssignedToName,
+        string Status, string Priority, DateOnly? DueDate);
+
     public record ProjectCostDto(
         Guid   ProjectId,
         string ProjectName,
@@ -103,6 +110,22 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
             Planning:  groups.FirstOrDefault(g => g.Status == ProjectStatus.Planning)?.Count ?? 0
         );
         return Ok(ApiResponse<ProjectStatsDto>.Ok(stats));
+    }
+
+    // Proyeksi User yang lebih sempit dari GET /api/users (yang di-gate [Authorize(Roles="Administrator")])
+    // - dipakai untuk dropdown Project Manager di form Project, jadi harus bisa diakses user non-Administrator
+    // yang tetap berhak membuat Project (ProjectController cuma pakai [Authorize] polos).
+    [HttpGet("managers")]
+    public async Task<ActionResult<ApiResponse<List<UserLookupDto>>>> ListManagers()
+    {
+        var users = await db.Users
+            .AsNoTracking()
+            .Where(u => u.IsActive)
+            .OrderBy(u => u.Name)
+            .Select(u => new UserLookupDto(u.Id, u.Name))
+            .ToListAsync();
+
+        return Ok(ApiResponse<List<UserLookupDto>>.Ok(users));
     }
 
     [HttpGet]
@@ -513,6 +536,25 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
     }
 
     // ── Tasks ─────────────────────────────────────────────────────────────────
+
+    // Flatten ProjectTask lintas semua Project - dipakai halaman project/tasks (sebelumnya mock).
+    // Tidak ada tabel/kolom baru, murni proyeksi dari data yang sudah ada.
+    [HttpGet("tasks")]
+    public async Task<ActionResult<ApiResponse<List<ProjectTaskListDto>>>> ListAllTasks()
+    {
+        var tasks = await db.ProjectTasks
+            .AsNoTracking()
+            .Include(t => t.Project)
+            .Include(t => t.AssignedTo)
+            .OrderBy(t => t.DueDate)
+            .Select(t => new ProjectTaskListDto(t.Id, t.Title,
+                t.ProjectId, t.Project.Code, t.Project.Name,
+                t.AssignedToId, t.AssignedTo != null ? t.AssignedTo.Name : null,
+                t.Status.ToString(), t.Priority.ToString(), t.DueDate))
+            .ToListAsync();
+
+        return Ok(ApiResponse<List<ProjectTaskListDto>>.Ok(tasks));
+    }
 
     [HttpPost("{id:guid}/tasks")]
     public async Task<ActionResult<ApiResponse<TaskDto>>> AddTask(Guid id, [FromBody] CreateTaskRequest req)
