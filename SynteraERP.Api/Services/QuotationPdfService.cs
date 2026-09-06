@@ -203,7 +203,22 @@ public class QuotationPdfService
                 });
 
                 string? lastGroup = null;
+                string lastGroupName = "";
+                decimal groupSubtotal = 0;
                 int rowNum = 1;
+
+                void RenderGroupSubtotal()
+                {
+                    if (lastGroup == null) return;
+                    table.Cell().ColumnSpan(5)
+                        .Background(Colors.Grey.Lighten3)
+                        .Padding(4)
+                        .Text($"Subtotal - {lastGroupName}").Bold().FontSize(8).AlignRight();
+                    table.Cell()
+                        .Background(Colors.Grey.Lighten3)
+                        .Padding(4)
+                        .Text(FormatRupiah(groupSubtotal)).Bold().FontSize(8).AlignRight();
+                }
 
                 foreach (var entry in items)
                 {
@@ -211,7 +226,10 @@ public class QuotationPdfService
 
                     if (groupKey != lastGroup)
                     {
+                        RenderGroupSubtotal();
                         lastGroup = groupKey;
+                        lastGroupName = entry.GroupName;
+                        groupSubtotal = 0;
                         table.Cell().ColumnSpan(6)
                             .Background(Colors.Blue.Lighten4)
                             .Padding(4)
@@ -220,6 +238,7 @@ public class QuotationPdfService
 
                     var item = entry.Item;
                     decimal total = item.Qty * (item.ServicePrice + item.MaterialPrice);
+                    groupSubtotal += total;
                     string qtyText = item.Qty % 1 == 0
                         ? ((int)item.Qty).ToString()
                         : item.Qty.ToString("N2");
@@ -258,6 +277,8 @@ public class QuotationPdfService
 
                     rowNum++;
                 }
+
+                RenderGroupSubtotal();
             });
 
             // Summary block
