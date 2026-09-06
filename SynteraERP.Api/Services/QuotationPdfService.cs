@@ -48,11 +48,25 @@ public class QuotationPdfService
             .OrderBy(t => t.SortOrder)
             .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder)
                 .SelectMany(g => g.Items.OrderBy(i => i.SortOrder)
-                    .Select(i => new PdfLineItem(t.Label, g.Name, i))))
+                    .Select(i => new PdfLineItem(t.Label, g.Id, g.Name, i))))
             .ToList();
 
         var pdf = Document.Create(doc =>
         {
+            if (quotation.IsCivilMeMode)
+            {
+                doc.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(30, Unit.Point);
+                    page.DefaultTextStyle(ts => ts.FontSize(9).FontFamily("Arial"));
+
+                    page.Header().Element(c => RenderHeader(c, company, quotation, logoBytes));
+                    page.Content().Element(c => RenderRecapContent(c, quotation));
+                    page.Footer().Element(c => RenderFooter(c, company.CompanyName));
+                });
+            }
+
             doc.Page(page =>
             {
                 page.Size(PageSizes.A4);
@@ -116,6 +130,97 @@ public class QuotationPdfService
             });
 
             col.Item().PaddingTop(5).LineHorizontal(1.5f).LineColor(Colors.Blue.Darken3);
+        });
+    }
+
+    // ─── Recapitulation (Civil & ME mode only) ───────────────────────────────────
+
+    private static void RenderRecapContent(IContainer c, Quotation q)
+    {
+        c.Column(col =>
+        {
+            col.Spacing(8);
+
+            col.Item().Text("RECAPITULATION").Bold().FontSize(12).FontColor(Colors.Blue.Darken3);
+
+            col.Item().Table(table =>
+            {
+                table.ColumnsDefinition(cols =>
+                {
+                    cols.ConstantColumn(22);   // No
+                    cols.RelativeColumn(5);    // Deskripsi
+                    cols.ConstantColumn(60);   // Volume
+                    cols.ConstantColumn(50);   // Satuan
+                    cols.ConstantColumn(90);   // Harga/Satuan
+                    cols.ConstantColumn(90);   // Total
+                });
+
+                table.Header(h =>
+                {
+                    void HeaderCell(IContainer cell, string text, bool alignRight = false)
+                    {
+                        var t = cell.Background(Colors.Blue.Darken3).Padding(4)
+                            .Text(text).Bold().FontColor(Colors.White).FontSize(8);
+                        if (alignRight) t.AlignRight();
+                        else t.AlignCenter();
+                    }
+
+                    HeaderCell(h.Cell(), "No");
+                    h.Cell().Background(Colors.Blue.Darken3).Padding(4)
+                        .Text("Deskripsi").Bold().FontColor(Colors.White).FontSize(8);
+                    HeaderCell(h.Cell(), "Volume");
+                    HeaderCell(h.Cell(), "Satuan");
+                    HeaderCell(h.Cell(), "Harga / Satuan", alignRight: true);
+                    HeaderCell(h.Cell(), "Total", alignRight: true);
+                });
+
+                var groups = q.Tabs.OrderBy(t => t.SortOrder)
+                    .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
+                    .ToList();
+
+                int no = 1;
+                decimal grandTotal = 0;
+
+                foreach (var g in groups)
+                {
+                    decimal groupTotal = g.Items.Sum(i => i.Qty * (i.ServicePrice + i.MaterialPrice));
+                    decimal volume = g.RecapVolume ?? 1;
+                    string unit = string.IsNullOrWhiteSpace(g.RecapUnit) ? "Ls" : g.RecapUnit;
+                    decimal pricePerUnit = volume != 0 ? groupTotal / volume : 0;
+                    grandTotal += groupTotal;
+
+                    string volumeText = volume % 1 == 0 ? ((int)volume).ToString() : volume.ToString("N2");
+
+                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
+                        .Text(no.ToString()).AlignCenter();
+                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
+                        .Text(g.Name).Bold();
+                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
+                        .Text(volumeText).AlignCenter();
+                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
+                        .Text(unit).AlignCenter();
+                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
+                        .Text(FormatRupiah(pricePerUnit)).AlignRight();
+                    table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
+                        .Text(FormatRupiah(groupTotal)).AlignRight();
+
+                    no++;
+                }
+
+                table.Cell().ColumnSpan(5).Background(Colors.Grey.Lighten3).Padding(4)
+                    .Text("GRAND TOTAL").Bold().FontSize(9).AlignRight();
+                table.Cell().Background(Colors.Grey.Lighten3).Padding(4)
+                    .Text(FormatRupiah(grandTotal)).Bold().FontSize(9).AlignRight();
+
+                if (q.TotalAreaSqm is > 0)
+                {
+                    decimal pricePerSqm = grandTotal / q.TotalAreaSqm.Value;
+                    table.Cell().ColumnSpan(5).Background(Colors.Blue.Lighten4).Padding(4)
+                        .Text("HARGA / M²").Bold().FontSize(9).AlignRight();
+                    table.Cell().Background(Colors.Blue.Lighten4).Padding(4)
+                        .Text(FormatRupiah(pricePerSqm)).Bold().FontSize(9).AlignRight();
+                }
+            });
         });
     }
 
@@ -202,14 +307,14 @@ public class QuotationPdfService
                     HeaderCell(h.Cell(), "Total", alignRight: true);
                 });
 
-                string? lastGroup = null;
+                Guid? lastGroupId = null;
                 string lastGroupName = "";
                 decimal groupSubtotal = 0;
                 int rowNum = 1;
 
                 void RenderGroupSubtotal()
                 {
-                    if (lastGroup == null) return;
+                    if (lastGroupId == null) return;
                     table.Cell().ColumnSpan(5)
                         .Background(Colors.Grey.Lighten3)
                         .Padding(4)
@@ -222,12 +327,10 @@ public class QuotationPdfService
 
                 foreach (var entry in items)
                 {
-                    string groupKey = $"{entry.Tab}|{entry.GroupName}";
-
-                    if (groupKey != lastGroup)
+                    if (entry.GroupId != lastGroupId)
                     {
                         RenderGroupSubtotal();
-                        lastGroup = groupKey;
+                        lastGroupId = entry.GroupId;
                         lastGroupName = entry.GroupName;
                         groupSubtotal = 0;
                         table.Cell().ColumnSpan(6)
@@ -408,5 +511,5 @@ public class QuotationPdfService
 
     private static string FormatRupiah(decimal value) => $"Rp {value:N0}";
 
-    private record PdfLineItem(string Tab, string GroupName, QuotationItem Item);
+    private record PdfLineItem(string Tab, Guid GroupId, string GroupName, QuotationItem Item);
 }

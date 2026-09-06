@@ -209,6 +209,7 @@ public class AppDbContext : DbContext
             e.Property(q => q.TaxAmount).HasPrecision(18, 2);
             e.Property(q => q.Discount).HasPrecision(5, 2);
             e.Property(q => q.TaxRate).HasPrecision(5, 2);
+            e.Property(q => q.TotalAreaSqm).HasPrecision(12, 4);
             e.Property(q => q.Status).HasConversion<string>().HasMaxLength(20);
 
             e.HasOne(q => q.Customer)
@@ -244,6 +245,8 @@ public class AppDbContext : DbContext
         b.Entity<QuotationGroup>(e =>
         {
             e.Property(g => g.Name).HasMaxLength(200).IsRequired();
+            e.Property(g => g.RecapVolume).HasPrecision(12, 4);
+            e.Property(g => g.RecapUnit).HasMaxLength(20);
             e.HasOne(g => g.Tab)
              .WithMany(t => t.Groups)
              .HasForeignKey(g => g.TabId)
@@ -257,6 +260,9 @@ public class AppDbContext : DbContext
             e.Property(i => i.ServicePrice).HasPrecision(18, 2);
             e.Property(i => i.MaterialPrice).HasPrecision(18, 2);
             e.Property(i => i.Qty).HasPrecision(12, 4);
+            e.Property(i => i.Length).HasPrecision(12, 4);
+            e.Property(i => i.Width).HasPrecision(12, 4);
+            e.Property(i => i.Height).HasPrecision(12, 4);
             e.Ignore(i => i.TotalService);
             e.Ignore(i => i.TotalMaterial);
             e.Ignore(i => i.GrandLine);

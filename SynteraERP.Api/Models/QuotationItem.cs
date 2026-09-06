@@ -12,6 +12,9 @@ public class QuotationItem
     public string Unit { get; set; } = string.Empty;
     public decimal ServicePrice { get; set; } = 0;
     public decimal MaterialPrice { get; set; } = 0;
+    public decimal? Length { get; set; }
+    public decimal? Width { get; set; }
+    public decimal? Height { get; set; }
     public int SortOrder { get; set; } = 0;
 
     public decimal TotalService => Qty * ServicePrice;

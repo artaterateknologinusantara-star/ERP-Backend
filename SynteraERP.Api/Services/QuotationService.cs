@@ -99,6 +99,8 @@ public class QuotationService : IQuotationService
         quotation.AdditionalNotes = request.AdditionalNotes;
         quotation.Discount = request.Discount;
         quotation.TaxRate = request.TaxRate;
+        quotation.IsCivilMeMode = request.IsCivilMeMode;
+        quotation.TotalAreaSqm = request.TotalAreaSqm;
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
 
         // Delete old tabs at DB level (cascades to groups/items) — avoids EF change-tracker conflicts
@@ -149,6 +151,8 @@ public class QuotationService : IQuotationService
             AdditionalNotes = source.AdditionalNotes,
             Discount = source.Discount,
             TaxRate = source.TaxRate,
+            IsCivilMeMode = source.IsCivilMeMode,
+            TotalAreaSqm = source.TotalAreaSqm,
             Status = QuotationStatus.Draft,
             ParentId = source.Id,
         };
@@ -163,6 +167,8 @@ public class QuotationService : IQuotationService
                 TabId = Guid.Empty, // set by EF via nav
                 Name = g.Name,
                 SortOrder = g.SortOrder,
+                RecapVolume = g.RecapVolume,
+                RecapUnit = g.RecapUnit,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     GroupId = Guid.Empty,
@@ -174,6 +180,9 @@ public class QuotationService : IQuotationService
                     Unit = i.Unit,
                     ServicePrice = i.ServicePrice,
                     MaterialPrice = i.MaterialPrice,
+                    Length = i.Length,
+                    Width = i.Width,
+                    Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
             }).ToList(),
@@ -241,6 +250,8 @@ public class QuotationService : IQuotationService
             AdditionalNotes = source.AdditionalNotes,
             Discount = source.Discount,
             TaxRate = source.TaxRate,
+            IsCivilMeMode = source.IsCivilMeMode,
+            TotalAreaSqm = source.TotalAreaSqm,
             Status = QuotationStatus.Draft,
             Revision = source.Revision + 1,
             ParentId = source.ParentId ?? source.Id,
@@ -256,6 +267,8 @@ public class QuotationService : IQuotationService
             {
                 Name = g.Name,
                 SortOrder = g.SortOrder,
+                RecapVolume = g.RecapVolume,
+                RecapUnit = g.RecapUnit,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -266,6 +279,9 @@ public class QuotationService : IQuotationService
                     Unit = i.Unit,
                     ServicePrice = i.ServicePrice,
                     MaterialPrice = i.MaterialPrice,
+                    Length = i.Length,
+                    Width = i.Width,
+                    Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
             }).ToList(),
@@ -372,6 +388,8 @@ public class QuotationService : IQuotationService
             AdditionalNotes = req.AdditionalNotes,
             Discount = req.Discount,
             TaxRate = req.TaxRate,
+            IsCivilMeMode = req.IsCivilMeMode,
+            TotalAreaSqm = req.TotalAreaSqm,
             Status = QuotationStatus.Draft,
         };
         q.Tabs = BuildTabs(req.Tabs, q.Id);
@@ -389,6 +407,8 @@ public class QuotationService : IQuotationService
             {
                 Name = g.Name,
                 SortOrder = g.SortOrder,
+                RecapVolume = g.RecapVolume,
+                RecapUnit = g.RecapUnit,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -399,6 +419,9 @@ public class QuotationService : IQuotationService
                     Unit = i.Unit,
                     ServicePrice = i.ServicePrice,
                     MaterialPrice = i.MaterialPrice,
+                    Length = i.Length,
+                    Width = i.Width,
+                    Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
             }).ToList(),
@@ -461,6 +484,8 @@ public class QuotationService : IQuotationService
         TotalService = x.TotalService,
         TotalBeforeTax = x.TotalBeforeTax,
         TaxAmount = x.TaxAmount,
+        IsCivilMeMode = x.IsCivilMeMode,
+        TotalAreaSqm = x.TotalAreaSqm,
         ParentId = x.ParentId,
         ApprovedAt = x.ApprovedAt,
         ApprovedByName = approvedByName,
@@ -476,6 +501,8 @@ public class QuotationService : IQuotationService
                 Id = g.Id,
                 Name = g.Name,
                 SortOrder = g.SortOrder,
+                RecapVolume = g.RecapVolume,
+                RecapUnit = g.RecapUnit,
                 Items = g.Items.OrderBy(i => i.SortOrder).Select(i => new QuotationItemDto
                 {
                     Id = i.Id,
@@ -487,6 +514,9 @@ public class QuotationService : IQuotationService
                     Unit = i.Unit,
                     ServicePrice = i.ServicePrice,
                     MaterialPrice = i.MaterialPrice,
+                    Length = i.Length,
+                    Width = i.Width,
+                    Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
             }).ToList(),

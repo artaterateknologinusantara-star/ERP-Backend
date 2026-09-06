@@ -27,6 +27,8 @@ public class Quotation : BaseEntity
     public DateTimeOffset? ApprovedAt { get; set; }
     public Guid? ApprovedBy { get; set; }
     public bool IsLatestRevision { get; set; } = true;
+    public bool IsCivilMeMode { get; set; } = false;
+    public decimal? TotalAreaSqm { get; set; }
     public DateTimeOffset? SentAt { get; set; }
     public Guid? SentBy { get; set; }
     public Guid? SupersededByQuotationId { get; set; }

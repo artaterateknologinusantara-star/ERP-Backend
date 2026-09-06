@@ -46,6 +46,8 @@ public class QuotationDto : QuotationListDto
     public decimal TotalService { get; set; }
     public decimal TotalBeforeTax { get; set; }
     public decimal TaxAmount { get; set; }
+    public bool IsCivilMeMode { get; set; }
+    public decimal? TotalAreaSqm { get; set; }
     public Guid? ParentId { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovedByName { get; set; }
@@ -67,6 +69,8 @@ public class QuotationGroupDto
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public int SortOrder { get; set; }
+    public decimal? RecapVolume { get; set; }
+    public string? RecapUnit { get; set; }
     public List<QuotationItemDto> Items { get; set; } = [];
 }
 
@@ -81,6 +85,9 @@ public class QuotationItemDto
     public string Unit { get; set; } = string.Empty;
     public decimal ServicePrice { get; set; }
     public decimal MaterialPrice { get; set; }
+    public decimal? Length { get; set; }
+    public decimal? Width { get; set; }
+    public decimal? Height { get; set; }
     public int SortOrder { get; set; }
 }
 
@@ -98,6 +105,8 @@ public class SaveQuotationRequest
     public string? AdditionalNotes { get; set; }
     public decimal Discount { get; set; } = 0;
     public decimal TaxRate { get; set; } = 11;
+    public bool IsCivilMeMode { get; set; } = false;
+    public decimal? TotalAreaSqm { get; set; }
     public List<SaveQuotationTabRequest> Tabs { get; set; } = [];
 }
 
@@ -112,6 +121,8 @@ public class SaveQuotationGroupRequest
 {
     public string Name { get; set; } = string.Empty;
     public int SortOrder { get; set; }
+    public decimal? RecapVolume { get; set; }
+    public string? RecapUnit { get; set; }
     public List<SaveQuotationItemRequest> Items { get; set; } = [];
 }
 
@@ -125,6 +136,9 @@ public class SaveQuotationItemRequest
     public string Unit { get; set; } = string.Empty;
     public decimal ServicePrice { get; set; }
     public decimal MaterialPrice { get; set; }
+    public decimal? Length { get; set; }
+    public decimal? Width { get; set; }
+    public decimal? Height { get; set; }
     public int SortOrder { get; set; }
 }
 
