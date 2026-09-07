@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.Helpers;
@@ -94,6 +95,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
 
     // ── Endpoints ─────────────────────────────────────────────────────────────
 
+    [RequirePermission(Modules.Project, PermissionActions.View)]
     [HttpGet("stats")]
     public async Task<ActionResult<ApiResponse<ProjectStatsDto>>> Stats()
     {
@@ -128,6 +130,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         return Ok(ApiResponse<List<UserLookupDto>>.Ok(users));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<ProjectListDto>>>> List([FromQuery] ProjectQueryParams p)
     {
@@ -164,6 +167,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
             PaginatedResponse<ProjectListDto>.Create(data, total, p.Page, p.PerPage)));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<ProjectDetailDto>>> Get(Guid id)
     {
@@ -193,6 +197,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         return Ok(ApiResponse<ProjectDetailDto>.Ok(dto));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.Create)]
     [HttpPost]
     public Task<ActionResult<ApiResponse<ProjectListDto>>> Create([FromBody] CreateProjectRequest req) =>
         SequentialCodeHelper.RunWithRetryAsync(db, () => CreateCoreAsync(req));
@@ -231,6 +236,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
                 "Project berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.Edit)]
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ApiResponse<object>>> Update(Guid id, [FromBody] UpdateProjectRequest req)
     {
@@ -356,6 +362,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         return Ok(ApiResponse<object>.Ok(new { }, "Project berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
@@ -369,6 +376,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
 
     // ── Cost Monitoring ───────────────────────────────────────────────────────
 
+    [RequirePermission(Modules.Project, PermissionActions.View)]
     [HttpGet("{id:guid}/cost")]
     public async Task<ActionResult<ApiResponse<ProjectCostDto>>> GetCost(Guid id)
     {
@@ -432,6 +440,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
 
     // ── Revenue Recognition (Percentage of Completion) ──────────────────────────
 
+    [RequirePermission(Modules.Project, PermissionActions.Approve)]
     [HttpPost("{id:guid}/revenue-recognition")]
     public async Task<ActionResult<ApiResponse<RevenueRecognitionResultDto>>> RecordRevenueRecognition(Guid id)
     {
@@ -508,6 +517,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
             "Progres pendapatan berhasil dicatat."));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.View)]
     [HttpGet("{id:guid}/revenue-recognition")]
     public async Task<ActionResult<ApiResponse<List<ProjectRevenueRecognitionDto>>>> ListRevenueRecognition(Guid id)
     {
@@ -539,6 +549,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
 
     // Flatten ProjectTask lintas semua Project - dipakai halaman project/tasks (sebelumnya mock).
     // Tidak ada tabel/kolom baru, murni proyeksi dari data yang sudah ada.
+    [RequirePermission(Modules.Project, PermissionActions.View)]
     [HttpGet("tasks")]
     public async Task<ActionResult<ApiResponse<List<ProjectTaskListDto>>>> ListAllTasks()
     {
@@ -556,6 +567,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         return Ok(ApiResponse<List<ProjectTaskListDto>>.Ok(tasks));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.Create)]
     [HttpPost("{id:guid}/tasks")]
     public async Task<ActionResult<ApiResponse<TaskDto>>> AddTask(Guid id, [FromBody] CreateTaskRequest req)
     {
@@ -588,6 +600,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
             "Task berhasil ditambahkan."));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.Edit)]
     [HttpPatch("{projectId:guid}/tasks/{taskId:guid}/status")]
     public async Task<ActionResult<ApiResponse>> UpdateTaskStatus(Guid projectId, Guid taskId, [FromBody] UpdateTaskStatusRequest req)
     {
@@ -618,6 +631,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
         return Ok(ApiResponse.Ok("Status task berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Project, PermissionActions.Delete)]
     [HttpDelete("{projectId:guid}/tasks/{taskId:guid}")]
     public async Task<ActionResult<ApiResponse>> DeleteTask(Guid projectId, Guid taskId)
     {

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.BankReconciliation;
 using SynteraERP.Api.DTOs.Common;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -15,6 +17,7 @@ public class BankReconciliationController : ControllerBase
 
     public BankReconciliationController(IBankReconciliationService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Finance, PermissionActions.Create)]
     [HttpPost("import")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> Import([FromForm] ImportBankStatementRequest request, IFormFile file)
@@ -34,6 +37,7 @@ public class BankReconciliationController : ControllerBase
         return Ok(ApiResponse<BankStatementImportSummaryDto>.Ok(result.Summary!, "Import CSV berhasil."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("imports")]
     public async Task<ActionResult<ApiResponse<List<BankStatementImportListDto>>>> ListImports([FromQuery] Guid accountId)
     {
@@ -41,6 +45,7 @@ public class BankReconciliationController : ControllerBase
         return Ok(ApiResponse<List<BankStatementImportListDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("imports/{id:guid}")]
     public async Task<ActionResult<ApiResponse<BankStatementImportDetailDto>>> GetImportDetail(Guid id)
     {
@@ -49,6 +54,7 @@ public class BankReconciliationController : ControllerBase
         return Ok(ApiResponse<BankStatementImportDetailDto>.Ok(result));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Edit)]
     [HttpPost("lines/{lineId:guid}/match")]
     public async Task<ActionResult<ApiResponse<BankStatementLineDetailDto>>> Match(Guid lineId, [FromBody] MatchLineRequest request)
     {
@@ -56,6 +62,7 @@ public class BankReconciliationController : ControllerBase
         return Ok(ApiResponse<BankStatementLineDetailDto>.Ok(result, "Baris berhasil di-match."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Edit)]
     [HttpPost("lines/{lineId:guid}/unmatch")]
     public async Task<ActionResult<ApiResponse<BankStatementLineDetailDto>>> Unmatch(Guid lineId)
     {
@@ -63,6 +70,7 @@ public class BankReconciliationController : ControllerBase
         return Ok(ApiResponse<BankStatementLineDetailDto>.Ok(result, "Match dibatalkan."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Edit)]
     [HttpPost("lines/{lineId:guid}/ignore")]
     public async Task<ActionResult<ApiResponse<BankStatementLineDetailDto>>> Ignore(Guid lineId)
     {
@@ -70,6 +78,7 @@ public class BankReconciliationController : ControllerBase
         return Ok(ApiResponse<BankStatementLineDetailDto>.Ok(result, "Baris ditandai diabaikan."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("balances")]
     public async Task<ActionResult<ApiResponse<List<AccountBalanceDto>>>> GetBalances([FromQuery] DateOnly asOf)
     {

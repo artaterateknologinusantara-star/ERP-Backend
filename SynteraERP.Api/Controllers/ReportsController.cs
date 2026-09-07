@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.JournalEntry;
 using SynteraERP.Api.DTOs.Reports;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -22,6 +24,7 @@ public class ReportsController : ControllerBase
         _pdfSvc = pdfSvc;
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("trial-balance")]
     public async Task<ActionResult<ApiResponse<List<TrialBalanceRowDto>>>> TrialBalance([FromQuery] DateOnly? asOfDate)
     {
@@ -29,6 +32,7 @@ public class ReportsController : ControllerBase
         return Ok(ApiResponse<List<TrialBalanceRowDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("trial-balance/pdf")]
     public async Task<IActionResult> TrialBalancePdf([FromQuery] DateOnly? asOfDate)
     {
@@ -36,6 +40,7 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/pdf", $"TrialBalance_{DateOnly.FromDateTime(DateTime.UtcNow):yyyyMMdd}.pdf");
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("income-statement")]
     public async Task<ActionResult<ApiResponse<IncomeStatementDto>>> IncomeStatement([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
     {
@@ -43,6 +48,7 @@ public class ReportsController : ControllerBase
         return Ok(ApiResponse<IncomeStatementDto>.Ok(result));
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("income-statement/pdf")]
     public async Task<IActionResult> IncomeStatementPdf([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
     {
@@ -50,6 +56,7 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/pdf", $"LabaRugi_{DateOnly.FromDateTime(DateTime.UtcNow):yyyyMMdd}.pdf");
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("balance-sheet")]
     public async Task<ActionResult<ApiResponse<BalanceSheetDto>>> BalanceSheet([FromQuery] DateOnly? asOfDate)
     {
@@ -57,6 +64,7 @@ public class ReportsController : ControllerBase
         return Ok(ApiResponse<BalanceSheetDto>.Ok(result));
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("balance-sheet/pdf")]
     public async Task<IActionResult> BalanceSheetPdf([FromQuery] DateOnly? asOfDate)
     {
@@ -64,6 +72,7 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/pdf", $"Neraca_{DateOnly.FromDateTime(DateTime.UtcNow):yyyyMMdd}.pdf");
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("general-ledger/{accountId:guid}")]
     public async Task<ActionResult<ApiResponse<GeneralLedgerDto>>> GeneralLedger(Guid accountId, [FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
     {
@@ -72,6 +81,7 @@ public class ReportsController : ControllerBase
         return Ok(ApiResponse<GeneralLedgerDto>.Ok(result));
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("general-ledger/{accountId:guid}/pdf")]
     public async Task<IActionResult> GeneralLedgerPdf(Guid accountId, [FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
     {
@@ -80,6 +90,7 @@ public class ReportsController : ControllerBase
         return File(bytes, "application/pdf", $"BukuBesar_{DateOnly.FromDateTime(DateTime.UtcNow):yyyyMMdd}.pdf");
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("ppn-reconciliation")]
     public async Task<ActionResult<ApiResponse<PpnReconciliationDto>>> PpnReconciliation([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
     {
@@ -87,6 +98,7 @@ public class ReportsController : ControllerBase
         return Ok(ApiResponse<PpnReconciliationDto>.Ok(result));
     }
 
+    [RequirePermission(Modules.Accounting, PermissionActions.View)]
     [HttpGet("ppn-reconciliation/pdf")]
     public async Task<IActionResult> PpnReconciliationPdf([FromQuery] DateOnly? startDate, [FromQuery] DateOnly? endDate)
     {

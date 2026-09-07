@@ -65,23 +65,23 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse<UserProfileDto>.Ok(profile));
     }
 
+    // Deliberately returns UserPickerDto (id+name only), not the full UserProfileDto - this is
+    // called by any authenticated user to populate name pickers (Sales Order, Quotation "assign
+    // to" dropdowns), so it must not leak Email/Role to callers outside Settings/User Management.
     [Authorize]
     [HttpGet("users")]
-    public async Task<ActionResult<ApiResponse<List<UserProfileDto>>>> ListUsers()
+    public async Task<ActionResult<ApiResponse<List<UserPickerDto>>>> ListUsers()
     {
         var users = await _db.Users
             .Where(u => u.IsActive && !u.IsDeleted)
             .OrderBy(u => u.Name)
-            .Select(u => new UserProfileDto
+            .Select(u => new UserPickerDto
             {
                 Id = u.Id,
                 Name = u.Name,
-                Email = u.Email,
-                Role = u.Role.Name,
-                IsActive = u.IsActive,
             })
             .ToListAsync();
 
-        return Ok(ApiResponse<List<UserProfileDto>>.Ok(users));
+        return Ok(ApiResponse<List<UserPickerDto>>.Ok(users));
     }
 }
