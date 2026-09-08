@@ -32,6 +32,9 @@ public class AppDbContext : DbContext
     public DbSet<QuotationTab> QuotationTabs => Set<QuotationTab>();
     public DbSet<QuotationGroup> QuotationGroups => Set<QuotationGroup>();
     public DbSet<QuotationItem> QuotationItems => Set<QuotationItem>();
+    public DbSet<QuotationWorkItem> QuotationWorkItems => Set<QuotationWorkItem>();
+    public DbSet<QuotationWorkDetail> QuotationWorkDetails => Set<QuotationWorkDetail>();
+    public DbSet<QuotationWorkDetailAttachment> QuotationWorkDetailAttachments => Set<QuotationWorkDetailAttachment>();
     public DbSet<CustomerPO> CustomerPOs => Set<CustomerPO>();
     public DbSet<CustomerPoHistory> CustomerPoHistories => Set<CustomerPoHistory>();
 
@@ -249,7 +252,6 @@ public class AppDbContext : DbContext
             e.Property(g => g.RecapVolume).HasPrecision(12, 4);
             e.Property(g => g.RecapUnit).HasMaxLength(20);
             e.Property(g => g.FinalSubconCost).HasPrecision(18, 2);
-            e.Property(g => g.RabAttachmentPath).HasMaxLength(500);
             e.HasOne(g => g.Tab)
              .WithMany(t => t.Groups)
              .HasForeignKey(g => g.TabId)
@@ -276,6 +278,39 @@ public class AppDbContext : DbContext
             e.HasOne(i => i.Group)
              .WithMany(g => g.Items)
              .HasForeignKey(i => i.GroupId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<QuotationWorkItem>(e =>
+        {
+            e.Property(w => w.Name).HasMaxLength(200).IsRequired();
+            e.HasOne(w => w.Group)
+             .WithMany(g => g.WorkItems)
+             .HasForeignKey(w => w.GroupId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<QuotationWorkDetail>(e =>
+        {
+            e.Property(d => d.Name).HasMaxLength(200).IsRequired();
+            e.Property(d => d.Unit).HasMaxLength(20).IsRequired();
+            e.Property(d => d.Volume).HasPrecision(12, 4);
+            e.Property(d => d.UnitPrice).HasPrecision(18, 2);
+            e.Ignore(d => d.TotalHarga);
+            e.HasOne(d => d.WorkItem)
+             .WithMany(w => w.WorkDetails)
+             .HasForeignKey(d => d.WorkItemId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<QuotationWorkDetailAttachment>(e =>
+        {
+            e.Property(a => a.FilePath).HasMaxLength(500).IsRequired();
+            e.Property(a => a.FileName).HasMaxLength(260).IsRequired();
+            e.Property(a => a.ContentType).HasMaxLength(100).IsRequired();
+            e.HasOne(a => a.WorkDetail)
+             .WithMany(d => d.Attachments)
+             .HasForeignKey(a => a.WorkDetailId)
              .OnDelete(DeleteBehavior.Cascade);
         });
 

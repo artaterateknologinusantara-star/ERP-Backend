@@ -11,9 +11,9 @@ public class QuotationGroup
 
     public Guid? SubcontractorId { get; set; }
     public decimal? FinalSubconCost { get; set; }
-    public string? RabAttachmentPath { get; set; }
 
     public QuotationTab Tab { get; set; } = null!;
     public Supplier? Subcontractor { get; set; }
     public ICollection<QuotationItem> Items { get; set; } = [];
+    public ICollection<QuotationWorkItem> WorkItems { get; set; } = [];
 }

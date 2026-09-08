@@ -74,8 +74,36 @@ public class QuotationGroupDto
     public Guid? SubcontractorId { get; set; }
     public string? SubcontractorName { get; set; }
     public decimal? FinalSubconCost { get; set; }
-    public bool HasRabAttachment { get; set; }
     public List<QuotationItemDto> Items { get; set; } = [];
+    public List<QuotationWorkItemDto> WorkItems { get; set; } = [];
+}
+
+public class QuotationWorkItemDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public List<QuotationWorkDetailDto> WorkDetails { get; set; } = [];
+}
+
+public class QuotationWorkDetailDto
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Spesifikasi { get; set; }
+    public decimal Volume { get; set; }
+    public string Unit { get; set; } = string.Empty;
+    public decimal UnitPrice { get; set; }
+    public decimal TotalHarga { get; set; }
+    public int SortOrder { get; set; }
+    public List<QuotationWorkDetailAttachmentDto> Attachments { get; set; } = [];
+}
+
+public class QuotationWorkDetailAttachmentDto
+{
+    public Guid Id { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
 }
 
 public class QuotationItemDto
@@ -116,6 +144,9 @@ public class SaveQuotationRequest
 
 public class SaveQuotationTabRequest
 {
+    /// <summary>Existing Tab id, when known — lets Update match &amp; keep this row in place
+    /// instead of deleting and recreating it. Omit/null for a brand-new tab.</summary>
+    public Guid? Id { get; set; }
     public string Label { get; set; } = string.Empty;
     public int SortOrder { get; set; }
     public List<SaveQuotationGroupRequest> Groups { get; set; } = [];
@@ -123,6 +154,10 @@ public class SaveQuotationTabRequest
 
 public class SaveQuotationGroupRequest
 {
+    /// <summary>Existing Group id, when known — lets Update match &amp; keep this row (and
+    /// anything FK'd to it, like WorkItems/RAB data) in place instead of deleting and recreating
+    /// it. Omit/null for a brand-new group.</summary>
+    public Guid? Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public int SortOrder { get; set; }
     public decimal? RecapVolume { get; set; }
@@ -151,6 +186,23 @@ public class SaveQuotationItemRequest
 public class UpdateQuotationStatusRequest
 {
     public string Status { get; set; } = string.Empty;
+}
+
+// ── Item Pekerjaan / Detail Kerja (RAB/BQ) ─────────────────────────────────────
+public class SaveWorkItemRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+}
+
+public class SaveWorkDetailRequest
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Spesifikasi { get; set; }
+    public decimal Volume { get; set; }
+    public string Unit { get; set; } = string.Empty;
+    public decimal UnitPrice { get; set; }
+    public int SortOrder { get; set; }
 }
 
 public class BulkDeleteRequest

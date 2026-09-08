@@ -142,14 +142,76 @@ public class QuotationController : ControllerBase
         return Ok(ApiResponse.Ok("Quotation berhasil dihapus."));
     }
 
-    [HttpPost("groups/{groupId:guid}/rab")]
-    [Consumes("multipart/form-data")]
-    public async Task<ActionResult<ApiResponse>> UploadGroupRab(Guid groupId, IFormFile file)
+    // ── Item Pekerjaan / Detail Kerja (RAB/BQ) ──────────────────────────────────
+
+    [HttpPost("groups/{groupId:guid}/work-items")]
+    public async Task<ActionResult<ApiResponse<QuotationWorkItemDto>>> CreateWorkItem(Guid groupId, [FromBody] SaveWorkItemRequest request)
     {
         try
         {
-            await _svc.UploadGroupRabAsync(groupId, file);
-            return Ok(ApiResponse.Ok("RAB berhasil diunggah."));
+            var result = await _svc.CreateWorkItemAsync(groupId, request);
+            return Ok(ApiResponse<QuotationWorkItemDto>.Ok(result, "Item Pekerjaan berhasil ditambahkan."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    [HttpPut("work-items/{id:guid}")]
+    public async Task<ActionResult<ApiResponse>> UpdateWorkItem(Guid id, [FromBody] SaveWorkItemRequest request)
+    {
+        var ok = await _svc.UpdateWorkItemAsync(id, request);
+        if (!ok) return NotFound(ApiResponse.Fail("Item Pekerjaan tidak ditemukan."));
+        return Ok(ApiResponse.Ok("Item Pekerjaan berhasil diperbarui."));
+    }
+
+    [HttpDelete("work-items/{id:guid}")]
+    public async Task<ActionResult<ApiResponse>> DeleteWorkItem(Guid id)
+    {
+        var ok = await _svc.DeleteWorkItemAsync(id);
+        if (!ok) return NotFound(ApiResponse.Fail("Item Pekerjaan tidak ditemukan."));
+        return Ok(ApiResponse.Ok("Item Pekerjaan berhasil dihapus."));
+    }
+
+    [HttpPost("work-items/{workItemId:guid}/work-details")]
+    public async Task<ActionResult<ApiResponse<QuotationWorkDetailDto>>> CreateWorkDetail(Guid workItemId, [FromBody] SaveWorkDetailRequest request)
+    {
+        try
+        {
+            var result = await _svc.CreateWorkDetailAsync(workItemId, request);
+            return Ok(ApiResponse<QuotationWorkDetailDto>.Ok(result, "Detail Kerja berhasil ditambahkan."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    [HttpPut("work-details/{id:guid}")]
+    public async Task<ActionResult<ApiResponse>> UpdateWorkDetail(Guid id, [FromBody] SaveWorkDetailRequest request)
+    {
+        var ok = await _svc.UpdateWorkDetailAsync(id, request);
+        if (!ok) return NotFound(ApiResponse.Fail("Detail Kerja tidak ditemukan."));
+        return Ok(ApiResponse.Ok("Detail Kerja berhasil diperbarui."));
+    }
+
+    [HttpDelete("work-details/{id:guid}")]
+    public async Task<ActionResult<ApiResponse>> DeleteWorkDetail(Guid id)
+    {
+        var ok = await _svc.DeleteWorkDetailAsync(id);
+        if (!ok) return NotFound(ApiResponse.Fail("Detail Kerja tidak ditemukan."));
+        return Ok(ApiResponse.Ok("Detail Kerja berhasil dihapus."));
+    }
+
+    [HttpPost("work-details/{id:guid}/attachments")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<ApiResponse<QuotationWorkDetailAttachmentDto>>> UploadWorkDetailAttachment(Guid id, IFormFile file)
+    {
+        try
+        {
+            var result = await _svc.UploadWorkDetailAttachmentAsync(id, file);
+            return Ok(ApiResponse<QuotationWorkDetailAttachmentDto>.Ok(result, "Gambar berhasil diunggah."));
         }
         catch (KeyNotFoundException ex)
         {
@@ -161,21 +223,21 @@ public class QuotationController : ControllerBase
         }
     }
 
-    [HttpGet("groups/{groupId:guid}/rab")]
-    public async Task<IActionResult> GetGroupRab(Guid groupId)
+    [HttpGet("work-details/attachments/{attachmentId:guid}")]
+    public async Task<IActionResult> GetWorkDetailAttachment(Guid attachmentId)
     {
-        var result = await _svc.GetGroupRabAsync(groupId);
-        if (result is null) return NotFound(ApiResponse.Fail("Lampiran RAB tidak ditemukan."));
+        var result = await _svc.GetWorkDetailAttachmentAsync(attachmentId);
+        if (result is null) return NotFound(ApiResponse.Fail("Gambar tidak ditemukan."));
         var (data, contentType, fileName) = result.Value;
         return File(data, contentType, fileName);
     }
 
-    [HttpDelete("groups/{groupId:guid}/rab")]
-    public async Task<ActionResult<ApiResponse>> DeleteGroupRab(Guid groupId)
+    [HttpDelete("work-details/attachments/{attachmentId:guid}")]
+    public async Task<ActionResult<ApiResponse>> DeleteWorkDetailAttachment(Guid attachmentId)
     {
-        var ok = await _svc.DeleteGroupRabAsync(groupId);
-        if (!ok) return NotFound(ApiResponse.Fail("Group tidak ditemukan."));
-        return Ok(ApiResponse.Ok("RAB berhasil dihapus."));
+        var ok = await _svc.DeleteWorkDetailAttachmentAsync(attachmentId);
+        if (!ok) return NotFound(ApiResponse.Fail("Gambar tidak ditemukan."));
+        return Ok(ApiResponse.Ok("Gambar berhasil dihapus."));
     }
 
     [HttpPost("bulk-delete")]

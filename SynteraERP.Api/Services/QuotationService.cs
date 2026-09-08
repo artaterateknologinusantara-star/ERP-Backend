@@ -65,6 +65,7 @@ public class QuotationService : IQuotationService
             .Include(x => x.Sales)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (q is null) return null;
@@ -90,7 +91,10 @@ public class QuotationService : IQuotationService
 
     public async Task<QuotationDto?> UpdateAsync(Guid id, SaveQuotationRequest request)
     {
+        // Tracked (not AsNoTracking) — Tabs/Groups/Items are upserted in place below, so the
+        // change tracker needs to see what already exists to diff against.
         var quotation = await _db.Quotations
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (quotation is null) return null;
@@ -110,24 +114,101 @@ public class QuotationService : IQuotationService
         quotation.TotalAreaSqm = request.TotalAreaSqm;
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
 
-        // Delete + rebuild must be atomic — ExecuteDeleteAsync runs immediately against the DB,
-        // separately from the later SaveChangesAsync. Without a shared transaction, a failure in
-        // SaveChangesAsync (e.g. a bad value on a new field) leaves the old tabs/groups/items
-        // already deleted with nothing to replace them — silent, unrecoverable data loss.
         await using var tx = await _db.Database.BeginTransactionAsync();
 
-        // Delete old tabs at DB level (cascades to groups/items) — avoids EF change-tracker conflicts
-        await _db.QuotationTabs.Where(t => t.QuotationId == id).ExecuteDeleteAsync();
-
-        // Insert new tabs
-        var newTabs = BuildTabs(request.Tabs, quotation.Id);
-        _db.QuotationTabs.AddRange(newTabs);
-        quotation.Tabs = newTabs;
+        // Upsert-by-Id for Tabs/Groups — NOT a blind delete+rebuild. Group.Id must survive a
+        // normal save because QuotationWorkItem (RAB/BQ Item Pekerjaan/Detail Kerja, plus their
+        // uploaded images) is FK'd to it; destroying and recreating the Group on every "Submit
+        // Penawaran" silently orphaned/cascaded-deleted that data (confirmed by an end-to-end
+        // regression check before this fix). Items still get replaced wholesale per group below —
+        // nothing external hangs off QuotationItem.Id today, so that stays simple.
+        UpsertTabs(quotation, request.Tabs);
         RecalcTotals(quotation);
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         return (await GetByIdAsync(id))!;
+    }
+
+    private void UpsertTabs(Models.Quotation quotation, List<SaveQuotationTabRequest> incomingTabs)
+    {
+        var incomingTabIds = incomingTabs.Where(t => t.Id.HasValue).Select(t => t.Id!.Value).ToHashSet();
+        foreach (var tab in quotation.Tabs.Where(t => !incomingTabIds.Contains(t.Id)).ToList())
+            _db.QuotationTabs.Remove(tab);
+
+        foreach (var incoming in incomingTabs)
+        {
+            var tab = incoming.Id.HasValue ? quotation.Tabs.FirstOrDefault(t => t.Id == incoming.Id.Value) : null;
+            if (tab is null)
+            {
+                // Explicit DbSet.Add — a plain `quotation.Tabs.Add(tab)` relies on graph fixup,
+                // which (since Id is a client-generated Guid, already non-default) makes EF assume
+                // this row already exists and mark it Modified instead of Added, causing an UPDATE
+                // against a row that was never inserted → DbUpdateConcurrencyException on save.
+                tab = new QuotationTab { QuotationId = quotation.Id, Label = incoming.Label, SortOrder = incoming.SortOrder };
+                _db.QuotationTabs.Add(tab);
+                quotation.Tabs.Add(tab);
+            }
+            else
+            {
+                tab.Label = incoming.Label;
+                tab.SortOrder = incoming.SortOrder;
+            }
+
+            UpsertGroups(tab, incoming.Groups);
+        }
+    }
+
+    private void UpsertGroups(QuotationTab tab, List<SaveQuotationGroupRequest> incomingGroups)
+    {
+        var incomingGroupIds = incomingGroups.Where(g => g.Id.HasValue).Select(g => g.Id!.Value).ToHashSet();
+        foreach (var group in tab.Groups.Where(g => !incomingGroupIds.Contains(g.Id)).ToList())
+            _db.QuotationGroups.Remove(group);
+
+        foreach (var incoming in incomingGroups)
+        {
+            var group = incoming.Id.HasValue ? tab.Groups.FirstOrDefault(g => g.Id == incoming.Id.Value) : null;
+            if (group is null)
+            {
+                // Same reasoning as the Tab Add above — explicit DbSet.Add to force Added state.
+                group = new QuotationGroup { TabId = tab.Id };
+                _db.QuotationGroups.Add(group);
+                tab.Groups.Add(group);
+            }
+
+            group.Name = incoming.Name;
+            group.SortOrder = incoming.SortOrder;
+            group.RecapVolume = incoming.RecapVolume;
+            group.RecapUnit = incoming.RecapUnit;
+            group.SubcontractorId = incoming.SubcontractorId;
+            group.FinalSubconCost = incoming.FinalSubconCost;
+
+            // Items have no children of their own (no attachment hangs off Item.Id) — a full
+            // per-group replace is still the simplest correct approach for them.
+            group.Items.Clear();
+            foreach (var item in incoming.Items)
+            {
+                // Same explicit-Add reasoning as Tab/Group above.
+                var newItem = new QuotationItem
+                {
+                    GroupId = group.Id,
+                    ItemNo = item.ItemNo,
+                    Equipment = item.Equipment,
+                    Description = item.Description,
+                    Manufacturer = item.Manufacturer,
+                    Qty = item.Qty,
+                    Unit = item.Unit,
+                    ServicePrice = item.ServicePrice,
+                    MaterialPrice = item.MaterialPrice,
+                    Length = item.Length,
+                    Width = item.Width,
+                    Height = item.Height,
+                    SortOrder = item.SortOrder,
+                };
+                _db.QuotationItems.Add(newItem);
+                group.Items.Add(newItem);
+            }
+        }
     }
 
     public async Task<bool> UpdateStatusAsync(Guid id, string status)
@@ -185,7 +266,6 @@ public class QuotationService : IQuotationService
                 RecapUnit = g.RecapUnit,
                 SubcontractorId = g.SubcontractorId,
                 FinalSubconCost = g.FinalSubconCost,
-                RabAttachmentPath = null, // RAB is per-attachment — must be re-uploaded for the copy
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     GroupId = Guid.Empty,
@@ -288,7 +368,6 @@ public class QuotationService : IQuotationService
                 RecapUnit = g.RecapUnit,
                 SubcontractorId = g.SubcontractorId,
                 FinalSubconCost = g.FinalSubconCost,
-                RabAttachmentPath = null, // RAB is per-attachment — must be re-uploaded for the revision
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -353,73 +432,211 @@ public class QuotationService : IQuotationService
         return true;
     }
 
-    public async Task UploadGroupRabAsync(Guid groupId, IFormFile file)
+    // ── Item Pekerjaan / Detail Kerja (RAB/BQ) — auto-save per baris, ID stabil ──
+    // sepanjang sesi edit (bukan bagian SaveQuotationRequest) supaya lampiran gambar tidak
+    // ikut hilang tiap kali quotation induk di-Update (lihat BuildTabs/UpdateAsync di atas).
+
+    public async Task<QuotationWorkItemDto> CreateWorkItemAsync(Guid groupId, SaveWorkItemRequest request)
     {
         var group = await _db.QuotationGroups.FirstOrDefaultAsync(g => g.Id == groupId)
             ?? throw new KeyNotFoundException("Group tidak ditemukan.");
 
-        if (file is null || file.Length == 0)
-            throw new ArgumentException("File RAB tidak boleh kosong.");
+        var workItem = new QuotationWorkItem
+        {
+            GroupId = groupId,
+            Name = request.Name,
+            SortOrder = request.SortOrder,
+        };
+        _db.QuotationWorkItems.Add(workItem);
+        await _db.SaveChangesAsync();
+        return ToWorkItemDto(workItem);
+    }
 
-        const long maxBytes = 10 * 1024 * 1024; // ~10MB
+    public async Task<bool> UpdateWorkItemAsync(Guid id, SaveWorkItemRequest request)
+    {
+        var workItem = await _db.QuotationWorkItems.FirstOrDefaultAsync(w => w.Id == id);
+        if (workItem is null) return false;
+
+        workItem.Name = request.Name;
+        workItem.SortOrder = request.SortOrder;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> DeleteWorkItemAsync(Guid id)
+    {
+        var workItem = await _db.QuotationWorkItems
+            .Include(w => w.WorkDetails).ThenInclude(d => d.Attachments)
+            .FirstOrDefaultAsync(w => w.Id == id);
+        if (workItem is null) return false;
+
+        foreach (var attachment in workItem.WorkDetails.SelectMany(d => d.Attachments))
+            DeleteAttachmentFile(attachment.FilePath);
+
+        _db.QuotationWorkItems.Remove(workItem);
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<QuotationWorkDetailDto> CreateWorkDetailAsync(Guid workItemId, SaveWorkDetailRequest request)
+    {
+        var workItem = await _db.QuotationWorkItems.FirstOrDefaultAsync(w => w.Id == workItemId)
+            ?? throw new KeyNotFoundException("Item Pekerjaan tidak ditemukan.");
+
+        var detail = new QuotationWorkDetail
+        {
+            WorkItemId = workItemId,
+            Name = request.Name,
+            Spesifikasi = request.Spesifikasi,
+            Volume = request.Volume,
+            Unit = request.Unit,
+            UnitPrice = request.UnitPrice,
+            SortOrder = request.SortOrder,
+        };
+        _db.QuotationWorkDetails.Add(detail);
+        await _db.SaveChangesAsync();
+        return ToWorkDetailDto(detail);
+    }
+
+    public async Task<bool> UpdateWorkDetailAsync(Guid id, SaveWorkDetailRequest request)
+    {
+        var detail = await _db.QuotationWorkDetails.FirstOrDefaultAsync(d => d.Id == id);
+        if (detail is null) return false;
+
+        detail.Name = request.Name;
+        detail.Spesifikasi = request.Spesifikasi;
+        detail.Volume = request.Volume;
+        detail.Unit = request.Unit;
+        detail.UnitPrice = request.UnitPrice;
+        detail.SortOrder = request.SortOrder;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<bool> DeleteWorkDetailAsync(Guid id)
+    {
+        var detail = await _db.QuotationWorkDetails
+            .Include(d => d.Attachments)
+            .FirstOrDefaultAsync(d => d.Id == id);
+        if (detail is null) return false;
+
+        foreach (var attachment in detail.Attachments)
+            DeleteAttachmentFile(attachment.FilePath);
+
+        _db.QuotationWorkDetails.Remove(detail);
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<QuotationWorkDetailAttachmentDto> UploadWorkDetailAttachmentAsync(Guid workDetailId, IFormFile file)
+    {
+        var detail = await _db.QuotationWorkDetails.FirstOrDefaultAsync(d => d.Id == workDetailId)
+            ?? throw new KeyNotFoundException("Detail Kerja tidak ditemukan.");
+
+        if (file is null || file.Length == 0)
+            throw new ArgumentException("File gambar tidak boleh kosong.");
+
+        const long maxBytes = 1 * 1024 * 1024; // 1MB
         if (file.Length > maxBytes)
-            throw new ArgumentException("Ukuran file RAB maksimal 10MB.");
+            throw new ArgumentException("Ukuran gambar maksimal 1MB.");
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
         var bytes = ms.ToArray();
 
-        // Magic-byte check — reject anything that isn't actually a PDF, regardless of extension/content-type.
-        if (bytes.Length < 5 || System.Text.Encoding.ASCII.GetString(bytes, 0, 5) != "%PDF-")
-            throw new ArgumentException("File harus berupa dokumen PDF yang valid.");
+        // Magic-byte check — reject anything that isn't actually PNG/JPEG, regardless of extension/content-type.
+        var isPng = bytes.Length >= 8
+            && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+            && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
+        var isJpeg = bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
+        if (!isPng && !isJpeg)
+            throw new ArgumentException("File harus berupa gambar JPG atau PNG yang valid.");
 
-        var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "quotation-rab");
+        var contentType = isPng ? "image/png" : "image/jpeg";
+        var ext = isPng ? ".png" : ".jpg";
+
+        var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "quotation-work-detail");
         Directory.CreateDirectory(uploadsDir);
 
-        var oldPath = group.RabAttachmentPath;
-
-        var storedName = $"{Guid.NewGuid()}.pdf";
+        var storedName = $"{Guid.NewGuid()}{ext}";
         var fullPath = Path.Combine(uploadsDir, storedName);
         await File.WriteAllBytesAsync(fullPath, bytes);
 
-        group.RabAttachmentPath = Path.Combine("quotation-rab", storedName);
+        var nextSortOrder = (await _db.QuotationWorkDetailAttachments
+            .Where(a => a.WorkDetailId == workDetailId)
+            .Select(a => (int?)a.SortOrder)
+            .MaxAsync()) ?? -1;
+
+        var attachment = new QuotationWorkDetailAttachment
+        {
+            WorkDetailId = workDetailId,
+            FilePath = Path.Combine("quotation-work-detail", storedName),
+            FileName = file.FileName,
+            ContentType = contentType,
+            SortOrder = nextSortOrder + 1,
+        };
+        _db.QuotationWorkDetailAttachments.Add(attachment);
         await _db.SaveChangesAsync();
 
-        // Clean up the replaced file only after the new one is safely committed.
-        if (!string.IsNullOrWhiteSpace(oldPath))
+        return new QuotationWorkDetailAttachmentDto
         {
-            var oldFullPath = Path.Combine(_env.ContentRootPath, "uploads", oldPath);
-            if (File.Exists(oldFullPath)) File.Delete(oldFullPath);
-        }
+            Id = attachment.Id,
+            FileName = attachment.FileName,
+            SortOrder = attachment.SortOrder,
+        };
     }
 
-    public async Task<bool> DeleteGroupRabAsync(Guid groupId)
+    public async Task<bool> DeleteWorkDetailAttachmentAsync(Guid attachmentId)
     {
-        var group = await _db.QuotationGroups.FirstOrDefaultAsync(g => g.Id == groupId);
-        if (group is null) return false;
+        var attachment = await _db.QuotationWorkDetailAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId);
+        if (attachment is null) return false;
 
-        if (!string.IsNullOrWhiteSpace(group.RabAttachmentPath))
-        {
-            var fullPath = Path.Combine(_env.ContentRootPath, "uploads", group.RabAttachmentPath);
-            if (File.Exists(fullPath)) File.Delete(fullPath);
-        }
-
-        group.RabAttachmentPath = null;
+        DeleteAttachmentFile(attachment.FilePath);
+        _db.QuotationWorkDetailAttachments.Remove(attachment);
         await _db.SaveChangesAsync();
         return true;
     }
 
-    public async Task<(byte[] data, string contentType, string fileName)?> GetGroupRabAsync(Guid groupId)
+    public async Task<(byte[] data, string contentType, string fileName)?> GetWorkDetailAttachmentAsync(Guid attachmentId)
     {
-        var group = await _db.QuotationGroups.AsNoTracking().FirstOrDefaultAsync(g => g.Id == groupId);
-        if (group?.RabAttachmentPath is null) return null;
+        var attachment = await _db.QuotationWorkDetailAttachments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == attachmentId);
+        if (attachment is null) return null;
 
-        var fullPath = Path.Combine(_env.ContentRootPath, "uploads", group.RabAttachmentPath);
+        var fullPath = Path.Combine(_env.ContentRootPath, "uploads", attachment.FilePath);
         if (!File.Exists(fullPath)) return null;
 
         var data = await File.ReadAllBytesAsync(fullPath);
-        return (data, "application/pdf", $"RAB_{group.Name}.pdf");
+        return (data, attachment.ContentType, attachment.FileName);
     }
+
+    private void DeleteAttachmentFile(string relativePath)
+    {
+        var fullPath = Path.Combine(_env.ContentRootPath, "uploads", relativePath);
+        if (File.Exists(fullPath)) File.Delete(fullPath);
+    }
+
+    private static QuotationWorkItemDto ToWorkItemDto(QuotationWorkItem w) => new()
+    {
+        Id = w.Id,
+        Name = w.Name,
+        SortOrder = w.SortOrder,
+        WorkDetails = w.WorkDetails.OrderBy(d => d.SortOrder).Select(ToWorkDetailDto).ToList(),
+    };
+
+    private static QuotationWorkDetailDto ToWorkDetailDto(QuotationWorkDetail d) => new()
+    {
+        Id = d.Id,
+        Name = d.Name,
+        Spesifikasi = d.Spesifikasi,
+        Volume = d.Volume,
+        Unit = d.Unit,
+        UnitPrice = d.UnitPrice,
+        TotalHarga = d.TotalHarga,
+        SortOrder = d.SortOrder,
+        Attachments = d.Attachments.OrderBy(a => a.SortOrder)
+            .Select(a => new QuotationWorkDetailAttachmentDto { Id = a.Id, FileName = a.FileName, SortOrder = a.SortOrder })
+            .ToList(),
+    };
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -596,7 +813,6 @@ public class QuotationService : IQuotationService
                 SubcontractorId = g.SubcontractorId,
                 SubcontractorName = g.Subcontractor?.Name,
                 FinalSubconCost = g.FinalSubconCost,
-                HasRabAttachment = g.RabAttachmentPath is not null,
                 Items = g.Items.OrderBy(i => i.SortOrder).Select(i => new QuotationItemDto
                 {
                     Id = i.Id,
@@ -613,6 +829,7 @@ public class QuotationService : IQuotationService
                     Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
+                WorkItems = g.WorkItems.OrderBy(w => w.SortOrder).Select(ToWorkItemDto).ToList(),
             }).ToList(),
         }).ToList(),
     };

@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using PdfSharpCore.Pdf;
-using PdfSharpCore.Pdf.IO;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -30,6 +28,11 @@ public class QuotationPdfService
             .Include(q => q.Tabs)
                 .ThenInclude(t => t.Groups)
                     .ThenInclude(g => g.Items)
+            .Include(q => q.Tabs)
+                .ThenInclude(t => t.Groups)
+                    .ThenInclude(g => g.WorkItems)
+                        .ThenInclude(w => w.WorkDetails)
+                            .ThenInclude(d => d.Attachments)
             .FirstOrDefaultAsync(q => q.Id == quotationId);
 
         if (quotation is null) return null;
@@ -44,6 +47,43 @@ public class QuotationPdfService
             var logoFullPath = Path.Combine(_env.ContentRootPath, "uploads", company.LogoPath);
             if (File.Exists(logoFullPath))
                 logoBytes = await File.ReadAllBytesAsync(logoFullPath);
+        }
+
+        // Resolve Detail Kerja attachment bytes once (Civil ME only) — same reasoning as the
+        // logo above: file I/O happens here, not inside the QuestPDF layout callback.
+        var attachmentBytes = new Dictionary<Guid, byte[]>();
+        if (quotation.IsCivilMeMode)
+        {
+            var attachments = quotation.Tabs.SelectMany(t => t.Groups)
+                .SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails)
+                .SelectMany(d => d.Attachments);
+            foreach (var attachment in attachments)
+            {
+                var fullPath = Path.Combine(_env.ContentRootPath, "uploads", attachment.FilePath);
+                if (File.Exists(fullPath))
+                {
+                    var bytes = await File.ReadAllBytesAsync(fullPath);
+                    try
+                    {
+                        // QuestPDF/Skia must be able to decode this or .Image() throws mid-layout,
+                        // aborting the ENTIRE PDF export — probe-decode up front so one bad image
+                        // can't take down the whole document (same defensive spirit as the old
+                        // RAB-PDF-merge code this replaced).
+                        _ = QuestPDF.Infrastructure.Image.FromBinaryData(bytes);
+                        attachmentBytes[attachment.Id] = bytes;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Gambar Detail Kerja {AttachmentId} ({FileName}) tidak bisa di-decode, dilewati dari PDF.",
+                            attachment.Id, attachment.FileName);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Gambar Detail Kerja {AttachmentId} ({FileName}) tidak ditemukan di disk: {Path}",
+                        attachment.Id, attachment.FileName, attachment.FilePath);
+                }
+            }
         }
 
         QuestPDF.Settings.License = LicenseType.Community;
@@ -69,6 +109,20 @@ public class QuotationPdfService
                     page.Content().Element(c => RenderRecapContent(c, quotation));
                     page.Footer().Element(c => RenderFooter(c, company.CompanyName));
                 });
+
+                if (quotation.Tabs.SelectMany(t => t.Groups).Any(g => g.WorkItems.Count > 0))
+                {
+                    doc.Page(page =>
+                    {
+                        page.Size(PageSizes.A4);
+                        page.Margin(30, Unit.Point);
+                        page.DefaultTextStyle(ts => ts.FontSize(9).FontFamily("Arial"));
+
+                        page.Header().Element(c => RenderHeader(c, company, quotation, logoBytes));
+                        page.Content().Element(c => RenderWorkItemsContent(c, quotation, attachmentBytes));
+                        page.Footer().Element(c => RenderFooter(c, company.CompanyName));
+                    });
+                }
             }
 
             doc.Page(page =>
@@ -83,89 +137,7 @@ public class QuotationPdfService
             });
         });
 
-        var mainBytes = pdf.GeneratePdf();
-
-        var groupsWithRab = quotation.Tabs.OrderBy(t => t.SortOrder)
-            .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
-            .Where(g => !string.IsNullOrWhiteSpace(g.RabAttachmentPath))
-            .ToList();
-
-        if (groupsWithRab.Count == 0) return mainBytes;
-
-        return MergeRabAttachments(mainBytes, groupsWithRab);
-    }
-
-    // ─── RAB attachment merge ─────────────────────────────────────────────────
-
-    private byte[] MergeRabAttachments(byte[] mainBytes, List<QuotationGroup> groupsWithRab)
-    {
-        using var output = new PdfDocument();
-
-        using (var mainStream = new MemoryStream(mainBytes))
-        {
-            var mainDoc = PdfReader.Open(mainStream, PdfDocumentOpenMode.Import);
-            foreach (var page in mainDoc.Pages.Cast<PdfPage>())
-                output.AddPage(page);
-        }
-
-        foreach (var group in groupsWithRab)
-        {
-            try
-            {
-                var rabFullPath = Path.Combine(_env.ContentRootPath, "uploads", group.RabAttachmentPath!);
-                if (!File.Exists(rabFullPath))
-                {
-                    _logger.LogWarning("Lampiran RAB untuk group {GroupId} ({GroupName}) tidak ditemukan di disk: {Path}",
-                        group.Id, group.Name, group.RabAttachmentPath);
-                    continue;
-                }
-
-                var rabBytes = File.ReadAllBytes(rabFullPath);
-                using var rabStream = new MemoryStream(rabBytes);
-                // Open the RAB first — if it's corrupt, this throws and we skip the whole
-                // lampiran (label + RAB) for this group without touching `output`.
-                var rabDoc = PdfReader.Open(rabStream, PdfDocumentOpenMode.Import);
-
-                var labelBytes = BuildRabLabelPage(group.Name);
-                using var labelStream = new MemoryStream(labelBytes);
-                var labelDoc = PdfReader.Open(labelStream, PdfDocumentOpenMode.Import);
-
-                foreach (var page in labelDoc.Pages.Cast<PdfPage>())
-                    output.AddPage(page);
-                foreach (var page in rabDoc.Pages.Cast<PdfPage>())
-                    output.AddPage(page);
-            }
-            catch (Exception ex)
-            {
-                // A corrupt/unreadable RAB must never fail the whole quotation PDF — skip it.
-                _logger.LogWarning(ex, "Gagal menyisipkan lampiran RAB untuk group {GroupId} ({GroupName}) — dilewati.",
-                    group.Id, group.Name);
-            }
-        }
-
-        using var finalStream = new MemoryStream();
-        output.Save(finalStream, false);
-        return finalStream.ToArray();
-    }
-
-    private static byte[] BuildRabLabelPage(string groupName)
-    {
-        QuestPDF.Settings.License = LicenseType.Community;
-
-        var doc = Document.Create(container =>
-        {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.A4);
-                page.Margin(30, Unit.Point);
-                page.DefaultTextStyle(ts => ts.FontSize(9).FontFamily("Arial"));
-                page.Content().AlignCenter().AlignMiddle()
-                    .Text($"Lampiran RAB — {groupName}")
-                    .Bold().FontSize(16).FontColor(Colors.Blue.Darken3);
-            });
-        });
-
-        return doc.GeneratePdf();
+        return pdf.GeneratePdf();
     }
 
     // ─── Header ───────────────────────────────────────────────────────────────
@@ -307,6 +279,108 @@ public class QuotationPdfService
                         .Text(FormatRupiah(pricePerSqm)).Bold().FontSize(9).AlignRight();
                 }
             });
+        });
+    }
+
+    // ─── Bill of Quantity — Item Pekerjaan / Detail Kerja (Civil & ME mode only) ─
+
+    private static void RenderWorkItemsContent(IContainer c, Quotation q, Dictionary<Guid, byte[]> attachmentBytes)
+    {
+        c.Column(col =>
+        {
+            col.Spacing(10);
+
+            col.Item().Text("BILL OF QUANTITY").Bold().FontSize(12).FontColor(Colors.Blue.Darken3);
+
+            var groups = q.Tabs.OrderBy(t => t.SortOrder)
+                .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
+                .Where(g => g.WorkItems.Count > 0)
+                .ToList();
+
+            foreach (var group in groups)
+            {
+                col.Item().PaddingTop(6).Text(group.Name).Bold().FontSize(10).FontColor(Colors.Blue.Darken2);
+
+                foreach (var workItem in group.WorkItems.OrderBy(w => w.SortOrder))
+                {
+                    col.Item().PaddingTop(3).Text(workItem.Name).Bold().FontSize(9);
+
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(cols =>
+                        {
+                            cols.ConstantColumn(20);   // No
+                            cols.RelativeColumn(3);    // Detail Kerja
+                            cols.RelativeColumn(4);    // Spesifikasi
+                            cols.ConstantColumn(45);   // Vol
+                            cols.ConstantColumn(40);   // Sat
+                            cols.ConstantColumn(75);   // Harga Satuan
+                            cols.ConstantColumn(75);   // Total
+                        });
+
+                        table.Header(h =>
+                        {
+                            void HeaderCell(IContainer cell, string text, bool alignRight = false)
+                            {
+                                var t = cell.Background(Colors.Grey.Darken1).Padding(3)
+                                    .Text(text).Bold().FontColor(Colors.White).FontSize(7);
+                                if (alignRight) t.AlignRight();
+                                else t.AlignCenter();
+                            }
+
+                            HeaderCell(h.Cell(), "No");
+                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
+                                .Text("Detail Kerja").Bold().FontColor(Colors.White).FontSize(7);
+                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
+                                .Text("Spesifikasi").Bold().FontColor(Colors.White).FontSize(7);
+                            HeaderCell(h.Cell(), "Vol");
+                            HeaderCell(h.Cell(), "Sat");
+                            HeaderCell(h.Cell(), "Harga Satuan", alignRight: true);
+                            HeaderCell(h.Cell(), "Total", alignRight: true);
+                        });
+
+                        int no = 1;
+                        foreach (var detail in workItem.WorkDetails.OrderBy(d => d.SortOrder))
+                        {
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(no.ToString()).FontSize(7).AlignCenter();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(detail.Name).FontSize(7);
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(detail.Spesifikasi ?? "-").FontSize(7);
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(detail.Volume.ToString("N2")).FontSize(7).AlignCenter();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(detail.Unit).FontSize(7).AlignCenter();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(detail.UnitPrice)).FontSize(7).AlignRight();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(detail.TotalHarga)).FontSize(7).AlignRight();
+
+                            no++;
+                        }
+                    });
+
+                    // Gambar pendukung per Detail Kerja, ditempel di bawah tabel.
+                    foreach (var detail in workItem.WorkDetails.OrderBy(d => d.SortOrder))
+                    {
+                        var images = detail.Attachments.OrderBy(a => a.SortOrder)
+                            .Select(a => attachmentBytes.TryGetValue(a.Id, out var bytes) ? bytes : null)
+                            .Where(b => b is not null)
+                            .Select(b => b!)
+                            .ToList();
+                        if (images.Count == 0) continue;
+
+                        col.Item().PaddingTop(2).Text($"Gambar — {detail.Name}")
+                            .FontSize(7).Italic().FontColor(Colors.Grey.Darken1);
+                        col.Item().Row(row =>
+                        {
+                            foreach (var bytes in images)
+                                row.RelativeItem().Padding(2).Image(bytes).FitWidth();
+                        });
+                    }
+                }
+            }
         });
     }
 

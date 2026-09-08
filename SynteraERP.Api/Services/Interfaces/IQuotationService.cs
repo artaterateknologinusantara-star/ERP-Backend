@@ -17,7 +17,13 @@ public interface IQuotationService
     Task<bool> ApproveAsync(Guid id, Guid approvedByUserId);
     Task<bool> RejectAsync(Guid id);
     Task<bool> DeleteAsync(Guid id);
-    Task UploadGroupRabAsync(Guid groupId, IFormFile file);
-    Task<bool> DeleteGroupRabAsync(Guid groupId);
-    Task<(byte[] data, string contentType, string fileName)?> GetGroupRabAsync(Guid groupId);
+    Task<QuotationWorkItemDto> CreateWorkItemAsync(Guid groupId, SaveWorkItemRequest request);
+    Task<bool> UpdateWorkItemAsync(Guid id, SaveWorkItemRequest request);
+    Task<bool> DeleteWorkItemAsync(Guid id);
+    Task<QuotationWorkDetailDto> CreateWorkDetailAsync(Guid workItemId, SaveWorkDetailRequest request);
+    Task<bool> UpdateWorkDetailAsync(Guid id, SaveWorkDetailRequest request);
+    Task<bool> DeleteWorkDetailAsync(Guid id);
+    Task<QuotationWorkDetailAttachmentDto> UploadWorkDetailAttachmentAsync(Guid workDetailId, IFormFile file);
+    Task<bool> DeleteWorkDetailAttachmentAsync(Guid attachmentId);
+    Task<(byte[] data, string contentType, string fileName)?> GetWorkDetailAttachmentAsync(Guid attachmentId);
 }
