@@ -110,6 +110,12 @@ public class QuotationService : IQuotationService
         quotation.TotalAreaSqm = request.TotalAreaSqm;
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
 
+        // Delete + rebuild must be atomic — ExecuteDeleteAsync runs immediately against the DB,
+        // separately from the later SaveChangesAsync. Without a shared transaction, a failure in
+        // SaveChangesAsync (e.g. a bad value on a new field) leaves the old tabs/groups/items
+        // already deleted with nothing to replace them — silent, unrecoverable data loss.
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         // Delete old tabs at DB level (cascades to groups/items) — avoids EF change-tracker conflicts
         await _db.QuotationTabs.Where(t => t.QuotationId == id).ExecuteDeleteAsync();
 
@@ -120,6 +126,7 @@ public class QuotationService : IQuotationService
         RecalcTotals(quotation);
 
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
         return (await GetByIdAsync(id))!;
     }
 
