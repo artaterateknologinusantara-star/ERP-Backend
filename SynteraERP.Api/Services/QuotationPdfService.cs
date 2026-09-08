@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using PdfSharpCore.Pdf;
+using PdfSharpCore.Pdf.IO;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -11,11 +13,13 @@ public class QuotationPdfService
 {
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
+    private readonly ILogger<QuotationPdfService> _logger;
 
-    public QuotationPdfService(AppDbContext db, IWebHostEnvironment env)
+    public QuotationPdfService(AppDbContext db, IWebHostEnvironment env, ILogger<QuotationPdfService> logger)
     {
         _db = db;
         _env = env;
+        _logger = logger;
     }
 
     public async Task<byte[]?> GenerateAsync(Guid quotationId)
@@ -79,7 +83,89 @@ public class QuotationPdfService
             });
         });
 
-        return pdf.GeneratePdf();
+        var mainBytes = pdf.GeneratePdf();
+
+        var groupsWithRab = quotation.Tabs.OrderBy(t => t.SortOrder)
+            .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
+            .Where(g => !string.IsNullOrWhiteSpace(g.RabAttachmentPath))
+            .ToList();
+
+        if (groupsWithRab.Count == 0) return mainBytes;
+
+        return MergeRabAttachments(mainBytes, groupsWithRab);
+    }
+
+    // ─── RAB attachment merge ─────────────────────────────────────────────────
+
+    private byte[] MergeRabAttachments(byte[] mainBytes, List<QuotationGroup> groupsWithRab)
+    {
+        using var output = new PdfDocument();
+
+        using (var mainStream = new MemoryStream(mainBytes))
+        {
+            var mainDoc = PdfReader.Open(mainStream, PdfDocumentOpenMode.Import);
+            foreach (var page in mainDoc.Pages.Cast<PdfPage>())
+                output.AddPage(page);
+        }
+
+        foreach (var group in groupsWithRab)
+        {
+            try
+            {
+                var rabFullPath = Path.Combine(_env.ContentRootPath, "uploads", group.RabAttachmentPath!);
+                if (!File.Exists(rabFullPath))
+                {
+                    _logger.LogWarning("Lampiran RAB untuk group {GroupId} ({GroupName}) tidak ditemukan di disk: {Path}",
+                        group.Id, group.Name, group.RabAttachmentPath);
+                    continue;
+                }
+
+                var rabBytes = File.ReadAllBytes(rabFullPath);
+                using var rabStream = new MemoryStream(rabBytes);
+                // Open the RAB first — if it's corrupt, this throws and we skip the whole
+                // lampiran (label + RAB) for this group without touching `output`.
+                var rabDoc = PdfReader.Open(rabStream, PdfDocumentOpenMode.Import);
+
+                var labelBytes = BuildRabLabelPage(group.Name);
+                using var labelStream = new MemoryStream(labelBytes);
+                var labelDoc = PdfReader.Open(labelStream, PdfDocumentOpenMode.Import);
+
+                foreach (var page in labelDoc.Pages.Cast<PdfPage>())
+                    output.AddPage(page);
+                foreach (var page in rabDoc.Pages.Cast<PdfPage>())
+                    output.AddPage(page);
+            }
+            catch (Exception ex)
+            {
+                // A corrupt/unreadable RAB must never fail the whole quotation PDF — skip it.
+                _logger.LogWarning(ex, "Gagal menyisipkan lampiran RAB untuk group {GroupId} ({GroupName}) — dilewati.",
+                    group.Id, group.Name);
+            }
+        }
+
+        using var finalStream = new MemoryStream();
+        output.Save(finalStream, false);
+        return finalStream.ToArray();
+    }
+
+    private static byte[] BuildRabLabelPage(string groupName)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var doc = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30, Unit.Point);
+                page.DefaultTextStyle(ts => ts.FontSize(9).FontFamily("Arial"));
+                page.Content().AlignCenter().AlignMiddle()
+                    .Text($"Lampiran RAB — {groupName}")
+                    .Bold().FontSize(16).FontColor(Colors.Blue.Darken3);
+            });
+        });
+
+        return doc.GeneratePdf();
     }
 
     // ─── Header ───────────────────────────────────────────────────────────────

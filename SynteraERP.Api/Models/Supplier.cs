@@ -2,6 +2,8 @@ using SynteraERP.Api.Models.Common;
 
 namespace SynteraERP.Api.Models;
 
+public enum SupplierType { Material, Subcontractor, Both }
+
 public class Supplier : BaseEntity
 {
     public string Code { get; set; } = string.Empty;
@@ -14,6 +16,7 @@ public class Supplier : BaseEntity
     public string? Npwp { get; set; }
     public string? BankName { get; set; }
     public string? BankAccount { get; set; }
+    public SupplierType? SupplierType { get; set; }
     public bool IsActive { get; set; } = true;
 
     public ICollection<PurchaseOrder> PurchaseOrders { get; set; } = [];

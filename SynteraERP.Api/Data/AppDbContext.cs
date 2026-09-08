@@ -148,6 +148,7 @@ public class AppDbContext : DbContext
             e.HasIndex(s => s.Code).IsUnique().HasFilter("[IsDeleted] = 0");
             e.Property(s => s.Code).HasMaxLength(20).IsRequired();
             e.Property(s => s.Name).HasMaxLength(200).IsRequired();
+            e.Property(s => s.SupplierType).HasConversion<string>().HasMaxLength(20);
         });
 
         // ─── Branch ───────────────────────────────────────────────────────────
@@ -247,10 +248,16 @@ public class AppDbContext : DbContext
             e.Property(g => g.Name).HasMaxLength(200).IsRequired();
             e.Property(g => g.RecapVolume).HasPrecision(12, 4);
             e.Property(g => g.RecapUnit).HasMaxLength(20);
+            e.Property(g => g.FinalSubconCost).HasPrecision(12, 4);
+            e.Property(g => g.RabAttachmentPath).HasMaxLength(500);
             e.HasOne(g => g.Tab)
              .WithMany(t => t.Groups)
              .HasForeignKey(g => g.TabId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(g => g.Subcontractor)
+             .WithMany()
+             .HasForeignKey(g => g.SubcontractorId)
+             .OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<QuotationItem>(e =>

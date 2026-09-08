@@ -142,6 +142,42 @@ public class QuotationController : ControllerBase
         return Ok(ApiResponse.Ok("Quotation berhasil dihapus."));
     }
 
+    [HttpPost("groups/{groupId:guid}/rab")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<ApiResponse>> UploadGroupRab(Guid groupId, IFormFile file)
+    {
+        try
+        {
+            await _svc.UploadGroupRabAsync(groupId, file);
+            return Ok(ApiResponse.Ok("RAB berhasil diunggah."));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse.Fail(ex.Message));
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
+        }
+    }
+
+    [HttpGet("groups/{groupId:guid}/rab")]
+    public async Task<IActionResult> GetGroupRab(Guid groupId)
+    {
+        var result = await _svc.GetGroupRabAsync(groupId);
+        if (result is null) return NotFound(ApiResponse.Fail("Lampiran RAB tidak ditemukan."));
+        var (data, contentType, fileName) = result.Value;
+        return File(data, contentType, fileName);
+    }
+
+    [HttpDelete("groups/{groupId:guid}/rab")]
+    public async Task<ActionResult<ApiResponse>> DeleteGroupRab(Guid groupId)
+    {
+        var ok = await _svc.DeleteGroupRabAsync(groupId);
+        if (!ok) return NotFound(ApiResponse.Fail("Group tidak ditemukan."));
+        return Ok(ApiResponse.Ok("RAB berhasil dihapus."));
+    }
+
     [HttpPost("bulk-delete")]
     public async Task<ActionResult<ApiResponse>> BulkDelete([FromBody] BulkDeleteRequest request)
     {

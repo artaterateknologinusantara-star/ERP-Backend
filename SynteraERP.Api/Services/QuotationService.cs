@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
@@ -11,8 +12,13 @@ namespace SynteraERP.Api.Services;
 public class QuotationService : IQuotationService
 {
     private readonly AppDbContext _db;
+    private readonly IWebHostEnvironment _env;
 
-    public QuotationService(AppDbContext db) => _db = db;
+    public QuotationService(AppDbContext db, IWebHostEnvironment env)
+    {
+        _db = db;
+        _env = env;
+    }
 
     public async Task<PaginatedResponse<QuotationListDto>> ListAsync(PaginationParams p)
     {
@@ -58,6 +64,7 @@ public class QuotationService : IQuotationService
             .Include(x => x.Customer)
             .Include(x => x.Sales)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (q is null) return null;
@@ -169,6 +176,9 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
+                SubcontractorId = g.SubcontractorId,
+                FinalSubconCost = g.FinalSubconCost,
+                RabAttachmentPath = null, // RAB is per-attachment — must be re-uploaded for the copy
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     GroupId = Guid.Empty,
@@ -269,6 +279,9 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
+                SubcontractorId = g.SubcontractorId,
+                FinalSubconCost = g.FinalSubconCost,
+                RabAttachmentPath = null, // RAB is per-attachment — must be re-uploaded for the revision
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -331,6 +344,74 @@ public class QuotationService : IQuotationService
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    public async Task UploadGroupRabAsync(Guid groupId, IFormFile file)
+    {
+        var group = await _db.QuotationGroups.FirstOrDefaultAsync(g => g.Id == groupId)
+            ?? throw new KeyNotFoundException("Group tidak ditemukan.");
+
+        if (file is null || file.Length == 0)
+            throw new ArgumentException("File RAB tidak boleh kosong.");
+
+        const long maxBytes = 10 * 1024 * 1024; // ~10MB
+        if (file.Length > maxBytes)
+            throw new ArgumentException("Ukuran file RAB maksimal 10MB.");
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+
+        // Magic-byte check — reject anything that isn't actually a PDF, regardless of extension/content-type.
+        if (bytes.Length < 5 || System.Text.Encoding.ASCII.GetString(bytes, 0, 5) != "%PDF-")
+            throw new ArgumentException("File harus berupa dokumen PDF yang valid.");
+
+        var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "quotation-rab");
+        Directory.CreateDirectory(uploadsDir);
+
+        var oldPath = group.RabAttachmentPath;
+
+        var storedName = $"{Guid.NewGuid()}.pdf";
+        var fullPath = Path.Combine(uploadsDir, storedName);
+        await File.WriteAllBytesAsync(fullPath, bytes);
+
+        group.RabAttachmentPath = Path.Combine("quotation-rab", storedName);
+        await _db.SaveChangesAsync();
+
+        // Clean up the replaced file only after the new one is safely committed.
+        if (!string.IsNullOrWhiteSpace(oldPath))
+        {
+            var oldFullPath = Path.Combine(_env.ContentRootPath, "uploads", oldPath);
+            if (File.Exists(oldFullPath)) File.Delete(oldFullPath);
+        }
+    }
+
+    public async Task<bool> DeleteGroupRabAsync(Guid groupId)
+    {
+        var group = await _db.QuotationGroups.FirstOrDefaultAsync(g => g.Id == groupId);
+        if (group is null) return false;
+
+        if (!string.IsNullOrWhiteSpace(group.RabAttachmentPath))
+        {
+            var fullPath = Path.Combine(_env.ContentRootPath, "uploads", group.RabAttachmentPath);
+            if (File.Exists(fullPath)) File.Delete(fullPath);
+        }
+
+        group.RabAttachmentPath = null;
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<(byte[] data, string contentType, string fileName)?> GetGroupRabAsync(Guid groupId)
+    {
+        var group = await _db.QuotationGroups.AsNoTracking().FirstOrDefaultAsync(g => g.Id == groupId);
+        if (group?.RabAttachmentPath is null) return null;
+
+        var fullPath = Path.Combine(_env.ContentRootPath, "uploads", group.RabAttachmentPath);
+        if (!File.Exists(fullPath)) return null;
+
+        var data = await File.ReadAllBytesAsync(fullPath);
+        return (data, "application/pdf", $"RAB_{group.Name}.pdf");
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
@@ -409,6 +490,8 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
+                SubcontractorId = g.SubcontractorId,
+                FinalSubconCost = g.FinalSubconCost,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -503,6 +586,10 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
+                SubcontractorId = g.SubcontractorId,
+                SubcontractorName = g.Subcontractor?.Name,
+                FinalSubconCost = g.FinalSubconCost,
+                HasRabAttachment = g.RabAttachmentPath is not null,
                 Items = g.Items.OrderBy(i => i.SortOrder).Select(i => new QuotationItemDto
                 {
                     Id = i.Id,

@@ -30,6 +30,14 @@ public class SupplierService : ISupplierService
         if (p.IsActive.HasValue)
             q = q.Where(x => x.IsActive == p.IsActive.Value);
 
+        if (!string.IsNullOrWhiteSpace(p.SupplierType)
+            && Enum.TryParse<SupplierType>(p.SupplierType, true, out var typeFilter))
+        {
+            q = typeFilter == SupplierType.Both
+                ? q.Where(x => x.SupplierType == SupplierType.Both)
+                : q.Where(x => x.SupplierType == typeFilter || x.SupplierType == SupplierType.Both);
+        }
+
         q = p.SortBy switch
         {
             "code"      => p.IsDescending ? q.OrderByDescending(x => x.Code) : q.OrderBy(x => x.Code),
@@ -52,6 +60,7 @@ public class SupplierService : ISupplierService
     public Task<SupplierDto> CreateAsync(CreateSupplierRequest req) =>
         SequentialCodeHelper.RunWithRetryAsync(_db, async () =>
         {
+            Enum.TryParse<SupplierType>(req.SupplierType, true, out var supplierType);
             var supplier = new Supplier
             {
                 Code          = await GenerateCodeAsync(),
@@ -64,6 +73,7 @@ public class SupplierService : ISupplierService
                 Npwp          = req.Npwp,
                 BankName      = req.BankName,
                 BankAccount   = req.BankAccount,
+                SupplierType  = string.IsNullOrWhiteSpace(req.SupplierType) ? null : supplierType,
                 IsActive      = true,
             };
             _db.Suppliers.Add(supplier);
@@ -76,6 +86,8 @@ public class SupplierService : ISupplierService
         var supplier = await _db.Suppliers.FindAsync(id);
         if (supplier is null) return null;
 
+        Enum.TryParse<SupplierType>(req.SupplierType, true, out var supplierType);
+
         supplier.Name          = req.Name;
         supplier.ContactPerson = req.ContactPerson;
         supplier.Phone         = req.Phone;
@@ -85,6 +97,7 @@ public class SupplierService : ISupplierService
         supplier.Npwp          = req.Npwp;
         supplier.BankName      = req.BankName;
         supplier.BankAccount   = req.BankAccount;
+        supplier.SupplierType  = string.IsNullOrWhiteSpace(req.SupplierType) ? null : supplierType;
         supplier.UpdatedAt     = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync();
@@ -129,6 +142,7 @@ public class SupplierService : ISupplierService
         Npwp          = x.Npwp,
         BankName      = x.BankName,
         BankAccount   = x.BankAccount,
+        SupplierType  = x.SupplierType?.ToString(),
         IsActive      = x.IsActive,
         CreatedAt     = x.CreatedAt,
     };

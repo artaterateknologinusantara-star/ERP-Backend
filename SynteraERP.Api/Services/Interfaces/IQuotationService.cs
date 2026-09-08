@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Quotation;
 
@@ -16,4 +17,7 @@ public interface IQuotationService
     Task<bool> ApproveAsync(Guid id, Guid approvedByUserId);
     Task<bool> RejectAsync(Guid id);
     Task<bool> DeleteAsync(Guid id);
+    Task UploadGroupRabAsync(Guid groupId, IFormFile file);
+    Task<bool> DeleteGroupRabAsync(Guid groupId);
+    Task<(byte[] data, string contentType, string fileName)?> GetGroupRabAsync(Guid groupId);
 }
