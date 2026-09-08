@@ -234,6 +234,12 @@ public class JournalPostingService : IJournalPostingService
             }).ToList(),
         };
 
+        // Two related writes (new reversal entry + original marked Reversed) must succeed or fail
+        // together — without a shared transaction, a failure on the second SaveChangesAsync leaves
+        // the reversal entry already committed as an orphan: posted to the ledger but never linked
+        // back to the original, which stays Posted as if nothing happened.
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
         _db.JournalEntries.Add(reversal);
         await _db.SaveChangesAsync();
 
@@ -241,6 +247,8 @@ public class JournalPostingService : IJournalPostingService
         original.ReversedByEntryId = reversal.Id;
         original.UpdatedAt        = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
+
+        await tx.CommitAsync();
 
         return (await GetByIdAsync(reversal.Id))!;
     }
