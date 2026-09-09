@@ -241,7 +241,7 @@ public class QuotationPdfService
 
                 foreach (var g in groups)
                 {
-                    decimal groupTotal = g.Items.Sum(i => i.Qty * (i.ServicePrice + i.MaterialPrice));
+                    decimal groupTotal = g.FinalSellingPrice ?? 0;
                     decimal volume = g.RecapVolume ?? 1;
                     string unit = string.IsNullOrWhiteSpace(g.RecapUnit) ? "Ls" : g.RecapUnit;
                     decimal pricePerUnit = volume != 0 ? groupTotal / volume : 0;
@@ -433,8 +433,12 @@ public class QuotationPdfService
                 });
             });
 
-            // Items table
+            // Items table (Quotation Standard only — Civil & ME is priced per Group via
+            // Subkontraktor SOW and already covered by the Recapitulation/BOQ pages above,
+            // so an equipment/material table here would just render empty).
             // Columns: No | Deskripsi | Qty+Unit | Jasa/Satuan | Material/Satuan | Total
+            if (!q.IsCivilMeMode)
+            {
             col.Item().Table(table =>
             {
                 table.ColumnsDefinition(cols =>
@@ -543,6 +547,7 @@ public class QuotationPdfService
 
                 RenderGroupSubtotal();
             });
+            }
 
             // Summary block
             col.Item().AlignRight().Width(220).Table(t =>

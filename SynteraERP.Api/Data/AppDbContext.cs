@@ -252,6 +252,7 @@ public class AppDbContext : DbContext
             e.Property(g => g.RecapVolume).HasPrecision(12, 4);
             e.Property(g => g.RecapUnit).HasMaxLength(20);
             e.Property(g => g.FinalSubconCost).HasPrecision(18, 2);
+            e.Property(g => g.FinalSellingPrice).HasPrecision(18, 2);
             e.HasOne(g => g.Tab)
              .WithMany(t => t.Groups)
              .HasForeignKey(g => g.TabId)

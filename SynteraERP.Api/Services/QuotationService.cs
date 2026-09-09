@@ -182,6 +182,7 @@ public class QuotationService : IQuotationService
             group.RecapUnit = incoming.RecapUnit;
             group.SubcontractorId = incoming.SubcontractorId;
             group.FinalSubconCost = incoming.FinalSubconCost;
+            group.FinalSellingPrice = incoming.FinalSellingPrice;
 
             // Items have no children of their own (no attachment hangs off Item.Id) — a full
             // per-group replace is still the simplest correct approach for them.
@@ -266,6 +267,7 @@ public class QuotationService : IQuotationService
                 RecapUnit = g.RecapUnit,
                 SubcontractorId = g.SubcontractorId,
                 FinalSubconCost = g.FinalSubconCost,
+                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     GroupId = Guid.Empty,
@@ -368,6 +370,7 @@ public class QuotationService : IQuotationService
                 RecapUnit = g.RecapUnit,
                 SubcontractorId = g.SubcontractorId,
                 FinalSubconCost = g.FinalSubconCost,
+                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -716,6 +719,7 @@ public class QuotationService : IQuotationService
                 RecapUnit = g.RecapUnit,
                 SubcontractorId = g.SubcontractorId,
                 FinalSubconCost = g.FinalSubconCost,
+                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -736,9 +740,21 @@ public class QuotationService : IQuotationService
 
     private static void RecalcTotals(Models.Quotation q)
     {
-        var allItems = q.Tabs.SelectMany(t => t.Groups).SelectMany(g => g.Items).ToList();
-        q.TotalMaterial = MoneyMath.Round(allItems.Sum(i => i.Qty * i.MaterialPrice));
-        q.TotalService = MoneyMath.Round(allItems.Sum(i => i.Qty * i.ServicePrice));
+        var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
+        if (q.IsCivilMeMode)
+        {
+            // Civil & ME groups are priced by Subkontraktor SOW, not equipment/material lines —
+            // FinalSellingPrice (harga jual ke customer) drives the total. FinalSubconCost (harga
+            // beli dari subkontraktor) is cost-basis only, used for margin, never summed here.
+            q.TotalMaterial = 0;
+            q.TotalService = MoneyMath.Round(allGroups.Sum(g => g.FinalSellingPrice ?? 0));
+        }
+        else
+        {
+            var allItems = allGroups.SelectMany(g => g.Items).ToList();
+            q.TotalMaterial = MoneyMath.Round(allItems.Sum(i => i.Qty * i.MaterialPrice));
+            q.TotalService = MoneyMath.Round(allItems.Sum(i => i.Qty * i.ServicePrice));
+        }
         var subtotal = q.TotalMaterial + q.TotalService;
         var discountAmount = MoneyMath.Round(subtotal * q.Discount / 100);
         q.TotalBeforeTax = subtotal - discountAmount;
@@ -813,6 +829,7 @@ public class QuotationService : IQuotationService
                 SubcontractorId = g.SubcontractorId,
                 SubcontractorName = g.Subcontractor?.Name,
                 FinalSubconCost = g.FinalSubconCost,
+                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.OrderBy(i => i.SortOrder).Select(i => new QuotationItemDto
                 {
                     Id = i.Id,

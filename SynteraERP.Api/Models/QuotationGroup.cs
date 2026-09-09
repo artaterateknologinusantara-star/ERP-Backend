@@ -11,6 +11,7 @@ public class QuotationGroup
 
     public Guid? SubcontractorId { get; set; }
     public decimal? FinalSubconCost { get; set; }
+    public decimal? FinalSellingPrice { get; set; }
 
     public QuotationTab Tab { get; set; } = null!;
     public Supplier? Subcontractor { get; set; }

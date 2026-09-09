@@ -74,6 +74,7 @@ public class QuotationGroupDto
     public Guid? SubcontractorId { get; set; }
     public string? SubcontractorName { get; set; }
     public decimal? FinalSubconCost { get; set; }
+    public decimal? FinalSellingPrice { get; set; }
     public List<QuotationItemDto> Items { get; set; } = [];
     public List<QuotationWorkItemDto> WorkItems { get; set; } = [];
 }
@@ -164,6 +165,7 @@ public class SaveQuotationGroupRequest
     public string? RecapUnit { get; set; }
     public Guid? SubcontractorId { get; set; }
     public decimal? FinalSubconCost { get; set; }
+    public decimal? FinalSellingPrice { get; set; }
     public List<SaveQuotationItemRequest> Items { get; set; } = [];
 }
 
