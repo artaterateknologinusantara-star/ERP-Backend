@@ -10,6 +10,8 @@ public class User : BaseEntity
     public string PasswordHash { get; set; } = string.Empty;
     public bool IsActive { get; set; } = true;
     public DateTimeOffset? LastLoginAt { get; set; }
+    public bool IsSandbox { get; set; } = false;
+    public string? SandboxDbName { get; set; }
 
     public Role Role { get; set; } = null!;
 }

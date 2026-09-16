@@ -126,6 +126,7 @@ public class AppDbContext : DbContext
             e.Property(u => u.Email).HasMaxLength(150).IsRequired();
             e.Property(u => u.Name).HasMaxLength(100).IsRequired();
             e.Property(u => u.PasswordHash).HasMaxLength(255).IsRequired();
+            e.Property(u => u.SandboxDbName).HasMaxLength(128);
             e.HasOne(u => u.Role)
              .WithMany(r => r.Users)
              .HasForeignKey(u => u.RoleId)

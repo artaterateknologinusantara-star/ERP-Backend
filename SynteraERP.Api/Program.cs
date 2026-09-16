@@ -15,8 +15,26 @@ using SynteraERP.Api.Services.Interfaces;
 var builder = WebApplication.CreateBuilder(args);
 
 // ── Database ──────────────────────────────────────────────────────────────────
-builder.Services.AddDbContext<AppDbContext>(opt =>
-    opt.UseSqlServer(builder.Configuration.GetConnectionString("Default")));
+// Registered as a factory (not a fixed connection string) so sandbox users' requests can be
+// routed to their own isolated database. AppDbContext is Scoped and only actually constructed
+// the first time a controller/service asks for it, which happens after UseAuthentication() has
+// already populated HttpContext.User from the JWT — so the "db" claim (empty for normal users)
+// is readable here. Anonymous requests and non-HTTP contexts (background services, startup
+// seeding below) have no HttpContext/claim and fall back to the default connection string.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
+{
+    var httpContext = sp.GetRequiredService<IHttpContextAccessor>().HttpContext;
+    var config = sp.GetRequiredService<IConfiguration>();
+    var defaultConnStr = config.GetConnectionString("Default")!;
+    var sandboxDb = httpContext?.User?.FindFirst("db")?.Value;
+
+    var connStr = string.IsNullOrWhiteSpace(sandboxDb)
+        ? defaultConnStr
+        : SandboxConnectionStringHelper.ForDatabase(defaultConnStr, sandboxDb);
+
+    opt.UseSqlServer(connStr);
+});
 
 // ── Authentication / JWT ──────────────────────────────────────────────────────
 // Not stored in appsettings.json. Supply it via `dotnet user-secrets set "Jwt:Key" "..."`
@@ -53,7 +71,6 @@ builder.Services.AddAuthorization(opt =>
             opt.AddPolicy(requirement.PolicyName, policy => policy.Requirements.Add(requirement));
         }
 });
-builder.Services.AddHttpContextAccessor();
 
 // ── CORS ───────────────────────────────────────────────────────────────────────
 builder.Services.AddCors(opt =>
@@ -94,6 +111,7 @@ builder.Services.AddScoped<ReportsPdfService>();
 builder.Services.AddScoped<ISystemResetService, SystemResetService>();
 builder.Services.AddScoped<IDemoLeadService, DemoLeadService>();
 builder.Services.AddScoped<IBankReconciliationService, BankReconciliationService>();
+builder.Services.AddScoped<ISandboxProvisioningService, SandboxProvisioningService>();
 builder.Services.AddHostedService<InvoiceOverdueStatusService>();
 builder.Services.AddHostedService<DatabaseBackupService>();
 
