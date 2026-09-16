@@ -12,6 +12,7 @@ public class UserListDto
     public bool IsActive { get; set; }
     public DateTimeOffset? LastLoginAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    public bool IsSandbox { get; set; }
 }
 
 public class CreateUserRequest
@@ -20,6 +21,7 @@ public class CreateUserRequest
     [Required, EmailAddress] public string Email { get; set; } = string.Empty;
     [Required, MinLength(6)] public string Password { get; set; } = string.Empty;
     [Required] public Guid RoleId { get; set; }
+    public bool IsSandbox { get; set; } = false;
 }
 
 public class UpdateUserRequest
