@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.TaxRate;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -31,6 +33,7 @@ public class TaxRateController : ControllerBase
     }
 
     [HttpPost]
+    [RequirePermission(Modules.Settings, PermissionActions.Create)]
     public async Task<ActionResult<ApiResponse<TaxRateDto>>> Create([FromBody] CreateTaxRateRequest request)
     {
         var item = await _svc.CreateAsync(request);
@@ -38,6 +41,7 @@ public class TaxRateController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [RequirePermission(Modules.Settings, PermissionActions.Edit)]
     public async Task<ActionResult<ApiResponse<TaxRateDto>>> Update(Guid id, [FromBody] UpdateTaxRateRequest request)
     {
         var item = await _svc.UpdateAsync(id, request);
@@ -46,6 +50,7 @@ public class TaxRateController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/status")]
+    [RequirePermission(Modules.Settings, PermissionActions.Edit)]
     public async Task<ActionResult<ApiResponse>> SetStatus(Guid id, [FromBody] SetStatusRequest request)
     {
         var ok = await _svc.SetStatusAsync(id, request.IsActive);

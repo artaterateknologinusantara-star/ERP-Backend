@@ -104,7 +104,12 @@ public class RoleController(AppDbContext db) : ControllerBase
             var existing = role.Permissions.FirstOrDefault(p => p.Module == incoming.Module);
             if (existing is null)
             {
-                role.Permissions.Add(new Permission
+                // db.Permissions.Add (not role.Permissions.Add) so EF tracks this as Added
+                // explicitly. Permission.Id is pre-populated by BaseEntity's Guid.NewGuid()
+                // initializer, so an entity reached only via navigation fixup (role.Permissions.Add)
+                // gets misdetected as an existing row needing an UPDATE instead of an INSERT,
+                // which then fails with a 0-rows-affected concurrency exception.
+                db.Permissions.Add(new Permission
                 {
                     RoleId = role.Id,
                     Module = incoming.Module,
