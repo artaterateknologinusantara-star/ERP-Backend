@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.CompanySettings;
 using SynteraERP.Api.DTOs.Common;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -24,6 +26,7 @@ public class CompanySettingsController : ControllerBase
     }
 
     [HttpPut]
+    [RequirePermission(Modules.Settings, PermissionActions.Edit)]
     public async Task<ActionResult<ApiResponse<CompanySettingsDto>>> Update([FromBody] UpdateCompanySettingsRequest request)
     {
         if (!ModelState.IsValid)
@@ -43,6 +46,7 @@ public class CompanySettingsController : ControllerBase
 
     [HttpPost("logo")]
     [Consumes("multipart/form-data")]
+    [RequirePermission(Modules.Settings, PermissionActions.Edit)]
     public async Task<ActionResult<ApiResponse<CompanySettingsDto>>> UploadLogo(IFormFile? file)
     {
         if (file is null)
@@ -76,6 +80,7 @@ public class CompanySettingsController : ControllerBase
     }
 
     [HttpDelete("logo")]
+    [RequirePermission(Modules.Settings, PermissionActions.Edit)]
     public async Task<ActionResult<ApiResponse<CompanySettingsDto>>> DeleteLogo()
     {
         var item = await _svc.DeleteLogoAsync();
@@ -83,6 +88,7 @@ public class CompanySettingsController : ControllerBase
     }
 
     [HttpPost("regenerate-prefixes")]
+    [RequirePermission(Modules.Settings, PermissionActions.Edit)]
     public async Task<ActionResult<ApiResponse<RegeneratePrefixesResponse>>> RegeneratePrefixes()
     {
         var result = await _svc.RegeneratePrefixesAsync();

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Branch;
 using SynteraERP.Api.DTOs.Common;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -31,6 +33,7 @@ public class BranchController : ControllerBase
     }
 
     [HttpPost]
+    [RequirePermission(Modules.Settings, PermissionActions.Create)]
     public async Task<ActionResult<ApiResponse<BranchDto>>> Create([FromBody] CreateBranchRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ApiResponse<BranchDto>.Fail(FirstModelError()));
@@ -40,6 +43,7 @@ public class BranchController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [RequirePermission(Modules.Settings, PermissionActions.Edit)]
     public async Task<ActionResult<ApiResponse<BranchDto>>> Update(Guid id, [FromBody] UpdateBranchRequest request)
     {
         if (!ModelState.IsValid) return BadRequest(ApiResponse<BranchDto>.Fail(FirstModelError()));
@@ -50,6 +54,7 @@ public class BranchController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [RequirePermission(Modules.Settings, PermissionActions.Delete)]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
         var ok = await _svc.DeleteAsync(id);
