@@ -5,14 +5,13 @@ using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Auth;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.Models;
-using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
 
 [Authorize(Roles = "Administrator")]
 [ApiController]
 [Route("api/users")]
-public class UserController(AppDbContext db, ISandboxProvisioningService sandboxSvc, ILogger<UserController> logger) : ControllerBase
+public class UserController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<UserListDto>>>> List()
@@ -56,29 +55,13 @@ public class UserController(AppDbContext db, ISandboxProvisioningService sandbox
         if (!await db.Roles.AnyAsync(r => r.Id == req.RoleId))
             return BadRequest(ApiResponse<UserListDto>.Fail("Role tidak ditemukan."));
 
-        string? sandboxDbName = null;
-        if (req.IsSandbox)
-        {
-            try
-            {
-                sandboxDbName = await sandboxSvc.ProvisionAsync(req.RoleId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Gagal provisioning database sandbox untuk user baru {Email}.", req.Email);
-                return StatusCode(500, ApiResponse<UserListDto>.Fail("Gagal membuat database sandbox: " + ex.Message));
-            }
-        }
-
         var user = new User
         {
-            Name          = req.Name,
-            Email         = req.Email,
-            PasswordHash  = BCrypt.Net.BCrypt.HashPassword(req.Password),
-            RoleId        = req.RoleId,
-            IsActive      = true,
-            IsSandbox     = req.IsSandbox,
-            SandboxDbName = sandboxDbName,
+            Name         = req.Name,
+            Email        = req.Email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+            RoleId       = req.RoleId,
+            IsActive     = true,
         };
 
         db.Users.Add(user);
@@ -127,21 +110,6 @@ public class UserController(AppDbContext db, ISandboxProvisioningService sandbox
         user.UpdatedAt  = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync();
 
-        // Soft-delete first so the account is locked out immediately even if dropping the
-        // sandbox database below fails — a dangling sandbox DB is a low-severity cleanup item,
-        // an active user whose DB got pulled out from under them mid-session is worse.
-        if (user.IsSandbox && !string.IsNullOrWhiteSpace(user.SandboxDbName))
-        {
-            try
-            {
-                await sandboxSvc.DropAsync(user.SandboxDbName);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "User {UserId} dihapus, tapi gagal menghapus database sandbox {Database}.", user.Id, user.SandboxDbName);
-            }
-        }
-
         return Ok(ApiResponse.Ok("User berhasil dihapus."));
     }
 
@@ -155,6 +123,5 @@ public class UserController(AppDbContext db, ISandboxProvisioningService sandbox
         IsActive    = u.IsActive,
         LastLoginAt = u.LastLoginAt,
         CreatedAt   = u.CreatedAt,
-        IsSandbox   = u.IsSandbox,
     };
 }
