@@ -1,33 +1,5 @@
 namespace SynteraERP.Api.DTOs.SalesOrder;
 
-public class SalesOrderItemDto
-{
-    public Guid? ItemMasterId { get; set; }
-    public string Description { get; set; } = string.Empty;
-    public string? Sku { get; set; }
-    public decimal Qty { get; set; }
-    public string Uom { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
-    public decimal Discount { get; set; } = 0;
-    public string? Notes { get; set; }
-    public int SortOrder { get; set; } = 0;
-}
-
-public class CreateSalesOrderRequest
-{
-    public Guid? QuotationId { get; set; }
-    public Guid CustomerId { get; set; }
-    public string ProjectName { get; set; } = string.Empty;
-    public Guid SalesId { get; set; }
-    public DateOnly? ExpectedDate { get; set; }
-    public string? ShipTo { get; set; }
-    public string? Terms { get; set; }
-    public string? RefQuotation { get; set; }
-    public string? Notes { get; set; }
-    public decimal RetentionPercentage { get; set; } = 0;
-    public List<SalesOrderItemDto> Items { get; set; } = new();
-}
-
 public class SalesOrderItemResponse
 {
     public Guid Id { get; set; }

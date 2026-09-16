@@ -90,6 +90,13 @@ public class InventoryController : ControllerBase
         }
     }
 
+    [HttpGet("delivery-orders/shippable-items/{soId:guid}")]
+    public async Task<IActionResult> GetShippableItemsForSo(Guid soId)
+    {
+        var result = await _svc.GetShippableItemsForSoAsync(soId);
+        return Ok(new { success = true, data = result });
+    }
+
     [HttpPost("delivery-orders")]
     public async Task<IActionResult> CreateDeliveryOrder([FromBody] CreateDeliveryOrderRequest request)
     {

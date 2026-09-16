@@ -67,7 +67,7 @@ public class DeliveryOrderDetailDto : DeliveryOrderListDto
 
 public class CreateDeliveryOrderRequest
 {
-    public Guid? SalesOrderId { get; set; }
+    public Guid SalesOrderId { get; set; }
     public Guid? CustomerId { get; set; }
     public DateOnly DeliveryDate { get; set; }
     public string? DeliveryAddress { get; set; }
@@ -83,6 +83,18 @@ public class CreateDeliveryOrderItemRequest
     public string Uom { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public int SortOrder { get; set; } = 0;
+}
+
+public class ShippableSoItemDto
+{
+    public Guid ItemMasterId { get; set; }
+    public string ItemName { get; set; } = string.Empty;
+    public string? Sku { get; set; }
+    public string Uom { get; set; } = string.Empty;
+    public decimal SoQty { get; set; }
+    public decimal AlreadyShipped { get; set; }
+    public decimal RemainingQty { get; set; }
+    public decimal StockAvailable { get; set; }
 }
 
 public class InventoryStatsDto

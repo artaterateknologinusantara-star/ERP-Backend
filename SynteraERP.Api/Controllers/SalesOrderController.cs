@@ -69,19 +69,6 @@ public class SalesOrderController : ControllerBase
         }
     }
 
-    [HttpPost]
-    public async Task<ActionResult<ApiResponse<SalesOrderDetailResponse>>> Create([FromBody] CreateSalesOrderRequest request)
-    {
-        try
-        {
-            var item = await _svc.CreateAsync(request);
-            return CreatedAtAction(nameof(Get), new { id = item.Id },
-                ApiResponse<SalesOrderDetailResponse>.Ok(item, "Sales Order berhasil dibuat."));
-        }
-        catch (KeyNotFoundException ex) { return NotFound(ApiResponse<SalesOrderDetailResponse>.Fail(ex.Message)); }
-        catch (InvalidOperationException ex) { return BadRequest(ApiResponse<SalesOrderDetailResponse>.Fail(ex.Message)); }
-    }
-
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> UpdateStatus(Guid id, [FromBody] UpdateSalesOrderStatusRequest request)
     {

@@ -195,6 +195,21 @@ public class InventoryService : IInventoryService
     public async Task<DeliveryOrderDetailDto> CreateDeliveryOrderAsync(
         CreateDeliveryOrderRequest request, Guid userId)
     {
+        if (request.SalesOrderId == Guid.Empty)
+            throw new InvalidOperationException("Sales Order wajib dipilih.");
+
+        var so = await _db.SalesOrders
+            .FirstOrDefaultAsync(x => x.Id == request.SalesOrderId && !x.IsDeleted)
+            ?? throw new InvalidOperationException("Sales Order tidak ditemukan.");
+
+        if (so.Status != SalesOrderStatus.Open && so.Status != SalesOrderStatus.Delivered)
+            throw new InvalidOperationException("Sales Order harus berstatus Open atau Delivered.");
+
+        // DO manual dibatasi ke item + sisa qty Sales Order yang dipilih, supaya tidak ada standar
+        // ganda dengan endpoint from-so — lihat GetShippableItemsForSoAsync untuk perhitungan sisanya.
+        var shippableById = (await GetShippableItemsForSoAsync(so.Id))
+            .ToDictionary(x => x.ItemMasterId);
+
         // Validate items
         foreach (var req in request.Items)
         {
@@ -207,6 +222,15 @@ public class InventoryService : IInventoryService
             if (item.Stock < req.Qty)
                 throw new InvalidOperationException(
                     $"Stok {item.Name} tidak cukup. Stok tersedia: {item.Stock} {item.Uom}, diminta: {req.Qty}");
+
+            if (!shippableById.TryGetValue(req.ItemMasterId, out var shippable))
+                throw new InvalidOperationException(
+                    $"Item '{item.Name}' tidak terdapat di Sales Order {so.No}.");
+
+            if (req.Qty > shippable.RemainingQty)
+                throw new InvalidOperationException(
+                    $"Qty {item.Name} ({req.Qty}) melebihi sisa Sales Order {so.No} " +
+                    $"({shippable.RemainingQty} {item.Uom}).");
         }
 
         var no = await NextDONumberAsync();
@@ -391,25 +415,7 @@ public class InventoryService : IInventoryService
 
         foreach (var soItem in so.Items.OrderBy(x => x.SortOrder))
         {
-            ItemMaster? master = null;
-
-            // Match by SKU (Code) terlebih dahulu
-            if (!string.IsNullOrEmpty(soItem.Sku))
-                master = await _db.ItemMasters
-                    .FirstOrDefaultAsync(x => x.Code == soItem.Sku && x.IsActive && !x.IsDeleted);
-
-            // Fallback: match by kata pertama nama item
-            if (master == null && !string.IsNullOrEmpty(soItem.Description))
-            {
-                var firstWord = soItem.Description
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                    .First()
-                    .ToLower();
-
-                master = await _db.ItemMasters
-                    .FirstOrDefaultAsync(x =>
-                        x.Name.ToLower().Contains(firstWord) && x.IsActive && !x.IsDeleted);
-            }
+            var master = await MatchSoItemToItemMasterAsync(soItem);
 
             // Hanya tambah ke DO jika ada di inventory
             if (master != null)
@@ -442,6 +448,82 @@ public class InventoryService : IInventoryService
         };
 
         return await CreateDeliveryOrderAsync(request, userId);
+    }
+
+    private async Task<ItemMaster?> MatchSoItemToItemMasterAsync(SalesOrderItem soItem)
+    {
+        ItemMaster? master = null;
+
+        // Match by SKU (Code) terlebih dahulu
+        if (!string.IsNullOrEmpty(soItem.Sku))
+            master = await _db.ItemMasters
+                .FirstOrDefaultAsync(x => x.Code == soItem.Sku && x.IsActive && !x.IsDeleted);
+
+        // Fallback: match by kata pertama nama item
+        if (master == null && !string.IsNullOrEmpty(soItem.Description))
+        {
+            var firstWord = soItem.Description
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .First()
+                .ToLower();
+
+            master = await _db.ItemMasters
+                .FirstOrDefaultAsync(x =>
+                    x.Name.ToLower().Contains(firstWord) && x.IsActive && !x.IsDeleted);
+        }
+
+        return master;
+    }
+
+    // ─── Sisa qty per item yang bisa di-DO-kan dari satu Sales Order ───────────
+    //
+    // "Sisa" di sini dihitung dari qty SO dikurangi qty yang sudah dipakai di DO aktif
+    // lain untuk SO+item yang sama — BUKAN dari SalesOrderItem.QtyShipped, yang di
+    // seluruh codebase ini tidak pernah di-increment di mana pun (termasuk saat DO
+    // dikonfirmasi/stok dikurangi di ConfirmDeliveryOrderAsync), jadi selalu 0. Dipakai
+    // oleh form DO manual (wajib pilih SO) dan validasi CreateDeliveryOrderAsync supaya
+    // keduanya pakai standar pembatasan yang sama dengan alur from-so.
+    public async Task<List<ShippableSoItemDto>> GetShippableItemsForSoAsync(Guid soId)
+    {
+        var so = await _db.SalesOrders
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == soId && !x.IsDeleted)
+            ?? throw new InvalidOperationException("Sales Order tidak ditemukan.");
+
+        var soQtyByItemMaster = new Dictionary<Guid, decimal>();
+        foreach (var soItem in so.Items.OrderBy(x => x.SortOrder))
+        {
+            var master = await MatchSoItemToItemMasterAsync(soItem);
+            if (master != null)
+                soQtyByItemMaster[master.Id] = soQtyByItemMaster.GetValueOrDefault(master.Id) + soItem.Qty;
+        }
+
+        var result = new List<ShippableSoItemDto>();
+        foreach (var (itemMasterId, soQty) in soQtyByItemMaster)
+        {
+            var master = await _db.ItemMasters.FindAsync(itemMasterId);
+            if (master is null) continue;
+
+            var alreadyShipped = await _db.DeliveryOrderItems
+                .Where(di => di.ItemMasterId == itemMasterId
+                    && di.DeliveryOrder.SalesOrderId == soId
+                    && !di.DeliveryOrder.IsDeleted)
+                .SumAsync(di => (decimal?)di.Qty) ?? 0;
+
+            result.Add(new ShippableSoItemDto
+            {
+                ItemMasterId = itemMasterId,
+                ItemName = master.Name,
+                Sku = master.Code,
+                Uom = master.Uom,
+                SoQty = soQty,
+                AlreadyShipped = alreadyShipped,
+                RemainingQty = soQty - alreadyShipped,
+                StockAvailable = master.Stock,
+            });
+        }
+
+        return result;
     }
 
     // ─── Numbering ────────────────────────────────────────────────────────────
