@@ -33,6 +33,7 @@ public class QuotationPdfService
                     .ThenInclude(g => g.WorkItems)
                         .ThenInclude(w => w.WorkDetails)
                             .ThenInclude(d => d.Attachments)
+            .Include(q => q.Termins)
             .FirstOrDefaultAsync(q => q.Id == quotationId);
 
         if (quotation is null) return null;
@@ -619,7 +620,19 @@ public class QuotationPdfService
                                 : "Penawaran ini berlaku 14 hari sejak tanggal dikeluarkan.")
                         .FontSize(7.5f).FontColor(Colors.Grey.Darken1);
 
-                    if (!string.IsNullOrWhiteSpace(q.PaymentTerms))
+                    if (q.Termins.Any())
+                    {
+                        terms.Item().PaddingTop(6).Text("TERM PEMBAYARAN").Bold().FontSize(8).FontColor(Colors.Grey.Darken2);
+                        foreach (var termin in q.Termins.OrderBy(t => t.SortOrder))
+                        {
+                            terms.Item().PaddingTop(2)
+                                .Text($"{termin.Percentage}% - {termin.Description}")
+                                .FontSize(7.5f).FontColor(Colors.Grey.Darken1);
+                        }
+                    }
+                    // Fallback untuk quotation lama yang belum punya QuotationTermin terstruktur —
+                    // PaymentTerms (free text) tetap ditampilkan apa adanya.
+                    else if (!string.IsNullOrWhiteSpace(q.PaymentTerms))
                     {
                         terms.Item().PaddingTop(6).Text("TERM PEMBAYARAN").Bold().FontSize(8).FontColor(Colors.Grey.Darken2);
                         terms.Item().PaddingTop(2).Text(q.PaymentTerms).FontSize(7.5f).FontColor(Colors.Grey.Darken1);

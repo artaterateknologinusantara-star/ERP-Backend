@@ -66,6 +66,7 @@ public class QuotationService : IQuotationService
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (q is null) return null;
@@ -82,6 +83,7 @@ public class QuotationService : IQuotationService
 
     public async Task<QuotationDto> CreateAsync(SaveQuotationRequest request)
     {
+        ValidateTermins(request.Termins);
         var no = await NextNumberAsync();
         var quotation = MapFromRequest(request, no);
         _db.Quotations.Add(quotation);
@@ -91,10 +93,13 @@ public class QuotationService : IQuotationService
 
     public async Task<QuotationDto?> UpdateAsync(Guid id, SaveQuotationRequest request)
     {
+        ValidateTermins(request.Termins);
+
         // Tracked (not AsNoTracking) — Tabs/Groups/Items are upserted in place below, so the
         // change tracker needs to see what already exists to diff against.
         var quotation = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (quotation is null) return null;
@@ -123,11 +128,38 @@ public class QuotationService : IQuotationService
         // regression check before this fix). Items still get replaced wholesale per group below —
         // nothing external hangs off QuotationItem.Id today, so that stays simple.
         UpsertTabs(quotation, request.Tabs);
+
+        // Full replace, not upsert-by-Id like Tabs/Groups — nothing hangs off QuotationTermin.Id
+        // (no attachment, no downstream FK), so there's no data to orphan by recreating rows on
+        // every save. Same reasoning as QuotationItem's per-group replace above.
+        _db.QuotationTermins.RemoveRange(quotation.Termins);
+        quotation.Termins = request.Termins.Select(t => new QuotationTermin
+        {
+            QuotationId = quotation.Id,
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
+        }).ToList();
+
         RecalcTotals(quotation);
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         return (await GetByIdAsync(id))!;
+    }
+
+    // Termins are optional (old quotations keep using free-text PaymentTerms) but when the caller
+    // does send a structured list, it must add up to a full 100% — a partial list would silently
+    // gate Invoice creation at less than the SO's real value later. 0.01 tolerance absorbs
+    // decimal(5,2) rounding on the percentage split (e.g. 33.33 x 3 = 99.99, not 100).
+    private static void ValidateTermins(List<SaveQuotationTerminRequest> termins)
+    {
+        if (termins.Count == 0) return;
+
+        var total = termins.Sum(t => t.Percentage);
+        if (Math.Abs(total - 100m) > 0.01m)
+            throw new InvalidOperationException(
+                $"Total persentase termin harus 100%, saat ini {total}%.");
     }
 
     private void UpsertTabs(Models.Quotation quotation, List<SaveQuotationTabRequest> incomingTabs)
@@ -229,6 +261,7 @@ public class QuotationService : IQuotationService
     {
         var source = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new KeyNotFoundException($"Quotation {id} not found");
 
@@ -287,6 +320,13 @@ public class QuotationService : IQuotationService
             }).ToList(),
         }).ToList();
 
+        copy.Termins = source.Termins.Select(t => new QuotationTermin
+        {
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
+        }).ToList();
+
         RecalcTotals(copy);
         _db.Quotations.Add(copy);
         await _db.SaveChangesAsync();
@@ -321,6 +361,7 @@ public class QuotationService : IQuotationService
     {
         var source = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (source is null) return null;
@@ -387,6 +428,13 @@ public class QuotationService : IQuotationService
                     SortOrder = i.SortOrder,
                 }).ToList(),
             }).ToList(),
+        }).ToList();
+
+        revision.Termins = source.Termins.Select(t => new QuotationTermin
+        {
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
         }).ToList();
 
         RecalcTotals(revision);
@@ -701,6 +749,13 @@ public class QuotationService : IQuotationService
             Status = QuotationStatus.Draft,
         };
         q.Tabs = BuildTabs(req.Tabs, q.Id);
+        q.Termins = req.Termins.Select(t => new QuotationTermin
+        {
+            QuotationId = q.Id,
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
+        }).ToList();
         RecalcTotals(q);
         return q;
     }
@@ -848,6 +903,13 @@ public class QuotationService : IQuotationService
                 }).ToList(),
                 WorkItems = g.WorkItems.OrderBy(w => w.SortOrder).Select(ToWorkItemDto).ToList(),
             }).ToList(),
+        }).ToList(),
+        Termins = x.Termins.OrderBy(t => t.SortOrder).Select(t => new QuotationTerminDto
+        {
+            Id = t.Id,
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
         }).ToList(),
     };
 }

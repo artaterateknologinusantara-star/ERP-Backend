@@ -94,6 +94,7 @@ public class InvoiceService : IInvoiceService
             No           = no,
             CustomerId   = request.CustomerId,
             SalesOrderId = request.SalesOrderId,
+            SalesOrderTerminId = request.SalesOrderTerminId,
             InvoiceDate  = request.Date,
             DueDate      = request.DueDate,
             Amount       = request.Amount,
@@ -104,8 +105,66 @@ public class InvoiceService : IInvoiceService
             Status       = InvoiceStatus.Draft,
         };
 
-        // Auto-populate items dari SalesOrderItems jika SO ada
-        if (request.SalesOrderId.HasValue)
+        if (request.SalesOrderTerminId.HasValue)
+        {
+            if (!request.SalesOrderId.HasValue)
+                throw new InvalidOperationException("Invoice per termin harus terhubung ke Sales Order.");
+
+            var salesOrder = await _db.SalesOrders.FindAsync(request.SalesOrderId.Value)
+                ?? throw new InvalidOperationException("Sales Order tidak ditemukan.");
+
+            var termin = await _db.SalesOrderTermins
+                .FirstOrDefaultAsync(t => t.Id == request.SalesOrderTerminId.Value)
+                ?? throw new InvalidOperationException("Termin tidak ditemukan.");
+
+            if (termin.SalesOrderId != request.SalesOrderId.Value)
+                throw new InvalidOperationException("Termin ini bukan milik Sales Order yang dipilih.");
+
+            var alreadyInvoiced = await _db.Invoices.AnyAsync(i =>
+                i.SalesOrderTerminId == termin.Id && !i.IsDeleted);
+            if (alreadyInvoiced)
+                throw new InvalidOperationException(
+                    $"Termin {termin.SortOrder} - {termin.Description} sudah pernah ditagih.");
+
+            // Percentage of SalesOrder.Total, which already includes PPN (see
+            // SalesOrderPaymentService.RecordDownPaymentAsync) — this is a slice of the grand
+            // total, not a pre-tax subtotal, so it's assigned straight to inv.Amount below rather
+            // than fed through the subtotal+tax recompute the full-SO-items branch uses.
+            var terminAmount = MoneyMath.Round(salesOrder.Total * termin.Percentage / 100m);
+
+            var totalInvoiced = await _db.Invoices
+                .Where(i => i.SalesOrderId == request.SalesOrderId.Value && !i.IsDeleted)
+                .SumAsync(i => (decimal?)i.Amount) ?? 0;
+            var totalDp = await _db.SalesOrderPayments
+                .Where(p => p.SalesOrderId == request.SalesOrderId.Value)
+                .SumAsync(p => (decimal?)p.Amount) ?? 0;
+
+            var projectedTotal = totalInvoiced + totalDp + terminAmount;
+            if (projectedTotal > salesOrder.Total)
+                throw new InvalidOperationException(
+                    $"Total tagihan (Invoice + DP) akan menjadi Rp {projectedTotal:N0}, melebihi Total Sales Order " +
+                    $"Rp {salesOrder.Total:N0} sebesar Rp {(projectedTotal - salesOrder.Total):N0}. " +
+                    $"(Sudah diinvoice Rp {totalInvoiced:N0}, DP diterima Rp {totalDp:N0}, termin ini Rp {terminAmount:N0}.)");
+
+            inv.Amount = terminAmount;
+            inv.Items = new List<InvoiceItem>
+            {
+                new()
+                {
+                    Id          = Guid.NewGuid(),
+                    InvoiceId   = inv.Id,
+                    Description = $"Termin {termin.SortOrder} - {termin.Description} ({termin.Percentage}%)",
+                    Qty         = 1,
+                    Uom         = "Ls",
+                    UnitPrice   = terminAmount,
+                    Amount      = terminAmount,
+                    SortOrder   = 0,
+                },
+            };
+        }
+        // Auto-populate items dari SalesOrderItems jika SO ada — behavior lama, TIDAK diubah,
+        // tetap jalan untuk SO yang belum punya SalesOrderTermin sama sekali (backward compatible).
+        else if (request.SalesOrderId.HasValue)
         {
             var soItems = await _db.SalesOrderItems
                 .Where(x => x.SalesOrderId == request.SalesOrderId.Value)
@@ -137,7 +196,11 @@ public class InvoiceService : IInvoiceService
         // Posting GL: Debit Piutang Usaha = Total, Kredit Pendapatan Penjualan = Subtotal, Kredit
         // Utang Pajak Keluaran = PPN. Subtotal/PPN dihitung persis sama seperti ToDto (reverse-calculate
         // dari Amount kalau tidak ada item SO) supaya angka jurnal selalu cocok dengan yang ditampilkan ke user.
-        var hasItems = inv.Items != null && inv.Items.Any();
+        // Invoice per-termin SELALU reverse-calculate meski Items terisi (1 baris) — Item.Amount di
+        // sana adalah slice dari SalesOrder.Total yang SUDAH termasuk PPN, bukan subtotal pre-tax
+        // seperti InvoiceItem dari SalesOrderItem; men-treat-nya sebagai pre-tax lalu menambah PPN
+        // lagi di atasnya akan menghitung pajak dua kali dan membuat jurnal tidak balance.
+        var hasItems = inv.Items != null && inv.Items.Any() && !inv.SalesOrderTerminId.HasValue;
         var subTotal = hasItems
             ? MoneyMath.Round(inv.Items!.Sum(i => i.Amount))
             : MoneyMath.Round(inv.Amount / (1 + taxRate));
@@ -440,8 +503,10 @@ public class InvoiceService : IInvoiceService
 
     private static InvoiceDto ToDto(Models.Invoice x, decimal taxRate)
     {
-        // Compute subTotal / taxAmount dari items jika ada, otherwise reverse dari Amount
-        var hasItems  = x.Items != null && x.Items.Any();
+        // Compute subTotal / taxAmount dari items jika ada, otherwise reverse dari Amount.
+        // Invoice per-termin selalu reverse-calculate meski Items terisi — lihat komentar di
+        // CreateAsync soal kenapa Item.Amount di sana tidak boleh diperlakukan sebagai pre-tax.
+        var hasItems  = x.Items != null && x.Items.Any() && !x.SalesOrderTerminId.HasValue;
         var subTotal  = hasItems
             ? MoneyMath.Round(x.Items!.Sum(i => i.Amount))
             : MoneyMath.Round(x.Amount / (1 + taxRate));
@@ -465,6 +530,7 @@ public class InvoiceService : IInvoiceService
             RetentionReleasedAmount = x.RetentionReleasedAmount,
             CustomerId   = x.CustomerId,
             SalesOrderId = x.SalesOrderId,
+            SalesOrderTerminId = x.SalesOrderTerminId,
             Notes        = x.Notes,
             Terms        = x.Terms,
             NomorFakturPajak = x.NomorFakturPajak,

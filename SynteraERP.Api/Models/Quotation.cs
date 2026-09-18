@@ -38,6 +38,7 @@ public class Quotation : BaseEntity
     public Quotation? Parent { get; set; }
     public Quotation? SupersededBy { get; set; }
     public ICollection<QuotationTab> Tabs { get; set; } = [];
+    public ICollection<QuotationTermin> Termins { get; set; } = [];
 }
 
 public enum QuotationStatus

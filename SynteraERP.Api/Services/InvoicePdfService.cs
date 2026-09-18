@@ -51,7 +51,10 @@ public class InvoicePdfService
                 logoBytes = await File.ReadAllBytesAsync(logoPath);
         }
 
-        var hasInvItems = invoice.Items != null && invoice.Items.Any();
+        // Invoice per-termin: satu baris Item, tapi Amount-nya slice dari SalesOrder.Total yang
+        // sudah termasuk PPN, bukan subtotal pre-tax — reverse-calculate seperti invoice tanpa
+        // item, sama seperti InvoiceService.ToDto (lihat komentar di sana).
+        var hasInvItems = invoice.Items != null && invoice.Items.Any() && !invoice.SalesOrderTerminId.HasValue;
         decimal subTotal  = hasInvItems
             ? MoneyMath.Round(invoice.Items!.Sum(x => x.Amount))
             : MoneyMath.Round(invoice.Amount / 1.11m);

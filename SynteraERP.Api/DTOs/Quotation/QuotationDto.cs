@@ -54,6 +54,15 @@ public class QuotationDto : QuotationListDto
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public List<QuotationTabDto> Tabs { get; set; } = [];
+    public List<QuotationTerminDto> Termins { get; set; } = [];
+}
+
+public class QuotationTerminDto
+{
+    public Guid Id { get; set; }
+    public int SortOrder { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public decimal Percentage { get; set; }
 }
 
 public class QuotationTabDto
@@ -141,6 +150,14 @@ public class SaveQuotationRequest
     public bool IsCivilMeMode { get; set; } = false;
     public decimal? TotalAreaSqm { get; set; }
     public List<SaveQuotationTabRequest> Tabs { get; set; } = [];
+    public List<SaveQuotationTerminRequest> Termins { get; set; } = [];
+}
+
+public class SaveQuotationTerminRequest
+{
+    public int SortOrder { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public decimal Percentage { get; set; }
 }
 
 public class SaveQuotationTabRequest
