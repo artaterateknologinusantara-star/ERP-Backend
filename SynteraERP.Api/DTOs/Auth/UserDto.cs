@@ -22,6 +22,7 @@ public class CreateUserRequest
     [Required, MinLength(6)] public string Password { get; set; } = string.Empty;
     [Required] public Guid RoleId { get; set; }
     public bool IsSandbox { get; set; } = false;
+    public string? ExistingSandboxDbName { get; set; }
 }
 
 public class UpdateUserRequest
@@ -31,4 +32,12 @@ public class UpdateUserRequest
     public string? Password { get; set; }
     [Required] public Guid RoleId { get; set; }
     public bool IsActive { get; set; } = true;
+}
+
+public class SandboxInstanceDto
+{
+    public string SandboxDbName { get; set; } = string.Empty;
+    public int UserCount { get; set; }
+    public string SampleNames { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; set; }
 }
