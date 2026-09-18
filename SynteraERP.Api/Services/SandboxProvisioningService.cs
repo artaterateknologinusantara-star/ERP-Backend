@@ -1,6 +1,6 @@
-using System.Security.Cryptography;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
@@ -24,12 +24,13 @@ public class SandboxProvisioningService : ISandboxProvisioningService
         _logger = logger;
     }
 
-    public async Task<string> ProvisionAsync(Guid roleId, CancellationToken ct = default)
+    public async Task<string> ProvisionAsync(Guid roleId, string desiredName, CancellationToken ct = default)
     {
         var baseConnStr = _config.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default belum dikonfigurasi.");
 
-        var dbName = NamePrefix + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)).ToLowerInvariant();
+        var sanitized = SanitizeName(desiredName);
+        var dbName = await ResolveUniqueNameAsync(baseConnStr, sanitized, ct);
 
         _logger.LogInformation("Provisioning sandbox database {Database}", dbName);
         await CreateDatabaseAsync(baseConnStr, dbName, ct);
@@ -89,6 +90,57 @@ public class SandboxProvisioningService : ISandboxProvisioningService
         {
             _logger.LogError(ex, "Gagal menghapus sandbox database {Database}.", dbName);
         }
+    }
+
+    // Turns a user-supplied display name (e.g. "Test Demo") into a valid, readable SQL Server
+    // identifier fragment (e.g. "TestDemo"): strips everything but letters/digits, PascalCases
+    // each whitespace/punctuation-separated word, and caps the length so the full
+    // "SynteraERP_Sandbox_<name>" database name stays comfortably under SQL Server's 128-char
+    // identifier limit even after a numeric dedup suffix is appended.
+    private static string SanitizeName(string input)
+    {
+        const int maxLen = 40;
+        var words = input.Split(new[] { ' ', '-', '_', '.', '\t', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var sb = new System.Text.StringBuilder();
+        foreach (var word in words)
+        {
+            var cleaned = new string(word.Where(char.IsLetterOrDigit).ToArray());
+            if (cleaned.Length == 0) continue;
+            sb.Append(char.ToUpperInvariant(cleaned[0]));
+            if (cleaned.Length > 1) sb.Append(cleaned[1..]);
+            if (sb.Length >= maxLen) break;
+        }
+
+        var result = sb.ToString();
+        if (result.Length == 0) result = "Sandbox";
+        return result.Length > maxLen ? result[..maxLen] : result;
+    }
+
+    // Finds the first "SynteraERP_Sandbox_<sanitized>[_N]" name not already present in
+    // sys.databases, so joining/creating sandboxes by name never collides with an existing one.
+    private static async Task<string> ResolveUniqueNameAsync(string baseConnStr, string sanitized, CancellationToken ct)
+    {
+        var masterConnStr = SandboxConnectionStringHelper.ForDatabase(baseConnStr, "master");
+        await using var conn = new SqlConnection(masterConnStr);
+        await conn.OpenAsync(ct);
+
+        var candidate = NamePrefix + sanitized;
+        var suffix = 1;
+        while (await DatabaseExistsAsync(conn, candidate, ct))
+        {
+            suffix++;
+            candidate = $"{NamePrefix}{sanitized}_{suffix}";
+        }
+        return candidate;
+    }
+
+    private static async Task<bool> DatabaseExistsAsync(SqlConnection conn, string dbName, CancellationToken ct)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sys.databases WHERE name = @name";
+        cmd.Parameters.AddWithValue("@name", dbName);
+        var result = await cmd.ExecuteScalarAsync(ct);
+        return result != null;
     }
 
     private static async Task CreateDatabaseAsync(string baseConnStr, string dbName, CancellationToken ct)

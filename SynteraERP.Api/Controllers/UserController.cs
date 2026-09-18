@@ -39,6 +39,26 @@ public class UserController(AppDbContext db, ISandboxProvisioningService sandbox
         return Ok(ApiResponse<List<object>>.Ok(roles.Cast<object>().ToList()));
     }
 
+    [HttpGet("sandbox-instances")]
+    public async Task<ActionResult<ApiResponse<List<SandboxInstanceDto>>>> ListSandboxInstances()
+    {
+        var instances = await db.Users
+            .AsNoTracking()
+            .Where(u => u.IsSandbox && !u.IsDeleted && u.SandboxDbName != null)
+            .GroupBy(u => u.SandboxDbName)
+            .Select(g => new SandboxInstanceDto
+            {
+                SandboxDbName = g.Key!,
+                UserCount = g.Count(),
+                SampleNames = string.Join(", ", g.OrderBy(u => u.CreatedAt).Select(u => u.Name).Take(3)),
+                CreatedAt = g.Min(u => u.CreatedAt),
+            })
+            .OrderByDescending(i => i.CreatedAt)
+            .ToListAsync();
+
+        return Ok(ApiResponse<List<SandboxInstanceDto>>.Ok(instances));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<UserListDto>>> Get(Guid id)
     {
@@ -59,14 +79,29 @@ public class UserController(AppDbContext db, ISandboxProvisioningService sandbox
         string? sandboxDbName = null;
         if (req.IsSandbox)
         {
-            try
+            if (!string.IsNullOrWhiteSpace(req.ExistingSandboxDbName))
             {
-                sandboxDbName = await sandboxSvc.ProvisionAsync(req.RoleId);
+                // Only accept a database name that's actually attached to an active sandbox
+                // user right now — never trust an arbitrary string from the client as a raw
+                // database identifier.
+                bool valid = await db.Users.AnyAsync(u =>
+                    u.SandboxDbName == req.ExistingSandboxDbName && u.IsSandbox && !u.IsDeleted);
+                if (!valid)
+                    return BadRequest(ApiResponse<UserListDto>.Fail("Sandbox database tidak ditemukan atau tidak valid."));
+
+                sandboxDbName = req.ExistingSandboxDbName;
             }
-            catch (Exception ex)
+            else
             {
-                logger.LogError(ex, "Gagal provisioning database sandbox untuk user baru {Email}.", req.Email);
-                return StatusCode(500, ApiResponse<UserListDto>.Fail("Gagal membuat database sandbox: " + ex.Message));
+                try
+                {
+                    sandboxDbName = await sandboxSvc.ProvisionAsync(req.RoleId, req.Name);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Gagal provisioning database sandbox untuk user baru {Email}.", req.Email);
+                    return StatusCode(500, ApiResponse<UserListDto>.Fail("Gagal membuat database sandbox: " + ex.Message));
+                }
             }
         }
 
@@ -132,13 +167,25 @@ public class UserController(AppDbContext db, ISandboxProvisioningService sandbox
         // an active user whose DB got pulled out from under them mid-session is worse.
         if (user.IsSandbox && !string.IsNullOrWhiteSpace(user.SandboxDbName))
         {
-            try
+            // Multiple users can share one sandbox database (joined via ExistingSandboxDbName) —
+            // only drop it once nobody else is still pointing at it.
+            bool stillUsedByOthers = await db.Users.AnyAsync(u =>
+                u.Id != user.Id && u.SandboxDbName == user.SandboxDbName && !u.IsDeleted);
+
+            if (!stillUsedByOthers)
             {
-                await sandboxSvc.DropAsync(user.SandboxDbName);
+                try
+                {
+                    await sandboxSvc.DropAsync(user.SandboxDbName);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "User {UserId} dihapus, tapi gagal menghapus database sandbox {Database}.", user.Id, user.SandboxDbName);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                logger.LogError(ex, "User {UserId} dihapus, tapi gagal menghapus database sandbox {Database}.", user.Id, user.SandboxDbName);
+                logger.LogInformation("Sandbox DB {Database} tidak di-drop, masih dipakai user lain.", user.SandboxDbName);
             }
         }
 
