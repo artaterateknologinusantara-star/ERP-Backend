@@ -229,4 +229,77 @@ public class InvoiceTerminTests : IClassFixture<WebApplicationFactory<Program>>
         db.Projects.RemoveRange(await db.Projects.Where(p => p.SalesOrderId == so.Id).ToListAsync());
         await db.SaveChangesAsync();
     }
+
+    // Gap yang ditemukan di Step 0 investigation (2026-09-19): RecordDownPaymentAsync sebelumnya
+    // cuma menjumlah so.DownPayments existing saat validasi cap, TIDAK ikut menghitung Invoice
+    // existing - beda dari InvoiceService.CreateAsync's termin branch yang sudah menjumlah
+    // keduanya. Test di atas (Quotation_termins_flow_...) kebetulan tidak menangkap arah ini
+    // karena urutannya Invoice 70% lalu DP 20% (total 90%, masih di bawah cap) - baru invoice
+    // termin berikutnya yang ditolak. Test ini sengaja membalik urutan: Invoice besar dulu sampai
+    // dekat cap, baru DP yang seharusnya ditolak karena Invoice existing tidak pernah dihitung.
+    [Fact]
+    public async Task RecordDownPaymentAsync_rejects_when_existing_invoice_plus_dp_exceeds_SalesOrder_Total()
+    {
+        var services = CreateScratchServices();
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        await db.Database.MigrateAsync();
+        await CustomerSeeder.SeedAsync(db);
+        await NumberingConfigSeeder.SeedAsync(db);
+
+        var invoiceSvc = scope.ServiceProvider.GetRequiredService<IInvoiceService>();
+        var dpSvc = scope.ServiceProvider.GetRequiredService<ISalesOrderPaymentService>();
+
+        // ── SO tanpa termin, Total 100jt (pola sama seperti skenario "soNoTermin" di atas) ──
+        var so = new Models.SalesOrder
+        {
+            Id = Guid.NewGuid(),
+            No = "TST-SO-" + Guid.NewGuid().ToString("N")[..6],
+            CustomerId = SeededCustomerId,
+            ProjectName = "Test Gap DP vs Invoice",
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            SalesId = SeededAdminId,
+            Status = Models.SalesOrderStatus.Open,
+            Total = 100_000_000,
+        };
+        db.SalesOrders.Add(so);
+        await db.SaveChangesAsync();
+
+        // ── Invoice existing 80jt (full-amount, tanpa termin) — makan 80% kuota SO.Total ──
+        var inv = await invoiceSvc.CreateAsync(new CreateInvoiceRequest
+        {
+            CustomerId = SeededCustomerId,
+            SalesOrderId = so.Id,
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+            Amount = 80_000_000,
+        });
+        inv.Amount.Should().Be(80_000_000);
+
+        // ── DP 30jt -> 80jt (invoice) + 30jt (DP) = 110jt > 100jt SO.Total -> HARUS ditolak ──
+        // Sebelum fix: RecordDownPaymentAsync cuma cek so.DownPayments (0 di titik ini) + 30jt
+        // <= 100jt, jadi lolos padahal Invoice existing sudah 80jt. Ini skenario yang membuktikan
+        // gap-nya sebelum fix, dan memverifikasi fix-nya sekarang.
+        var act = async () => await dpSvc.RecordDownPaymentAsync(so.Id, new RecordDownPaymentRequest
+        {
+            Amount = 30_000_000,
+            Method = "Transfer",
+        });
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*DP + Invoice*melebihi total Sales Order*");
+
+        // ── DP 20jt (80jt + 20jt = 100jt, pas di cap) -> harus tetap sukses ──
+        var dpOk = await dpSvc.RecordDownPaymentAsync(so.Id, new RecordDownPaymentRequest
+        {
+            Amount = 20_000_000,
+            Method = "Transfer",
+        });
+        dpOk.Amount.Should().Be(20_000_000);
+
+        // ── Cleanup — hapus semua data uji ──
+        db.SalesOrderPayments.RemoveRange(await db.SalesOrderPayments.Where(p => p.SalesOrderId == so.Id).ToListAsync());
+        db.Invoices.RemoveRange(await db.Invoices.Where(i => i.Id == inv.Id).ToListAsync());
+        db.SalesOrders.RemoveRange(await db.SalesOrders.Where(x => x.Id == so.Id).ToListAsync());
+        await db.SaveChangesAsync();
+    }
 }
