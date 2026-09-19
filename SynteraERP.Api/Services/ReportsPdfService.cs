@@ -302,7 +302,7 @@ public class ReportsPdfService
                 {
                     col.Spacing(10);
                     RenderPpnSection(col, "PPN KELUARAN (dari Invoice AR)", data.PpnKeluaran, data.TotalPpnKeluaran);
-                    RenderPpnSection(col, "PPN MASUKAN (dari Supplier Invoice)", data.PpnMasukan, data.TotalPpnMasukan);
+                    RenderPpnSection(col, "PPN MASUKAN (dari Bill)", data.PpnMasukan, data.TotalPpnMasukan);
 
                     col.Item().PaddingTop(6).BorderTop(1.5f).BorderColor(Navy).PaddingTop(6).Row(row =>
                     {

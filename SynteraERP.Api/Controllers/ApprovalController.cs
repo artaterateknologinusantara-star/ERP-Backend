@@ -112,7 +112,7 @@ public class ApprovalController(AppDbContext db) : ControllerBase
                     Id = s.Id,
                     Module = Modules.Purchasing,
                     Type = "SupplierInvoice",
-                    TypeLabel = "Supplier Invoice",
+                    TypeLabel = "Bill",
                     No = s.InvoiceNumber,
                     Title = s.Supplier.Name,
                     Amount = s.Total,

@@ -68,7 +68,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
     public async Task<SupplierInvoiceDto> CreateAsync(CreateSupplierInvoiceRequest request)
     {
         if (request.Items.Count == 0)
-            throw new ArgumentException("Supplier invoice harus punya minimal 1 baris item.");
+            throw new ArgumentException("Bill harus punya minimal 1 baris item.");
 
         var po = await _db.PurchaseOrders
             .Include(x => x.Items)
@@ -77,7 +77,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
 
         if (po.Status != PurchaseOrderStatus.PartialReceive && po.Status != PurchaseOrderStatus.Completed)
             throw new InvalidOperationException(
-                $"Purchase Order {po.No} belum ada barang yang diterima (status: {po.Status}). Tidak bisa dibuatkan Supplier Invoice.");
+                $"Purchase Order {po.No} belum ada barang yang diterima (status: {po.Status}). Tidak bisa dibuatkan Bill.");
 
         var invoiceItems = new List<SupplierInvoiceItem>();
         decimal subtotal = 0;
@@ -146,7 +146,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
         if (invoice is null) return null;
 
         if (invoice.Status != SupplierInvoiceStatus.Draft)
-            throw new InvalidOperationException($"Hanya Supplier Invoice berstatus Draft yang bisa di-approve. Status saat ini: {invoice.Status}");
+            throw new InvalidOperationException($"Hanya Bill berstatus Draft yang bisa di-approve. Status saat ini: {invoice.Status}");
 
         invoice.Status     = SupplierInvoiceStatus.Approved;
         invoice.ApprovedAt = DateTimeOffset.UtcNow;
@@ -157,7 +157,7 @@ public class SupplierInvoiceService : ISupplierInvoiceService
 
         // Reklas GRNI -> Utang Usaha: Debit GRNI (nilai barang) + Debit PPN Masukan, Kredit Utang Usaha (total tagihan).
         await _journalPostingService.PostAsync(
-            $"Supplier Invoice {invoice.No} ({invoice.InvoiceNumber})",
+            $"Bill {invoice.No} ({invoice.InvoiceNumber})",
             JournalSourceType.PurchaseInvoice,
             invoice.Id,
             DateTimeOffset.UtcNow,
@@ -186,14 +186,14 @@ public class SupplierInvoiceService : ISupplierInvoiceService
 
         if (invoice.Status != SupplierInvoiceStatus.Approved && invoice.Status != SupplierInvoiceStatus.PartiallyPaid)
             throw new InvalidOperationException(
-                $"Hanya Supplier Invoice berstatus Approved atau PartiallyPaid yang bisa dibayar. Status saat ini: {invoice.Status}");
+                $"Hanya Bill berstatus Approved atau PartiallyPaid yang bisa dibayar. Status saat ini: {invoice.Status}");
 
         var alreadyPaid = invoice.Payments.Sum(p => p.POPayment.Amount);
         var newTotalPaid = alreadyPaid + request.Amount;
 
         if (newTotalPaid > invoice.Total)
             throw new InvalidOperationException(
-                $"Total pembayaran (Rp {newTotalPaid:N0}) melebihi total Supplier Invoice (Rp {invoice.Total:N0}).");
+                $"Total pembayaran (Rp {newTotalPaid:N0}) melebihi total Bill (Rp {invoice.Total:N0}).");
 
         // Bridge approach (Fase 4, disetujui): POPayment tetap dibuat lewat jalur Fase 2 yang sama persis
         // (PurchaseOrderService), TIDAK ada logic/posting duplikat di sini. SupplierInvoicePayment murni
