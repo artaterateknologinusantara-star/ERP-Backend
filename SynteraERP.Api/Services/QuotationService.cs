@@ -99,7 +99,7 @@ public class QuotationService : IQuotationService
         // change tracker needs to see what already exists to diff against.
         var quotation = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
-            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
             .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -249,6 +249,82 @@ public class QuotationService : IQuotationService
                 // UpdateAsync call with existing items).
                 _db.QuotationItems.Add(newItem);
             }
+
+            // WorkItems/WorkDetails get the SAME upsert-by-Id treatment as Tab/Group above (NOT
+            // Items' clear+recreate) — WorkDetail.Id is FK'd to uploaded attachment files on
+            // disk, so recreating rows on every save would silently orphan those files exactly
+            // like the Group-recreate incident this method's header comment describes.
+            //
+            // null (field absent from the request) is NOT the same as an explicit empty list —
+            // null means "caller doesn't know/care about WorkItems, leave them alone" (the
+            // standalone WorkItem/WorkDetail CRUD endpoints are still how they get created and
+            // edited today; only an explicit `[]` means "delete everything").
+            if (incoming.WorkItems is not null)
+                UpsertWorkItems(group, incoming.WorkItems);
+        }
+    }
+
+    private void UpsertWorkItems(QuotationGroup group, List<SaveQuotationWorkItemRequest> incomingWorkItems)
+    {
+        var incomingWorkItemIds = incomingWorkItems.Where(w => w.Id.HasValue).Select(w => w.Id!.Value).ToHashSet();
+        foreach (var workItem in group.WorkItems.Where(w => !incomingWorkItemIds.Contains(w.Id)).ToList())
+        {
+            // Clean up attachment files on disk BEFORE removing the row — cascade delete handles
+            // the DB rows (WorkDetail + Attachment), but not the physical files, same as
+            // DeleteWorkItemAsync's existing logic below.
+            foreach (var attachment in workItem.WorkDetails.SelectMany(d => d.Attachments))
+                DeleteAttachmentFile(attachment.FilePath);
+            _db.QuotationWorkItems.Remove(workItem);
+        }
+
+        foreach (var incoming in incomingWorkItems)
+        {
+            var workItem = incoming.Id.HasValue ? group.WorkItems.FirstOrDefault(w => w.Id == incoming.Id.Value) : null;
+            if (workItem is null)
+            {
+                // Same explicit-Add reasoning as Tab/Group above.
+                workItem = new QuotationWorkItem { GroupId = group.Id };
+                _db.QuotationWorkItems.Add(workItem);
+                group.WorkItems.Add(workItem);
+            }
+
+            workItem.Name = incoming.Name;
+            workItem.SortOrder = incoming.SortOrder;
+
+            UpsertWorkDetails(workItem, incoming.WorkDetails);
+        }
+    }
+
+    private void UpsertWorkDetails(QuotationWorkItem workItem, List<SaveQuotationWorkDetailRequest> incomingWorkDetails)
+    {
+        var incomingWorkDetailIds = incomingWorkDetails.Where(d => d.Id.HasValue).Select(d => d.Id!.Value).ToHashSet();
+        foreach (var detail in workItem.WorkDetails.Where(d => !incomingWorkDetailIds.Contains(d.Id)).ToList())
+        {
+            // Same attachment-cleanup reasoning as UpsertWorkItems above, and as the existing
+            // DeleteWorkDetailAsync — must run BEFORE Remove, since the row (and its Attachments
+            // nav) is gone after SaveChanges.
+            foreach (var attachment in detail.Attachments)
+                DeleteAttachmentFile(attachment.FilePath);
+            _db.QuotationWorkDetails.Remove(detail);
+        }
+
+        foreach (var incoming in incomingWorkDetails)
+        {
+            var detail = incoming.Id.HasValue ? workItem.WorkDetails.FirstOrDefault(d => d.Id == incoming.Id.Value) : null;
+            if (detail is null)
+            {
+                // Same explicit-Add reasoning as Tab/Group above.
+                detail = new QuotationWorkDetail { WorkItemId = workItem.Id };
+                _db.QuotationWorkDetails.Add(detail);
+                workItem.WorkDetails.Add(detail);
+            }
+
+            detail.Name = incoming.Name;
+            detail.Spesifikasi = incoming.Spesifikasi;
+            detail.Volume = incoming.Volume;
+            detail.Unit = incoming.Unit;
+            detail.UnitPrice = incoming.UnitPrice;
+            detail.SortOrder = incoming.SortOrder;
         }
     }
 
@@ -833,6 +909,22 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                }).ToList(),
+                // Create path — incoming.Id (if any) is ignored, every row here is brand-new.
+                // g.WorkItems null (field omitted) just means none were sent — same as [].
+                WorkItems = (g.WorkItems ?? []).Select(w => new QuotationWorkItem
+                {
+                    Name = w.Name,
+                    SortOrder = w.SortOrder,
+                    WorkDetails = w.WorkDetails.Select(d => new QuotationWorkDetail
+                    {
+                        Name = d.Name,
+                        Spesifikasi = d.Spesifikasi,
+                        Volume = d.Volume,
+                        Unit = d.Unit,
+                        UnitPrice = d.UnitPrice,
+                        SortOrder = d.SortOrder,
+                    }).ToList(),
                 }).ToList(),
             }).ToList(),
         }).ToList();
