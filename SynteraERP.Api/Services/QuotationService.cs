@@ -99,6 +99,7 @@ public class QuotationService : IQuotationService
         // change tracker needs to see what already exists to diff against.
         var quotation = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
             .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -238,8 +239,15 @@ public class QuotationService : IQuotationService
                     Height = item.Height,
                     SortOrder = item.SortOrder,
                 };
+                // NOT also `group.Items.Add(newItem)` — `GroupId` is already set above, and
+                // `group` is a tracked entity (loaded via Include at the top of UpdateAsync), so
+                // EF Core's relationship fixup already adds `newItem` to `group.Items` as a side
+                // effect of the line below. Adding it explicitly too used to double every entry
+                // in the in-memory collection (DB stayed correct — one row per item — but any
+                // in-memory sum over `group.Items` right after this method, e.g. RecalcTotals,
+                // silently double-counted every item for both Civil ME and standard mode on any
+                // UpdateAsync call with existing items).
                 _db.QuotationItems.Add(newItem);
-                group.Items.Add(newItem);
             }
         }
     }
@@ -261,6 +269,7 @@ public class QuotationService : IQuotationService
     {
         var source = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
             .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new KeyNotFoundException($"Quotation {id} not found");
@@ -317,6 +326,24 @@ public class QuotationService : IQuotationService
                     Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
+                // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
+                // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
+                WorkItems = g.WorkItems.Select(w => new QuotationWorkItem
+                {
+                    GroupId = Guid.Empty,
+                    Name = w.Name,
+                    SortOrder = w.SortOrder,
+                    WorkDetails = w.WorkDetails.Select(d => new QuotationWorkDetail
+                    {
+                        WorkItemId = Guid.Empty,
+                        Name = d.Name,
+                        Spesifikasi = d.Spesifikasi,
+                        Volume = d.Volume,
+                        Unit = d.Unit,
+                        UnitPrice = d.UnitPrice,
+                        SortOrder = d.SortOrder,
+                    }).ToList(),
+                }).ToList(),
             }).ToList(),
         }).ToList();
 
@@ -361,6 +388,7 @@ public class QuotationService : IQuotationService
     {
         var source = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
             .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
@@ -426,6 +454,22 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                }).ToList(),
+                // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
+                // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
+                WorkItems = g.WorkItems.Select(w => new QuotationWorkItem
+                {
+                    Name = w.Name,
+                    SortOrder = w.SortOrder,
+                    WorkDetails = w.WorkDetails.Select(d => new QuotationWorkDetail
+                    {
+                        Name = d.Name,
+                        Spesifikasi = d.Spesifikasi,
+                        Volume = d.Volume,
+                        Unit = d.Unit,
+                        UnitPrice = d.UnitPrice,
+                        SortOrder = d.SortOrder,
+                    }).ToList(),
                 }).ToList(),
             }).ToList(),
         }).ToList();
@@ -798,11 +842,19 @@ public class QuotationService : IQuotationService
         var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
         if (q.IsCivilMeMode)
         {
-            // Civil & ME groups are priced by Subkontraktor SOW, not equipment/material lines —
-            // FinalSellingPrice (harga jual ke customer) drives the total. FinalSubconCost (harga
-            // beli dari subkontraktor) is cost-basis only, used for margin, never summed here.
-            q.TotalMaterial = 0;
-            q.TotalService = MoneyMath.Round(allGroups.Sum(g => g.FinalSellingPrice ?? 0));
+            // Civil & ME total is 3 sources added together: FinalSellingPrice (Subkontraktor SOW,
+            // harga jual ke customer — FinalSubconCost is cost-basis only, used for margin, never
+            // summed here), QuotationItem (equipment/material lines, same as standard mode — Qty *
+            // MaterialPrice goes to TotalMaterial, Qty * ServicePrice to TotalService), and
+            // QuotationWorkDetail/BOQ (TotalHarga is a single blended price — no Jasa/Material
+            // split source, so it's added to TotalService alongside FinalSellingPrice).
+            var civilMeItems = allGroups.SelectMany(g => g.Items).ToList();
+            var allWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).ToList();
+            q.TotalMaterial = MoneyMath.Round(civilMeItems.Sum(i => i.Qty * i.MaterialPrice));
+            q.TotalService = MoneyMath.Round(
+                allGroups.Sum(g => g.FinalSellingPrice ?? 0)
+                + civilMeItems.Sum(i => i.Qty * i.ServicePrice)
+                + allWorkDetails.Sum(d => d.TotalHarga));
         }
         else
         {

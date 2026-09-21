@@ -242,7 +242,13 @@ public class QuotationPdfService
 
                 foreach (var g in groups)
                 {
-                    decimal groupTotal = g.FinalSellingPrice ?? 0;
+                    // Same 3-source formula as QuotationService.RecalcTotals (FinalSellingPrice +
+                    // QuotationItem + WorkDetail) so this per-category number reconciles with the
+                    // Subtotal/PPN/Grand Total block below, instead of showing FinalSellingPrice
+                    // alone while the totals underneath already include Item/WorkDetail.
+                    decimal groupTotal = (g.FinalSellingPrice ?? 0)
+                        + g.Items.Sum(i => i.GrandLine)
+                        + g.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => d.TotalHarga);
                     decimal volume = g.RecapVolume ?? 1;
                     string unit = string.IsNullOrWhiteSpace(g.RecapUnit) ? "Ls" : g.RecapUnit;
                     decimal pricePerUnit = volume != 0 ? groupTotal / volume : 0;
@@ -295,7 +301,7 @@ public class QuotationPdfService
 
             var groups = q.Tabs.OrderBy(t => t.SortOrder)
                 .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
-                .Where(g => g.WorkItems.Count > 0)
+                .Where(g => g.WorkItems.Count > 0 || g.Items.Count > 0)
                 .ToList();
 
             foreach (var group in groups)
@@ -381,6 +387,74 @@ public class QuotationPdfService
                         });
                     }
                 }
+
+                // QuotationItem (equipment/material lines) rendered in the same BOQ, same columns,
+                // no sub-heading and no source label — client must not be able to tell these rows
+                // apart from WorkDetail/Subkontraktor rows above.
+                if (group.Items.Count > 0)
+                {
+                    col.Item().Table(table =>
+                    {
+                        table.ColumnsDefinition(cols =>
+                        {
+                            cols.ConstantColumn(20);   // No
+                            cols.RelativeColumn(3);    // Detail Kerja
+                            cols.RelativeColumn(4);    // Spesifikasi
+                            cols.ConstantColumn(45);   // Vol
+                            cols.ConstantColumn(40);   // Sat
+                            cols.ConstantColumn(75);   // Harga Satuan
+                            cols.ConstantColumn(75);   // Total
+                        });
+
+                        table.Header(h =>
+                        {
+                            void HeaderCell(IContainer cell, string text, bool alignRight = false)
+                            {
+                                var t = cell.Background(Colors.Grey.Darken1).Padding(3)
+                                    .Text(text).Bold().FontColor(Colors.White).FontSize(7);
+                                if (alignRight) t.AlignRight();
+                                else t.AlignCenter();
+                            }
+
+                            HeaderCell(h.Cell(), "No");
+                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
+                                .Text("Detail Kerja").Bold().FontColor(Colors.White).FontSize(7);
+                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
+                                .Text("Spesifikasi").Bold().FontColor(Colors.White).FontSize(7);
+                            HeaderCell(h.Cell(), "Vol");
+                            HeaderCell(h.Cell(), "Sat");
+                            HeaderCell(h.Cell(), "Harga Satuan", alignRight: true);
+                            HeaderCell(h.Cell(), "Total", alignRight: true);
+                        });
+
+                        int no = 1;
+                        foreach (var item in group.Items.OrderBy(i => i.SortOrder))
+                        {
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(no.ToString()).FontSize(7).AlignCenter();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(item.Equipment).FontSize(7);
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(item.Description ?? "-").FontSize(7);
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(item.Qty.ToString("N2")).FontSize(7).AlignCenter();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(item.Unit).FontSize(7).AlignCenter();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(item.ServicePrice + item.MaterialPrice)).FontSize(7).AlignRight();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(item.GrandLine)).FontSize(7).AlignRight();
+
+                            no++;
+                        }
+                    });
+                }
+
+                decimal groupSubtotal = group.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => d.TotalHarga)
+                    + group.Items.Sum(i => i.GrandLine);
+                col.Item().PaddingTop(2).Background(Colors.Grey.Lighten3).Padding(4).AlignRight()
+                    .Text($"Subtotal — {group.Name}: {FormatRupiah(groupSubtotal)}")
+                    .Bold().FontSize(8).FontColor(Colors.Blue.Darken2);
             }
         });
     }
