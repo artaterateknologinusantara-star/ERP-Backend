@@ -6,6 +6,7 @@ public class Invoice : BaseEntity
 {
     public string No { get; set; } = string.Empty;
     public Guid? SalesOrderId { get; set; }
+    public Guid? SalesOrderTerminId { get; set; }
     public Guid CustomerId { get; set; }
     public DateOnly InvoiceDate { get; set; }
     public DateOnly DueDate { get; set; }
@@ -21,6 +22,7 @@ public class Invoice : BaseEntity
     public decimal Balance => Amount - Paid;
 
     public SalesOrder? SalesOrder { get; set; }
+    public SalesOrderTermin? SalesOrderTermin { get; set; }
     public Customer Customer { get; set; } = null!;
     public ICollection<Payment> Payments { get; set; } = [];
     public ICollection<InvoiceItem> Items { get; set; } = new List<InvoiceItem>();

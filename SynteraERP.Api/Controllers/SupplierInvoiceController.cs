@@ -38,7 +38,7 @@ public class SupplierInvoiceController : ControllerBase
     public async Task<ActionResult<ApiResponse<SupplierInvoiceDto>>> Get(Guid id)
     {
         var item = await _svc.GetByIdAsync(id);
-        if (item is null) return NotFound(ApiResponse<SupplierInvoiceDto>.Fail("Supplier Invoice tidak ditemukan."));
+        if (item is null) return NotFound(ApiResponse<SupplierInvoiceDto>.Fail("Bill tidak ditemukan."));
         return Ok(ApiResponse<SupplierInvoiceDto>.Ok(item));
     }
 
@@ -46,7 +46,7 @@ public class SupplierInvoiceController : ControllerBase
     public async Task<ActionResult<ApiResponse<SupplierInvoiceDto>>> Create([FromBody] CreateSupplierInvoiceRequest request)
     {
         var item = await _svc.CreateAsync(request);
-        return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<SupplierInvoiceDto>.Ok(item, "Supplier Invoice berhasil dibuat."));
+        return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<SupplierInvoiceDto>.Ok(item, "Bill berhasil dibuat."));
     }
 
     [RequirePermission(Modules.Purchasing, PermissionActions.Approve)]
@@ -54,15 +54,15 @@ public class SupplierInvoiceController : ControllerBase
     public async Task<ActionResult<ApiResponse<SupplierInvoiceDto>>> Approve(Guid id)
     {
         var item = await _svc.ApproveAsync(id, GetUserId());
-        if (item is null) return NotFound(ApiResponse<SupplierInvoiceDto>.Fail("Supplier Invoice tidak ditemukan."));
-        return Ok(ApiResponse<SupplierInvoiceDto>.Ok(item, "Supplier Invoice berhasil di-approve."));
+        if (item is null) return NotFound(ApiResponse<SupplierInvoiceDto>.Fail("Bill tidak ditemukan."));
+        return Ok(ApiResponse<SupplierInvoiceDto>.Ok(item, "Bill berhasil di-approve."));
     }
 
     [HttpPost("{id:guid}/payments")]
     public async Task<ActionResult<ApiResponse<SupplierInvoiceDto>>> RecordPayment(Guid id, [FromBody] RecordPOPaymentRequest request)
     {
         var item = await _svc.RecordPaymentAsync(id, request);
-        if (item is null) return NotFound(ApiResponse<SupplierInvoiceDto>.Fail("Supplier Invoice tidak ditemukan."));
+        if (item is null) return NotFound(ApiResponse<SupplierInvoiceDto>.Fail("Bill tidak ditemukan."));
         return Ok(ApiResponse<SupplierInvoiceDto>.Ok(item, "Pembayaran berhasil dicatat."));
     }
 }

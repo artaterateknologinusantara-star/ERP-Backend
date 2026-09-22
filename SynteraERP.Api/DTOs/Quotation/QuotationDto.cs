@@ -48,12 +48,29 @@ public class QuotationDto : QuotationListDto
     public decimal TaxAmount { get; set; }
     public bool IsCivilMeMode { get; set; }
     public decimal? TotalAreaSqm { get; set; }
+    public string? FacilityId { get; set; }
+    public string? RenovPic { get; set; }
+    public string? FacilityName { get; set; }
+    public string? ScopeOfWork { get; set; }
+    public string? Location { get; set; }
+    public string? Contractor { get; set; }
+    public string? ValidityPeriod { get; set; }
+    public string? AreaBlockTender { get; set; }
     public Guid? ParentId { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovedByName { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public List<QuotationTabDto> Tabs { get; set; } = [];
+    public List<QuotationTerminDto> Termins { get; set; } = [];
+}
+
+public class QuotationTerminDto
+{
+    public Guid Id { get; set; }
+    public int SortOrder { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public decimal Percentage { get; set; }
 }
 
 public class QuotationTabDto
@@ -140,7 +157,23 @@ public class SaveQuotationRequest
     public decimal TaxRate { get; set; } = 11;
     public bool IsCivilMeMode { get; set; } = false;
     public decimal? TotalAreaSqm { get; set; }
+    public string? FacilityId { get; set; }
+    public string? RenovPic { get; set; }
+    public string? FacilityName { get; set; }
+    public string? ScopeOfWork { get; set; }
+    public string? Location { get; set; }
+    public string? Contractor { get; set; }
+    public string? ValidityPeriod { get; set; }
+    public string? AreaBlockTender { get; set; }
     public List<SaveQuotationTabRequest> Tabs { get; set; } = [];
+    public List<SaveQuotationTerminRequest> Termins { get; set; } = [];
+}
+
+public class SaveQuotationTerminRequest
+{
+    public int SortOrder { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public decimal Percentage { get; set; }
 }
 
 public class SaveQuotationTabRequest
@@ -167,6 +200,14 @@ public class SaveQuotationGroupRequest
     public decimal? FinalSubconCost { get; set; }
     public decimal? FinalSellingPrice { get; set; }
     public List<SaveQuotationItemRequest> Items { get; set; } = [];
+
+    /// <summary>Null (field absent from the request body) means "leave this group's WorkItems
+    /// untouched" — needed so a caller that doesn't yet know about this field (old frontend,
+    /// still using the standalone WorkItem/WorkDetail CRUD endpoints) can keep updating a
+    /// Quotation via this endpoint without silently wiping every WorkItem/WorkDetail (and their
+    /// uploaded attachments) on every save. An explicit empty list DOES mean "delete all
+    /// WorkItems in this group" — same upsert-by-Id contract as Tabs/Groups above otherwise.</summary>
+    public List<SaveQuotationWorkItemRequest>? WorkItems { get; set; }
 }
 
 public class SaveQuotationItemRequest
@@ -182,6 +223,31 @@ public class SaveQuotationItemRequest
     public decimal? Length { get; set; }
     public decimal? Width { get; set; }
     public decimal? Height { get; set; }
+    public int SortOrder { get; set; }
+}
+
+public class SaveQuotationWorkItemRequest
+{
+    /// <summary>Existing WorkItem id, when known — lets Update match &amp; keep this row (and
+    /// its WorkDetails/attachments) in place instead of deleting and recreating it. Omit/null
+    /// for a brand-new work item.</summary>
+    public Guid? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
+    public List<SaveQuotationWorkDetailRequest> WorkDetails { get; set; } = [];
+}
+
+public class SaveQuotationWorkDetailRequest
+{
+    /// <summary>Existing WorkDetail id, when known — lets Update match &amp; keep this row (and
+    /// its uploaded attachments) in place instead of deleting and recreating it. Omit/null for a
+    /// brand-new work detail.</summary>
+    public Guid? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Spesifikasi { get; set; }
+    public decimal Volume { get; set; }
+    public string Unit { get; set; } = string.Empty;
+    public decimal UnitPrice { get; set; }
     public int SortOrder { get; set; }
 }
 

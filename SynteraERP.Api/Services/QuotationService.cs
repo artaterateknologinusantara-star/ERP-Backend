@@ -66,6 +66,7 @@ public class QuotationService : IQuotationService
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (q is null) return null;
@@ -82,6 +83,7 @@ public class QuotationService : IQuotationService
 
     public async Task<QuotationDto> CreateAsync(SaveQuotationRequest request)
     {
+        ValidateTermins(request.Termins);
         var no = await NextNumberAsync();
         var quotation = MapFromRequest(request, no);
         _db.Quotations.Add(quotation);
@@ -91,10 +93,14 @@ public class QuotationService : IQuotationService
 
     public async Task<QuotationDto?> UpdateAsync(Guid id, SaveQuotationRequest request)
     {
+        ValidateTermins(request.Termins);
+
         // Tracked (not AsNoTracking) — Tabs/Groups/Items are upserted in place below, so the
         // change tracker needs to see what already exists to diff against.
         var quotation = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (quotation is null) return null;
@@ -112,6 +118,14 @@ public class QuotationService : IQuotationService
         quotation.TaxRate = request.TaxRate;
         quotation.IsCivilMeMode = request.IsCivilMeMode;
         quotation.TotalAreaSqm = request.TotalAreaSqm;
+        quotation.FacilityId = request.FacilityId;
+        quotation.RenovPic = request.RenovPic;
+        quotation.FacilityName = request.FacilityName;
+        quotation.ScopeOfWork = request.ScopeOfWork;
+        quotation.Location = request.Location;
+        quotation.Contractor = request.Contractor;
+        quotation.ValidityPeriod = request.ValidityPeriod;
+        quotation.AreaBlockTender = request.AreaBlockTender;
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -123,11 +137,38 @@ public class QuotationService : IQuotationService
         // regression check before this fix). Items still get replaced wholesale per group below —
         // nothing external hangs off QuotationItem.Id today, so that stays simple.
         UpsertTabs(quotation, request.Tabs);
+
+        // Full replace, not upsert-by-Id like Tabs/Groups — nothing hangs off QuotationTermin.Id
+        // (no attachment, no downstream FK), so there's no data to orphan by recreating rows on
+        // every save. Same reasoning as QuotationItem's per-group replace above.
+        _db.QuotationTermins.RemoveRange(quotation.Termins);
+        quotation.Termins = request.Termins.Select(t => new QuotationTermin
+        {
+            QuotationId = quotation.Id,
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
+        }).ToList();
+
         RecalcTotals(quotation);
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
         return (await GetByIdAsync(id))!;
+    }
+
+    // Termins are optional (old quotations keep using free-text PaymentTerms) but when the caller
+    // does send a structured list, it must add up to a full 100% — a partial list would silently
+    // gate Invoice creation at less than the SO's real value later. 0.01 tolerance absorbs
+    // decimal(5,2) rounding on the percentage split (e.g. 33.33 x 3 = 99.99, not 100).
+    private static void ValidateTermins(List<SaveQuotationTerminRequest> termins)
+    {
+        if (termins.Count == 0) return;
+
+        var total = termins.Sum(t => t.Percentage);
+        if (Math.Abs(total - 100m) > 0.01m)
+            throw new InvalidOperationException(
+                $"Total persentase termin harus 100%, saat ini {total}%.");
     }
 
     private void UpsertTabs(Models.Quotation quotation, List<SaveQuotationTabRequest> incomingTabs)
@@ -206,9 +247,92 @@ public class QuotationService : IQuotationService
                     Height = item.Height,
                     SortOrder = item.SortOrder,
                 };
+                // NOT also `group.Items.Add(newItem)` — `GroupId` is already set above, and
+                // `group` is a tracked entity (loaded via Include at the top of UpdateAsync), so
+                // EF Core's relationship fixup already adds `newItem` to `group.Items` as a side
+                // effect of the line below. Adding it explicitly too used to double every entry
+                // in the in-memory collection (DB stayed correct — one row per item — but any
+                // in-memory sum over `group.Items` right after this method, e.g. RecalcTotals,
+                // silently double-counted every item for both Civil ME and standard mode on any
+                // UpdateAsync call with existing items).
                 _db.QuotationItems.Add(newItem);
-                group.Items.Add(newItem);
             }
+
+            // WorkItems/WorkDetails get the SAME upsert-by-Id treatment as Tab/Group above (NOT
+            // Items' clear+recreate) — WorkDetail.Id is FK'd to uploaded attachment files on
+            // disk, so recreating rows on every save would silently orphan those files exactly
+            // like the Group-recreate incident this method's header comment describes.
+            //
+            // null (field absent from the request) is NOT the same as an explicit empty list —
+            // null means "caller doesn't know/care about WorkItems, leave them alone" (the
+            // standalone WorkItem/WorkDetail CRUD endpoints are still how they get created and
+            // edited today; only an explicit `[]` means "delete everything").
+            if (incoming.WorkItems is not null)
+                UpsertWorkItems(group, incoming.WorkItems);
+        }
+    }
+
+    private void UpsertWorkItems(QuotationGroup group, List<SaveQuotationWorkItemRequest> incomingWorkItems)
+    {
+        var incomingWorkItemIds = incomingWorkItems.Where(w => w.Id.HasValue).Select(w => w.Id!.Value).ToHashSet();
+        foreach (var workItem in group.WorkItems.Where(w => !incomingWorkItemIds.Contains(w.Id)).ToList())
+        {
+            // Clean up attachment files on disk BEFORE removing the row — cascade delete handles
+            // the DB rows (WorkDetail + Attachment), but not the physical files, same as
+            // DeleteWorkItemAsync's existing logic below.
+            foreach (var attachment in workItem.WorkDetails.SelectMany(d => d.Attachments))
+                DeleteAttachmentFile(attachment.FilePath);
+            _db.QuotationWorkItems.Remove(workItem);
+        }
+
+        foreach (var incoming in incomingWorkItems)
+        {
+            var workItem = incoming.Id.HasValue ? group.WorkItems.FirstOrDefault(w => w.Id == incoming.Id.Value) : null;
+            if (workItem is null)
+            {
+                // Same explicit-Add reasoning as Tab/Group above.
+                workItem = new QuotationWorkItem { GroupId = group.Id };
+                _db.QuotationWorkItems.Add(workItem);
+                group.WorkItems.Add(workItem);
+            }
+
+            workItem.Name = incoming.Name;
+            workItem.SortOrder = incoming.SortOrder;
+
+            UpsertWorkDetails(workItem, incoming.WorkDetails);
+        }
+    }
+
+    private void UpsertWorkDetails(QuotationWorkItem workItem, List<SaveQuotationWorkDetailRequest> incomingWorkDetails)
+    {
+        var incomingWorkDetailIds = incomingWorkDetails.Where(d => d.Id.HasValue).Select(d => d.Id!.Value).ToHashSet();
+        foreach (var detail in workItem.WorkDetails.Where(d => !incomingWorkDetailIds.Contains(d.Id)).ToList())
+        {
+            // Same attachment-cleanup reasoning as UpsertWorkItems above, and as the existing
+            // DeleteWorkDetailAsync — must run BEFORE Remove, since the row (and its Attachments
+            // nav) is gone after SaveChanges.
+            foreach (var attachment in detail.Attachments)
+                DeleteAttachmentFile(attachment.FilePath);
+            _db.QuotationWorkDetails.Remove(detail);
+        }
+
+        foreach (var incoming in incomingWorkDetails)
+        {
+            var detail = incoming.Id.HasValue ? workItem.WorkDetails.FirstOrDefault(d => d.Id == incoming.Id.Value) : null;
+            if (detail is null)
+            {
+                // Same explicit-Add reasoning as Tab/Group above.
+                detail = new QuotationWorkDetail { WorkItemId = workItem.Id };
+                _db.QuotationWorkDetails.Add(detail);
+                workItem.WorkDetails.Add(detail);
+            }
+
+            detail.Name = incoming.Name;
+            detail.Spesifikasi = incoming.Spesifikasi;
+            detail.Volume = incoming.Volume;
+            detail.Unit = incoming.Unit;
+            detail.UnitPrice = incoming.UnitPrice;
+            detail.SortOrder = incoming.SortOrder;
         }
     }
 
@@ -229,6 +353,8 @@ public class QuotationService : IQuotationService
     {
         var source = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new KeyNotFoundException($"Quotation {id} not found");
 
@@ -249,6 +375,14 @@ public class QuotationService : IQuotationService
             TaxRate = source.TaxRate,
             IsCivilMeMode = source.IsCivilMeMode,
             TotalAreaSqm = source.TotalAreaSqm,
+            FacilityId = source.FacilityId,
+            RenovPic = source.RenovPic,
+            FacilityName = source.FacilityName,
+            ScopeOfWork = source.ScopeOfWork,
+            Location = source.Location,
+            Contractor = source.Contractor,
+            ValidityPeriod = source.ValidityPeriod,
+            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             ParentId = source.Id,
         };
@@ -284,7 +418,32 @@ public class QuotationService : IQuotationService
                     Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
+                // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
+                // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
+                WorkItems = g.WorkItems.Select(w => new QuotationWorkItem
+                {
+                    GroupId = Guid.Empty,
+                    Name = w.Name,
+                    SortOrder = w.SortOrder,
+                    WorkDetails = w.WorkDetails.Select(d => new QuotationWorkDetail
+                    {
+                        WorkItemId = Guid.Empty,
+                        Name = d.Name,
+                        Spesifikasi = d.Spesifikasi,
+                        Volume = d.Volume,
+                        Unit = d.Unit,
+                        UnitPrice = d.UnitPrice,
+                        SortOrder = d.SortOrder,
+                    }).ToList(),
+                }).ToList(),
             }).ToList(),
+        }).ToList();
+
+        copy.Termins = source.Termins.Select(t => new QuotationTermin
+        {
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
         }).ToList();
 
         RecalcTotals(copy);
@@ -321,6 +480,8 @@ public class QuotationService : IQuotationService
     {
         var source = await _db.Quotations
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (source is null) return null;
@@ -351,6 +512,14 @@ public class QuotationService : IQuotationService
             TaxRate = source.TaxRate,
             IsCivilMeMode = source.IsCivilMeMode,
             TotalAreaSqm = source.TotalAreaSqm,
+            FacilityId = source.FacilityId,
+            RenovPic = source.RenovPic,
+            FacilityName = source.FacilityName,
+            ScopeOfWork = source.ScopeOfWork,
+            Location = source.Location,
+            Contractor = source.Contractor,
+            ValidityPeriod = source.ValidityPeriod,
+            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             Revision = source.Revision + 1,
             ParentId = source.ParentId ?? source.Id,
@@ -386,7 +555,30 @@ public class QuotationService : IQuotationService
                     Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
+                // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
+                // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
+                WorkItems = g.WorkItems.Select(w => new QuotationWorkItem
+                {
+                    Name = w.Name,
+                    SortOrder = w.SortOrder,
+                    WorkDetails = w.WorkDetails.Select(d => new QuotationWorkDetail
+                    {
+                        Name = d.Name,
+                        Spesifikasi = d.Spesifikasi,
+                        Volume = d.Volume,
+                        Unit = d.Unit,
+                        UnitPrice = d.UnitPrice,
+                        SortOrder = d.SortOrder,
+                    }).ToList(),
+                }).ToList(),
             }).ToList(),
+        }).ToList();
+
+        revision.Termins = source.Termins.Select(t => new QuotationTermin
+        {
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
         }).ToList();
 
         RecalcTotals(revision);
@@ -698,9 +890,24 @@ public class QuotationService : IQuotationService
             TaxRate = req.TaxRate,
             IsCivilMeMode = req.IsCivilMeMode,
             TotalAreaSqm = req.TotalAreaSqm,
+            FacilityId = req.FacilityId,
+            RenovPic = req.RenovPic,
+            FacilityName = req.FacilityName,
+            ScopeOfWork = req.ScopeOfWork,
+            Location = req.Location,
+            Contractor = req.Contractor,
+            ValidityPeriod = req.ValidityPeriod,
+            AreaBlockTender = req.AreaBlockTender,
             Status = QuotationStatus.Draft,
         };
         q.Tabs = BuildTabs(req.Tabs, q.Id);
+        q.Termins = req.Termins.Select(t => new QuotationTermin
+        {
+            QuotationId = q.Id,
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
+        }).ToList();
         RecalcTotals(q);
         return q;
     }
@@ -735,6 +942,22 @@ public class QuotationService : IQuotationService
                     Height = i.Height,
                     SortOrder = i.SortOrder,
                 }).ToList(),
+                // Create path — incoming.Id (if any) is ignored, every row here is brand-new.
+                // g.WorkItems null (field omitted) just means none were sent — same as [].
+                WorkItems = (g.WorkItems ?? []).Select(w => new QuotationWorkItem
+                {
+                    Name = w.Name,
+                    SortOrder = w.SortOrder,
+                    WorkDetails = w.WorkDetails.Select(d => new QuotationWorkDetail
+                    {
+                        Name = d.Name,
+                        Spesifikasi = d.Spesifikasi,
+                        Volume = d.Volume,
+                        Unit = d.Unit,
+                        UnitPrice = d.UnitPrice,
+                        SortOrder = d.SortOrder,
+                    }).ToList(),
+                }).ToList(),
             }).ToList(),
         }).ToList();
 
@@ -743,11 +966,19 @@ public class QuotationService : IQuotationService
         var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
         if (q.IsCivilMeMode)
         {
-            // Civil & ME groups are priced by Subkontraktor SOW, not equipment/material lines —
-            // FinalSellingPrice (harga jual ke customer) drives the total. FinalSubconCost (harga
-            // beli dari subkontraktor) is cost-basis only, used for margin, never summed here.
-            q.TotalMaterial = 0;
-            q.TotalService = MoneyMath.Round(allGroups.Sum(g => g.FinalSellingPrice ?? 0));
+            // Civil & ME total is 3 sources added together: FinalSellingPrice (Subkontraktor SOW,
+            // harga jual ke customer — FinalSubconCost is cost-basis only, used for margin, never
+            // summed here), QuotationItem (equipment/material lines, same as standard mode — Qty *
+            // MaterialPrice goes to TotalMaterial, Qty * ServicePrice to TotalService), and
+            // QuotationWorkDetail/BOQ (TotalHarga is a single blended price — no Jasa/Material
+            // split source, so it's added to TotalService alongside FinalSellingPrice).
+            var civilMeItems = allGroups.SelectMany(g => g.Items).ToList();
+            var allWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).ToList();
+            q.TotalMaterial = MoneyMath.Round(civilMeItems.Sum(i => i.Qty * i.MaterialPrice));
+            q.TotalService = MoneyMath.Round(
+                allGroups.Sum(g => g.FinalSellingPrice ?? 0)
+                + civilMeItems.Sum(i => i.Qty * i.ServicePrice)
+                + allWorkDetails.Sum(d => d.TotalHarga));
         }
         else
         {
@@ -809,6 +1040,14 @@ public class QuotationService : IQuotationService
         TaxAmount = x.TaxAmount,
         IsCivilMeMode = x.IsCivilMeMode,
         TotalAreaSqm = x.TotalAreaSqm,
+        FacilityId = x.FacilityId,
+        RenovPic = x.RenovPic,
+        FacilityName = x.FacilityName,
+        ScopeOfWork = x.ScopeOfWork,
+        Location = x.Location,
+        Contractor = x.Contractor,
+        ValidityPeriod = x.ValidityPeriod,
+        AreaBlockTender = x.AreaBlockTender,
         ParentId = x.ParentId,
         ApprovedAt = x.ApprovedAt,
         ApprovedByName = approvedByName,
@@ -848,6 +1087,13 @@ public class QuotationService : IQuotationService
                 }).ToList(),
                 WorkItems = g.WorkItems.OrderBy(w => w.SortOrder).Select(ToWorkItemDto).ToList(),
             }).ToList(),
+        }).ToList(),
+        Termins = x.Termins.OrderBy(t => t.SortOrder).Select(t => new QuotationTerminDto
+        {
+            Id = t.Id,
+            SortOrder = t.SortOrder,
+            Description = t.Description,
+            Percentage = t.Percentage,
         }).ToList(),
     };
 }

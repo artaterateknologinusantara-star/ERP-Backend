@@ -17,6 +17,17 @@ public class SalesOrderItemResponse
     public int SortOrder { get; set; }
 }
 
+public class SalesOrderTerminResponse
+{
+    public Guid Id { get; set; }
+    public int SortOrder { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public decimal Percentage { get; set; }
+    public decimal Amount { get; set; }
+    public bool IsInvoiced { get; set; }
+    public Guid? InvoiceId { get; set; }
+}
+
 public class SalesOrderDetailResponse
 {
     public Guid Id { get; set; }
@@ -44,6 +55,7 @@ public class SalesOrderDetailResponse
     public decimal GrandTotal { get; set; }
     public decimal RetentionPercentage { get; set; }
     public List<SalesOrderItemResponse> Items { get; set; } = new();
+    public List<SalesOrderTerminResponse> Termins { get; set; } = new();
     public DateTimeOffset CreatedAt { get; set; }
 }
 

@@ -28,6 +28,7 @@ public class InvoiceDto : InvoiceListDto
 {
     public Guid CustomerId { get; set; }
     public Guid? SalesOrderId { get; set; }
+    public Guid? SalesOrderTerminId { get; set; }
     public string? Notes { get; set; }
     public string? Terms { get; set; }
     public string? NomorFakturPajak { get; set; }
@@ -65,6 +66,7 @@ public class CreateInvoiceRequest
 {
     public Guid CustomerId { get; set; }
     public Guid? SalesOrderId { get; set; }
+    public Guid? SalesOrderTerminId { get; set; }
     public DateOnly Date { get; set; }
     public DateOnly DueDate { get; set; }
     public decimal Amount { get; set; }

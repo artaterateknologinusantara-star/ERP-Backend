@@ -35,12 +35,14 @@ public class AppDbContext : DbContext
     public DbSet<QuotationWorkItem> QuotationWorkItems => Set<QuotationWorkItem>();
     public DbSet<QuotationWorkDetail> QuotationWorkDetails => Set<QuotationWorkDetail>();
     public DbSet<QuotationWorkDetailAttachment> QuotationWorkDetailAttachments => Set<QuotationWorkDetailAttachment>();
+    public DbSet<QuotationTermin> QuotationTermins => Set<QuotationTermin>();
     public DbSet<CustomerPO> CustomerPOs => Set<CustomerPO>();
     public DbSet<CustomerPoHistory> CustomerPoHistories => Set<CustomerPoHistory>();
 
     // ─── Sales ────────────────────────────────────────────────────────────────
     public DbSet<SalesOrder> SalesOrders => Set<SalesOrder>();
     public DbSet<SalesOrderItem> SalesOrderItems { get; set; }
+    public DbSet<SalesOrderTermin> SalesOrderTermins => Set<SalesOrderTermin>();
 
     // ─── Finance ─────────────────────────────────────────────────────────────
     public DbSet<Invoice> Invoices => Set<Invoice>();
@@ -283,6 +285,16 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Cascade);
         });
 
+        b.Entity<QuotationTermin>(e =>
+        {
+            e.Property(t => t.Description).HasMaxLength(200).IsRequired();
+            e.Property(t => t.Percentage).HasPrecision(5, 2);
+            e.HasOne(t => t.Quotation)
+             .WithMany(q => q.Termins)
+             .HasForeignKey(t => t.QuotationId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<QuotationWorkItem>(e =>
         {
             e.Property(w => w.Name).HasMaxLength(200).IsRequired();
@@ -401,6 +413,17 @@ public class AppDbContext : DbContext
              .IsRequired(false);
         });
 
+        // ─── SalesOrderTermin ────────────────────────────────────────────────
+        b.Entity<SalesOrderTermin>(e =>
+        {
+            e.Property(t => t.Description).HasMaxLength(200).IsRequired();
+            e.Property(t => t.Percentage).HasPrecision(5, 2);
+            e.HasOne(t => t.SalesOrder)
+             .WithMany(s => s.Termins)
+             .HasForeignKey(t => t.SalesOrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // ─── Invoice ─────────────────────────────────────────────────────────
         b.Entity<Invoice>(e =>
         {
@@ -422,6 +445,16 @@ public class AppDbContext : DbContext
              .WithMany(s => s.Invoices)
              .HasForeignKey(i => i.SalesOrderId)
              .OnDelete(DeleteBehavior.SetNull);
+
+            // NoAction, not SetNull — SalesOrderTermin already cascades from SalesOrder, so a
+            // second cascade/SetNull path through here would give SQL Server two ways to reach
+            // Invoices from a SalesOrder delete ("multiple cascade paths", rejected at migration
+            // time). Moot in practice: SalesOrder/Invoice deletes are soft (IsDeleted flag) everywhere
+            // in this codebase, never a physical DELETE that would need either path to fire.
+            e.HasOne(i => i.SalesOrderTermin)
+             .WithMany()
+             .HasForeignKey(i => i.SalesOrderTerminId)
+             .OnDelete(DeleteBehavior.NoAction);
         });
 
         b.Entity<InvoiceItem>(e =>

@@ -121,7 +121,7 @@ public class PurchaseOrderService : IPurchaseOrderService
 
         if (blockingInvoiceNo is not null)
             throw new InvalidOperationException(
-                $"PO ini sudah memiliki Supplier Invoice {blockingInvoiceNo}. Gunakan endpoint pembayaran Supplier Invoice untuk mencatat pembayaran, bukan endpoint PO langsung.");
+                $"PO ini sudah memiliki Bill {blockingInvoiceNo}. Gunakan endpoint pembayaran Bill untuk mencatat pembayaran, bukan endpoint PO langsung.");
 
         // Cap terhadap po.Total (belum termasuk PPN) HANYA berlaku di jalur langsung ini - PO tidak
         // pernah punya Supplier Invoice untuk sampai ke titik ini (baru saja divalidasi di atas), jadi

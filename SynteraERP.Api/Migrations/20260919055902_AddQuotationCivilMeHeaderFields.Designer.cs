@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SynteraERP.Api.Data;
 
@@ -11,9 +12,11 @@ using SynteraERP.Api.Data;
 namespace SynteraERP.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260919055902_AddQuotationCivilMeHeaderFields")]
+    partial class AddQuotationCivilMeHeaderFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3799,9 +3802,6 @@ namespace SynteraERP.Api.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<bool>("IsSandbox")
-                        .HasColumnType("bit");
-
                     b.Property<DateTimeOffset?>("LastLoginAt")
                         .HasColumnType("datetimeoffset");
 
@@ -3817,10 +3817,6 @@ namespace SynteraERP.Api.Migrations
 
                     b.Property<Guid>("RoleId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("SandboxDbName")
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
@@ -3845,7 +3841,6 @@ namespace SynteraERP.Api.Migrations
                             Email = "admin@syntera.id",
                             IsActive = true,
                             IsDeleted = false,
-                            IsSandbox = false,
                             Name = "Administrator",
                             PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
                             RoleId = new Guid("10000000-0000-0000-0000-000000000001"),

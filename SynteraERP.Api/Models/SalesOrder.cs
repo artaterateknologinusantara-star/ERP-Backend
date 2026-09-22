@@ -27,6 +27,7 @@ public class SalesOrder : BaseEntity
     public ICollection<PurchaseRequest> PurchaseRequests { get; set; } = [];
     public ICollection<SalesOrderItem> Items { get; set; } = new List<SalesOrderItem>();
     public ICollection<SalesOrderPayment> DownPayments { get; set; } = [];
+    public ICollection<SalesOrderTermin> Termins { get; set; } = [];
 }
 
 public enum SalesOrderStatus

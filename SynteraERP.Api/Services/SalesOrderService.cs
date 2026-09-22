@@ -190,6 +190,7 @@ public class SalesOrderService : ISalesOrderService
             .Include(x => x.Customer)
             .Include(x => x.Sales)
             .Include(x => x.Items.OrderBy(i => i.SortOrder))
+            .Include(x => x.Termins.OrderBy(t => t.SortOrder))
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
 
         if (so is null) return null;
@@ -197,7 +198,19 @@ public class SalesOrderService : ISalesOrderService
         var taxRate = await _taxRateService.GetDefaultRateAsync();
         var statusStr = so.Status.ToString();
         var phase = statusStr == "Open" ? await ComputeOpenPhaseForSoAsync(so.Id) : ComputeStaticPhase(statusStr);
-        return ToDetailResponse(so, taxRate, phase);
+
+        // Termin -> Invoice lookup, so the UI can show "sudah ditagih" per termin instead of just
+        // a flat list — mirrors the "1 termin = 1 invoice" rule InvoiceService.CreateAsync enforces.
+        var terminIds = so.Termins.Select(t => t.Id).ToList();
+        var terminInvoices = terminIds.Count == 0
+            ? []
+            : await _db.Invoices
+                .Where(i => i.SalesOrderTerminId != null && terminIds.Contains(i.SalesOrderTerminId!.Value) && !i.IsDeleted)
+                .Select(i => new { i.Id, TerminId = i.SalesOrderTerminId!.Value })
+                .ToListAsync();
+        var invoiceByTerminId = terminInvoices.ToDictionary(x => x.TerminId, x => x.Id);
+
+        return ToDetailResponse(so, taxRate, phase, invoiceByTerminId);
     }
 
     public async Task UpdateStatusAsync(Guid id, string status)
@@ -285,6 +298,7 @@ public class SalesOrderService : ISalesOrderService
             .Include(x => x.Tabs)
                 .ThenInclude(t => t.Groups)
                     .ThenInclude(g => g.Items)
+            .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == quotationId && !x.IsDeleted)
             ?? throw new Exception("Quotation tidak ditemukan");
 
@@ -338,6 +352,12 @@ public class SalesOrderService : ISalesOrderService
             Total = grandTotal,
             Notes = null,
             Items = soItems,
+            Termins = quotation.Termins.OrderBy(t => t.SortOrder).Select(t => new SalesOrderTermin
+            {
+                SortOrder = t.SortOrder,
+                Description = t.Description,
+                Percentage = t.Percentage,
+            }).ToList(),
         };
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -413,7 +433,8 @@ public class SalesOrderService : ISalesOrderService
         return no;
     }
 
-    private static SalesOrderDetailResponse ToDetailResponse(SalesOrder so, decimal taxRate, string phase)
+    private static SalesOrderDetailResponse ToDetailResponse(
+        SalesOrder so, decimal taxRate, string phase, Dictionary<Guid, Guid> invoiceByTerminId)
     {
         var subTotal = so.Items.Any()
             ? MoneyMath.Round(so.Items.Sum(x => x.Amount))
@@ -461,6 +482,16 @@ public class SalesOrderService : ISalesOrderService
                 QtyNotShipped = i.Qty - i.QtyShipped,
                 Notes = i.Notes,
                 SortOrder = i.SortOrder,
+            }).ToList(),
+            Termins = so.Termins.OrderBy(t => t.SortOrder).Select(t => new SalesOrderTerminResponse
+            {
+                Id = t.Id,
+                SortOrder = t.SortOrder,
+                Description = t.Description,
+                Percentage = t.Percentage,
+                Amount = MoneyMath.Round(so.Total * t.Percentage / 100m),
+                IsInvoiced = invoiceByTerminId.ContainsKey(t.Id),
+                InvoiceId = invoiceByTerminId.TryGetValue(t.Id, out var invId) ? invId : null,
             }).ToList(),
             CreatedAt = so.CreatedAt,
         };

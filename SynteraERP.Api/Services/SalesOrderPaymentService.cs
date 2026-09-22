@@ -37,11 +37,16 @@ public class SalesOrderPaymentService : ISalesOrderPaymentService
 
         // Mirror PurchaseOrderService.RecordPaymentAsync (cap ke po.Total) — beda dari PO, SalesOrder.Total
         // SUDAH termasuk PPN (lihat SalesOrderService.CreateAsync), jadi tidak perlu caveat PPN seperti sisi PO.
+        // Cap harus menghitung Invoice existing juga (pola sama seperti InvoiceService.CreateAsync's
+        // termin branch), bukan cuma DP existing - dua jalur ini sama-sama makan kuota SalesOrder.Total.
+        var totalInvoiced = await _db.Invoices
+            .Where(i => i.SalesOrderId == salesOrderId && !i.IsDeleted)
+            .SumAsync(i => (decimal?)i.Amount) ?? 0;
         var currentDp = so.DownPayments.Sum(x => x.Amount);
-        var newTotal = currentDp + request.Amount;
+        var newTotal = totalInvoiced + currentDp + request.Amount;
         if (newTotal > so.Total)
             throw new InvalidOperationException(
-                $"Total DP (Rp {newTotal:N0}) melebihi total Sales Order (Rp {so.Total:N0}).");
+                $"Total DP + Invoice (Rp {newTotal:N0}) melebihi total Sales Order (Rp {so.Total:N0}).");
 
         var (cashBankAccountId, cashBankAccountCode) = await ResolveCashBankAccountAsync(request.CashBankAccountId);
 
