@@ -118,6 +118,14 @@ public class QuotationService : IQuotationService
         quotation.TaxRate = request.TaxRate;
         quotation.IsCivilMeMode = request.IsCivilMeMode;
         quotation.TotalAreaSqm = request.TotalAreaSqm;
+        quotation.FacilityId = request.FacilityId;
+        quotation.RenovPic = request.RenovPic;
+        quotation.FacilityName = request.FacilityName;
+        quotation.ScopeOfWork = request.ScopeOfWork;
+        quotation.Location = request.Location;
+        quotation.Contractor = request.Contractor;
+        quotation.ValidityPeriod = request.ValidityPeriod;
+        quotation.AreaBlockTender = request.AreaBlockTender;
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -367,6 +375,14 @@ public class QuotationService : IQuotationService
             TaxRate = source.TaxRate,
             IsCivilMeMode = source.IsCivilMeMode,
             TotalAreaSqm = source.TotalAreaSqm,
+            FacilityId = source.FacilityId,
+            RenovPic = source.RenovPic,
+            FacilityName = source.FacilityName,
+            ScopeOfWork = source.ScopeOfWork,
+            Location = source.Location,
+            Contractor = source.Contractor,
+            ValidityPeriod = source.ValidityPeriod,
+            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             ParentId = source.Id,
         };
@@ -496,6 +512,14 @@ public class QuotationService : IQuotationService
             TaxRate = source.TaxRate,
             IsCivilMeMode = source.IsCivilMeMode,
             TotalAreaSqm = source.TotalAreaSqm,
+            FacilityId = source.FacilityId,
+            RenovPic = source.RenovPic,
+            FacilityName = source.FacilityName,
+            ScopeOfWork = source.ScopeOfWork,
+            Location = source.Location,
+            Contractor = source.Contractor,
+            ValidityPeriod = source.ValidityPeriod,
+            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             Revision = source.Revision + 1,
             ParentId = source.ParentId ?? source.Id,
@@ -866,6 +890,14 @@ public class QuotationService : IQuotationService
             TaxRate = req.TaxRate,
             IsCivilMeMode = req.IsCivilMeMode,
             TotalAreaSqm = req.TotalAreaSqm,
+            FacilityId = req.FacilityId,
+            RenovPic = req.RenovPic,
+            FacilityName = req.FacilityName,
+            ScopeOfWork = req.ScopeOfWork,
+            Location = req.Location,
+            Contractor = req.Contractor,
+            ValidityPeriod = req.ValidityPeriod,
+            AreaBlockTender = req.AreaBlockTender,
             Status = QuotationStatus.Draft,
         };
         q.Tabs = BuildTabs(req.Tabs, q.Id);
@@ -1008,6 +1040,14 @@ public class QuotationService : IQuotationService
         TaxAmount = x.TaxAmount,
         IsCivilMeMode = x.IsCivilMeMode,
         TotalAreaSqm = x.TotalAreaSqm,
+        FacilityId = x.FacilityId,
+        RenovPic = x.RenovPic,
+        FacilityName = x.FacilityName,
+        ScopeOfWork = x.ScopeOfWork,
+        Location = x.Location,
+        Contractor = x.Contractor,
+        ValidityPeriod = x.ValidityPeriod,
+        AreaBlockTender = x.AreaBlockTender,
         ParentId = x.ParentId,
         ApprovedAt = x.ApprovedAt,
         ApprovedByName = approvedByName,

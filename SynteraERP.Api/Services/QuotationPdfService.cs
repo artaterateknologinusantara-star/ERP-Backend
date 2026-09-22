@@ -107,11 +107,11 @@ public class QuotationPdfService
                     page.DefaultTextStyle(ts => ts.FontSize(9).FontFamily("Arial"));
 
                     page.Header().Element(c => RenderHeader(c, company, quotation, logoBytes));
-                    page.Content().Element(c => RenderRecapContent(c, quotation));
+                    page.Content().Element(c => RenderSummaryContent(c, company, quotation));
                     page.Footer().Element(c => RenderFooter(c, company.CompanyName));
                 });
 
-                if (quotation.Tabs.SelectMany(t => t.Groups).Any(g => g.WorkItems.Count > 0))
+                if (quotation.Tabs.SelectMany(t => t.Groups).Any(g => g.WorkItems.Count > 0 || g.Items.Count > 0))
                 {
                     doc.Page(page =>
                     {
@@ -126,16 +126,22 @@ public class QuotationPdfService
                 }
             }
 
-            doc.Page(page =>
+            // Standard (non-Civil ME) quotations only — Civil ME's Summary+PPN+signature now
+            // live on the Recapitulation/Summary page above, so this generic page is entirely
+            // skipped for it (previously it still rendered here with just the item table skipped).
+            if (!quotation.IsCivilMeMode)
             {
-                page.Size(PageSizes.A4);
-                page.Margin(30, Unit.Point);
-                page.DefaultTextStyle(ts => ts.FontSize(9).FontFamily("Arial"));
+                doc.Page(page =>
+                {
+                    page.Size(PageSizes.A4);
+                    page.Margin(30, Unit.Point);
+                    page.DefaultTextStyle(ts => ts.FontSize(9).FontFamily("Arial"));
 
-                page.Header().Element(c => RenderHeader(c, company, quotation, logoBytes));
-                page.Content().Element(c => RenderContent(c, company, quotation, lineItems));
-                page.Footer().Element(c => RenderFooter(c, company.CompanyName));
-            });
+                    page.Header().Element(c => RenderHeader(c, company, quotation, logoBytes));
+                    page.Content().Element(c => RenderContent(c, company, quotation, lineItems));
+                    page.Footer().Element(c => RenderFooter(c, company.CompanyName));
+                });
+            }
         });
 
         return pdf.GeneratePdf();
@@ -194,13 +200,43 @@ public class QuotationPdfService
 
     // ─── Recapitulation (Civil & ME mode only) ───────────────────────────────────
 
-    private static void RenderRecapContent(IContainer c, Quotation q)
+    private static void RenderSummaryContent(IContainer c, CompanySettings company, Quotation q)
     {
         c.Column(col =>
         {
             col.Spacing(8);
 
-            col.Item().Text("RECAPITULATION").Bold().FontSize(12).FontColor(Colors.Blue.Darken3);
+            col.Item().Text("SUMMARY").Bold().FontSize(12).FontColor(Colors.Blue.Darken3);
+
+            // Header RAB — Facility ID, Renov PIC, Facility Name, Scope of Work, Location,
+            // Contractor, Date, Validity Period (Civil & ME only, nullable — falls back to "-").
+            col.Item().Table(header =>
+            {
+                header.ColumnsDefinition(cols =>
+                {
+                    cols.RelativeColumn(1);
+                    cols.RelativeColumn(1.4f);
+                    cols.RelativeColumn(1);
+                    cols.RelativeColumn(1.4f);
+                });
+
+                void HeaderRow(string label1, string? value1, string label2, string? value2)
+                {
+                    header.Cell().PaddingVertical(2).PaddingHorizontal(4)
+                        .Text(label1).FontSize(8).FontColor(Colors.Grey.Darken2);
+                    header.Cell().PaddingVertical(2).PaddingHorizontal(4)
+                        .Text(string.IsNullOrWhiteSpace(value1) ? "-" : value1).FontSize(8).Bold();
+                    header.Cell().PaddingVertical(2).PaddingHorizontal(4)
+                        .Text(label2).FontSize(8).FontColor(Colors.Grey.Darken2);
+                    header.Cell().PaddingVertical(2).PaddingHorizontal(4)
+                        .Text(string.IsNullOrWhiteSpace(value2) ? "-" : value2).FontSize(8).Bold();
+                }
+
+                HeaderRow("Facility ID", q.FacilityId, "Renov PIC", q.RenovPic);
+                HeaderRow("Facility Name", q.FacilityName, "Scope of Work", q.ScopeOfWork);
+                HeaderRow("Location", q.Location, "Contractor", q.Contractor);
+                HeaderRow("Date", q.Date.ToString("dd MMMM yyyy"), "Validity Period", q.ValidityPeriod);
+            });
 
             col.Item().Table(table =>
             {
@@ -285,6 +321,113 @@ public class QuotationPdfService
                     table.Cell().Background(Colors.Blue.Lighten4).Padding(4)
                         .Text(FormatRupiah(pricePerSqm)).Bold().FontSize(9).AlignRight();
                 }
+            });
+
+            // Summary block
+            col.Item().AlignRight().Width(220).Table(t =>
+            {
+                t.ColumnsDefinition(cols =>
+                {
+                    cols.RelativeColumn(2);
+                    cols.RelativeColumn(3);
+                });
+
+                decimal subtotalBase = q.TotalMaterial + q.TotalService;
+                decimal discountAmt = subtotalBase * (q.Discount / 100);
+
+                void SumRow(string label, string value)
+                {
+                    t.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2)
+                        .PaddingVertical(3).PaddingHorizontal(4)
+                        .Text(label).FontSize(8).FontColor(Colors.Grey.Darken2);
+                    t.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2)
+                        .PaddingVertical(3).PaddingHorizontal(4)
+                        .Text(value).FontSize(8).AlignRight();
+                }
+
+                SumRow("Subtotal", FormatRupiah(subtotalBase));
+
+                if (q.Discount > 0)
+                {
+                    SumRow($"Diskon ({q.Discount:N0}%)", $"- {FormatRupiah(discountAmt)}");
+                    SumRow("Setelah Diskon", FormatRupiah(subtotalBase - discountAmt));
+                }
+
+                SumRow($"PPN ({q.TaxRate:N0}%)", FormatRupiah(q.TaxAmount));
+
+                // Grand total — highlighted
+                t.Cell().BorderBottom(1.5f).BorderColor(Colors.Blue.Darken3)
+                    .PaddingVertical(3).PaddingHorizontal(4)
+                    .Text("GRAND TOTAL").Bold().FontSize(8).FontColor(Colors.Blue.Darken3);
+                t.Cell().BorderBottom(1.5f).BorderColor(Colors.Blue.Darken3)
+                    .PaddingVertical(3).PaddingHorizontal(4)
+                    .Text(FormatRupiah(q.GrandTotal)).Bold().FontSize(8).FontColor(Colors.Blue.Darken3).AlignRight();
+            });
+
+            // Notes
+            if (!string.IsNullOrWhiteSpace(q.Notes) || !string.IsNullOrWhiteSpace(q.AdditionalNotes))
+            {
+                col.Item().Column(notes =>
+                {
+                    notes.Item().Text("Catatan:").Bold().FontSize(8);
+
+                    if (!string.IsNullOrWhiteSpace(q.Notes))
+                        notes.Item().Text(q.Notes).FontSize(8);
+
+                    if (!string.IsNullOrWhiteSpace(q.AdditionalNotes))
+                        notes.Item().Text(q.AdditionalNotes).FontSize(8);
+                });
+            }
+
+            // Terms + Signature
+            col.Item().Row(row =>
+            {
+                row.RelativeItem().Column(terms =>
+                {
+                    terms.Item().Text("SYARAT & KETENTUAN").Bold().FontSize(8).FontColor(Colors.Grey.Darken2);
+                    terms.Item().PaddingTop(2)
+                        .Text(!string.IsNullOrWhiteSpace(q.TermsAndConditions)
+                            ? q.TermsAndConditions
+                            : !string.IsNullOrWhiteSpace(company.FooterText)
+                                ? company.FooterText
+                                : "Penawaran ini berlaku 14 hari sejak tanggal dikeluarkan.")
+                        .FontSize(7.5f).FontColor(Colors.Grey.Darken1);
+
+                    if (q.Termins.Any())
+                    {
+                        terms.Item().PaddingTop(6).Text("TERM PEMBAYARAN").Bold().FontSize(8).FontColor(Colors.Grey.Darken2);
+                        foreach (var termin in q.Termins.OrderBy(t => t.SortOrder))
+                        {
+                            terms.Item().PaddingTop(2)
+                                .Text($"{termin.Percentage}% - {termin.Description}")
+                                .FontSize(7.5f).FontColor(Colors.Grey.Darken1);
+                        }
+                    }
+                    // Fallback untuk quotation lama yang belum punya QuotationTermin terstruktur —
+                    // PaymentTerms (free text) tetap ditampilkan apa adanya.
+                    else if (!string.IsNullOrWhiteSpace(q.PaymentTerms))
+                    {
+                        terms.Item().PaddingTop(6).Text("TERM PEMBAYARAN").Bold().FontSize(8).FontColor(Colors.Grey.Darken2);
+                        terms.Item().PaddingTop(2).Text(q.PaymentTerms).FontSize(7.5f).FontColor(Colors.Grey.Darken1);
+                    }
+                });
+
+                row.ConstantItem(140).AlignCenter().Column(sig =>
+                {
+                    sig.Item().AlignCenter().Text("Hormat Kami,").FontSize(8);
+                    sig.Item().AlignCenter().Text(company.CompanyName).Bold().FontSize(8);
+                    sig.Item().Height(45);
+                    sig.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Medium);
+                    sig.Item().PaddingTop(2).AlignCenter()
+                        .Text(!string.IsNullOrWhiteSpace(company.SignatureName)
+                            ? company.SignatureName : "_____________")
+                        .Bold().FontSize(8);
+
+                    if (!string.IsNullOrWhiteSpace(company.SignatureTitle))
+                        sig.Item().AlignCenter()
+                            .Text(company.SignatureTitle)
+                            .FontSize(7.5f).FontColor(Colors.Grey.Darken1);
+                });
             });
         });
     }

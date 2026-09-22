@@ -29,6 +29,14 @@ public class Quotation : BaseEntity
     public bool IsLatestRevision { get; set; } = true;
     public bool IsCivilMeMode { get; set; } = false;
     public decimal? TotalAreaSqm { get; set; }
+    public string? FacilityId { get; set; }
+    public string? RenovPic { get; set; }
+    public string? FacilityName { get; set; }
+    public string? ScopeOfWork { get; set; }
+    public string? Location { get; set; }
+    public string? Contractor { get; set; }
+    public string? ValidityPeriod { get; set; }
+    public string? AreaBlockTender { get; set; }
     public DateTimeOffset? SentAt { get; set; }
     public Guid? SentBy { get; set; }
     public Guid? SupersededByQuotationId { get; set; }

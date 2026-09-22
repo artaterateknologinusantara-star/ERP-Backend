@@ -48,6 +48,14 @@ public class QuotationDto : QuotationListDto
     public decimal TaxAmount { get; set; }
     public bool IsCivilMeMode { get; set; }
     public decimal? TotalAreaSqm { get; set; }
+    public string? FacilityId { get; set; }
+    public string? RenovPic { get; set; }
+    public string? FacilityName { get; set; }
+    public string? ScopeOfWork { get; set; }
+    public string? Location { get; set; }
+    public string? Contractor { get; set; }
+    public string? ValidityPeriod { get; set; }
+    public string? AreaBlockTender { get; set; }
     public Guid? ParentId { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovedByName { get; set; }
@@ -149,6 +157,14 @@ public class SaveQuotationRequest
     public decimal TaxRate { get; set; } = 11;
     public bool IsCivilMeMode { get; set; } = false;
     public decimal? TotalAreaSqm { get; set; }
+    public string? FacilityId { get; set; }
+    public string? RenovPic { get; set; }
+    public string? FacilityName { get; set; }
+    public string? ScopeOfWork { get; set; }
+    public string? Location { get; set; }
+    public string? Contractor { get; set; }
+    public string? ValidityPeriod { get; set; }
+    public string? AreaBlockTender { get; set; }
     public List<SaveQuotationTabRequest> Tabs { get; set; } = [];
     public List<SaveQuotationTerminRequest> Termins { get; set; } = [];
 }
