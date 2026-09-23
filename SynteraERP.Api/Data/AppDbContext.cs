@@ -1056,14 +1056,16 @@ public class AppDbContext : DbContext
         b.Entity<CompanySettings>().HasData(new CompanySettings
         {
             Id = new Guid("30000000-0000-0000-0000-000000000001"),
-            CompanyName = "PT Syntera Teknologi Nusantara",
+            // Generic placeholder, not a brand name — matches the "Perusahaan Anda" fallback
+            // already used by every PDF service when no CompanySettings row exists at all
+            // (InvoicePdfService.cs, QuotationPdfService.cs, SalesOrderPdfService.cs, ReportsPdfService.cs).
+            // Email/SignatureName/SignatureTitle stay null for the same reason — each PDF template
+            // already renders those fields conditionally (omitted, or "_____________") when null.
+            CompanyName = "Perusahaan Anda",
             Address = "Jl. Raya Teknologi No. 1, Jakarta Selatan 12190",
             Phone = "+62 21 5555-0100",
-            Email = "info@syntera.id",
             Website = "www.syntera.id",
             FooterText = "Penawaran ini berlaku selama 14 hari. Harga belum termasuk biaya pengiriman dan instalasi kecuali disebutkan. Pembayaran 50% di muka, sisa 50% setelah pekerjaan selesai.",
-            SignatureName = "Budi Santoso",
-            SignatureTitle = "Sales Manager",
             DocumentPrefix = "SYN",
             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero)
         });
