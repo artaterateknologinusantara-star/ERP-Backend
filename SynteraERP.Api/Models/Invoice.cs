@@ -26,6 +26,7 @@ public class Invoice : BaseEntity
     public Customer Customer { get; set; } = null!;
     public ICollection<Payment> Payments { get; set; } = [];
     public ICollection<InvoiceItem> Items { get; set; } = new List<InvoiceItem>();
+    public ICollection<DownPaymentApplication> DownPaymentApplications { get; set; } = new List<DownPaymentApplication>();
 
     // Dipakai bersama oleh InvoiceService.RecordPaymentAsync (pembayaran biasa) dan
     // SalesOrderPaymentService.ApplyToInvoiceAsync (penerapan Down Payment) — satu-satunya tempat

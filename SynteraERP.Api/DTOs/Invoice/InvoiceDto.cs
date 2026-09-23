@@ -36,6 +36,7 @@ public class InvoiceDto : InvoiceListDto
     public decimal TaxAmount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public List<PaymentDto> Payments { get; set; } = [];
+    public List<DownPaymentApplicationDto> DownPaymentApplications { get; set; } = [];
     public List<InvoiceItemResponse> Items { get; set; } = [];
 }
 
@@ -60,6 +61,16 @@ public class PaymentDto
     public Guid? CashBankAccountId { get; set; }
     public string? Reference { get; set; }
     public string? Notes { get; set; }
+}
+
+public class DownPaymentApplicationDto
+{
+    public Guid Id { get; set; }
+    public DateTimeOffset AppliedAt { get; set; }
+    public decimal AmountApplied { get; set; }
+    public DateOnly PaymentDate { get; set; }
+    public string Method { get; set; } = string.Empty;
+    public string? Reference { get; set; }
 }
 
 public class CreateInvoiceRequest

@@ -3962,7 +3962,7 @@ namespace SynteraERP.Api.Migrations
             modelBuilder.Entity("SynteraERP.Api.Models.DownPaymentApplication", b =>
                 {
                     b.HasOne("SynteraERP.Api.Models.Invoice", "Invoice")
-                        .WithMany()
+                        .WithMany("DownPaymentApplications")
                         .HasForeignKey("InvoiceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -4602,6 +4602,8 @@ namespace SynteraERP.Api.Migrations
 
             modelBuilder.Entity("SynteraERP.Api.Models.Invoice", b =>
                 {
+                    b.Navigation("DownPaymentApplications");
+
                     b.Navigation("Items");
 
                     b.Navigation("Payments");

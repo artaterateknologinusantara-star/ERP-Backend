@@ -518,7 +518,7 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Restrict);
 
             e.HasOne(x => x.Invoice)
-             .WithMany()
+             .WithMany(x => x.DownPaymentApplications)
              .HasForeignKey(x => x.InvoiceId)
              .OnDelete(DeleteBehavior.Restrict);
         });
