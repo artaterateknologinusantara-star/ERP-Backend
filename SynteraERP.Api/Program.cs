@@ -52,6 +52,16 @@ builder.Services.AddAuthorization(opt =>
             var requirement = new ModulePermissionRequirement(module, action);
             opt.AddPolicy(requirement.PolicyName, policy => policy.Requirements.Add(requirement));
         }
+
+    // Setiap endpoint tanpa [Authorize]/[AllowAnonymous] eksplisit WAJIB ditolak, bukan
+    // otomatis publik. Tanpa ini, controller yang lupa menaruh [Authorize] (kesalahan manusia,
+    // bukan hipotetis) akan bisa diakses siapa pun tanpa token sama sekali. Endpoint yang
+    // sudah pakai [AllowAnonymous] (login, company-settings/public, company-settings/logo,
+    // demo-lead) tidak terpengaruh — [AllowAnonymous] selalu short-circuit sebelum
+    // FallbackPolicy dievaluasi.
+    opt.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
 });
 builder.Services.AddHttpContextAccessor();
 

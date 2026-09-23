@@ -651,7 +651,7 @@ public class QuotationService : IQuotationService
 
     public async Task<QuotationWorkItemDto> CreateWorkItemAsync(Guid groupId, SaveWorkItemRequest request)
     {
-        var group = await _db.QuotationGroups.FirstOrDefaultAsync(g => g.Id == groupId)
+        var group = await _db.QuotationGroups.Include(g => g.Tab).FirstOrDefaultAsync(g => g.Id == groupId)
             ?? throw new KeyNotFoundException("Group tidak ditemukan.");
 
         var workItem = new QuotationWorkItem
@@ -661,18 +661,30 @@ public class QuotationService : IQuotationService
             SortOrder = request.SortOrder,
         };
         _db.QuotationWorkItems.Add(workItem);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return ToWorkItemDto(workItem);
     }
 
     public async Task<bool> UpdateWorkItemAsync(Guid id, SaveWorkItemRequest request)
     {
-        var workItem = await _db.QuotationWorkItems.FirstOrDefaultAsync(w => w.Id == id);
+        var workItem = await _db.QuotationWorkItems
+            .Include(w => w.Group).ThenInclude(g => g.Tab)
+            .FirstOrDefaultAsync(w => w.Id == id);
         if (workItem is null) return false;
 
         workItem.Name = request.Name;
         workItem.SortOrder = request.SortOrder;
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(workItem.Group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return true;
     }
 
@@ -680,20 +692,29 @@ public class QuotationService : IQuotationService
     {
         var workItem = await _db.QuotationWorkItems
             .Include(w => w.WorkDetails).ThenInclude(d => d.Attachments)
+            .Include(w => w.Group).ThenInclude(g => g.Tab)
             .FirstOrDefaultAsync(w => w.Id == id);
         if (workItem is null) return false;
 
         foreach (var attachment in workItem.WorkDetails.SelectMany(d => d.Attachments))
             DeleteAttachmentFile(attachment.FilePath);
 
+        var quotationId = workItem.Group.Tab.QuotationId;
         _db.QuotationWorkItems.Remove(workItem);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(quotationId);
+        await tx.CommitAsync();
+
         return true;
     }
 
     public async Task<QuotationWorkDetailDto> CreateWorkDetailAsync(Guid workItemId, SaveWorkDetailRequest request)
     {
-        var workItem = await _db.QuotationWorkItems.FirstOrDefaultAsync(w => w.Id == workItemId)
+        var workItem = await _db.QuotationWorkItems
+            .Include(w => w.Group).ThenInclude(g => g.Tab)
+            .FirstOrDefaultAsync(w => w.Id == workItemId)
             ?? throw new KeyNotFoundException("Item Pekerjaan tidak ditemukan.");
 
         var detail = new QuotationWorkDetail
@@ -707,13 +728,20 @@ public class QuotationService : IQuotationService
             SortOrder = request.SortOrder,
         };
         _db.QuotationWorkDetails.Add(detail);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(workItem.Group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return ToWorkDetailDto(detail);
     }
 
     public async Task<bool> UpdateWorkDetailAsync(Guid id, SaveWorkDetailRequest request)
     {
-        var detail = await _db.QuotationWorkDetails.FirstOrDefaultAsync(d => d.Id == id);
+        var detail = await _db.QuotationWorkDetails
+            .Include(d => d.WorkItem).ThenInclude(w => w.Group).ThenInclude(g => g.Tab)
+            .FirstOrDefaultAsync(d => d.Id == id);
         if (detail is null) return false;
 
         detail.Name = request.Name;
@@ -722,7 +750,12 @@ public class QuotationService : IQuotationService
         detail.Unit = request.Unit;
         detail.UnitPrice = request.UnitPrice;
         detail.SortOrder = request.SortOrder;
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(detail.WorkItem.Group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return true;
     }
 
@@ -730,15 +763,40 @@ public class QuotationService : IQuotationService
     {
         var detail = await _db.QuotationWorkDetails
             .Include(d => d.Attachments)
+            .Include(d => d.WorkItem).ThenInclude(w => w.Group).ThenInclude(g => g.Tab)
             .FirstOrDefaultAsync(d => d.Id == id);
         if (detail is null) return false;
 
         foreach (var attachment in detail.Attachments)
             DeleteAttachmentFile(attachment.FilePath);
 
+        var quotationId = detail.WorkItem.Group.Tab.QuotationId;
         _db.QuotationWorkDetails.Remove(detail);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(quotationId);
+        await tx.CommitAsync();
+
         return true;
+    }
+
+    // Standalone WorkItem/WorkDetail endpoints above load/mutate only the narrow entity in
+    // question, not the full Quotation graph RecalcTotals needs — so unlike UpdateAsync (which
+    // already has that graph loaded), they reload just enough of it here, recompute, and save,
+    // all inside the same transaction as the WorkItem/WorkDetail write itself. Without this,
+    // Quotation.TotalMaterial/TotalService/GrandTotal silently go stale until the next full
+    // UpdateAsync/CreateRevisionAsync/DuplicateAsync call touches the parent Quotation.
+    private async Task RecalcAndSaveQuotationTotalsAsync(Guid quotationId)
+    {
+        var quotation = await _db.Quotations
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
+            .FirstOrDefaultAsync(x => x.Id == quotationId);
+        if (quotation is null) return;
+
+        RecalcTotals(quotation);
+        await _db.SaveChangesAsync();
     }
 
     public async Task<QuotationWorkDetailAttachmentDto> UploadWorkDetailAttachmentAsync(Guid workDetailId, IFormFile file)
