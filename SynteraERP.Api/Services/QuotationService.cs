@@ -63,7 +63,7 @@ public class QuotationService : IQuotationService
             .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.Sales)
-            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items).ThenInclude(i => i.ItemMaster)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
             .Include(x => x.Termins)
@@ -246,6 +246,7 @@ public class QuotationService : IQuotationService
                     Width = item.Width,
                     Height = item.Height,
                     SortOrder = item.SortOrder,
+                    ItemMasterId = item.ItemMasterId,
                 };
                 // NOT also `group.Items.Add(newItem)` — `GroupId` is already set above, and
                 // `group` is a tracked entity (loaded via Include at the top of UpdateAsync), so
@@ -417,6 +418,7 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
                 }).ToList(),
                 // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
                 // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
@@ -554,6 +556,7 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
                 }).ToList(),
                 // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
                 // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
@@ -625,6 +628,21 @@ public class QuotationService : IQuotationService
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync();
         return true;
+    }
+
+    /// <summary>Menautkan satu baris QuotationItem ke Item Master secara eksplisit — dipakai
+    /// oleh layar admin "Item Belum Terhubung" untuk beres-beres data lama (QuotationItem yang
+    /// dibuat sebelum field ItemMasterId ada, atau baris yang sengaja dibiarkan free-text dulu).</summary>
+    public async Task LinkItemMasterAsync(Guid quotationItemId, Guid itemMasterId)
+    {
+        var item = await _db.QuotationItems.FirstOrDefaultAsync(x => x.Id == quotationItemId)
+            ?? throw new InvalidOperationException("Baris Quotation tidak ditemukan.");
+
+        _ = await _db.ItemMasters.FirstOrDefaultAsync(x => x.Id == itemMasterId && x.IsActive && !x.IsDeleted)
+            ?? throw new InvalidOperationException("Item Master tidak ditemukan atau tidak aktif.");
+
+        item.ItemMasterId = itemMasterId;
+        await _db.SaveChangesAsync();
     }
 
     // ── Item Pekerjaan / Detail Kerja (RAB/BQ) — auto-save per baris, ID stabil ──
@@ -941,6 +959,7 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
                 }).ToList(),
                 // Create path — incoming.Id (if any) is ignored, every row here is brand-new.
                 // g.WorkItems null (field omitted) just means none were sent — same as [].
@@ -1084,6 +1103,9 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
+                    ItemMasterCode = i.ItemMaster?.Code,
+                    ItemMasterName = i.ItemMaster?.Name,
                 }).ToList(),
                 WorkItems = g.WorkItems.OrderBy(w => w.SortOrder).Select(ToWorkItemDto).ToList(),
             }).ToList(),

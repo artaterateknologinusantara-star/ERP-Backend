@@ -97,6 +97,30 @@ public class ShippableSoItemDto
     public decimal StockAvailable { get; set; }
 }
 
+/// <summary>SO line yang TIDAK bisa otomatis dipetakan ke Item Master (SKU tidak match apa pun)
+/// — dulu jatuh ke fallback tebak-nama yang bisa salah sasaran ke Item Master lain yang mirip
+/// namanya (lihat insiden "Server Blade 2U"). Sekarang baris begini ditampilkan ke user untuk
+/// di-link manual lewat LinkSoItemToItemMasterAsync, bukan ditebak sistem.</summary>
+public class UnmatchedSoItemDto
+{
+    public Guid SoItemId { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public string? Sku { get; set; }
+    public decimal Qty { get; set; }
+    public string Uom { get; set; } = string.Empty;
+}
+
+public class ShippableItemsResultDto
+{
+    public List<ShippableSoItemDto> Matched { get; set; } = new();
+    public List<UnmatchedSoItemDto> Unmatched { get; set; } = new();
+}
+
+public class LinkSoItemRequest
+{
+    public Guid ItemMasterId { get; set; }
+}
+
 public class InventoryStatsDto
 {
     public int TotalItems { get; set; }

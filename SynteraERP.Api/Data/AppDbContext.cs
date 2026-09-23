@@ -282,6 +282,12 @@ public class AppDbContext : DbContext
              .WithMany(g => g.Items)
              .HasForeignKey(i => i.GroupId)
              .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(i => i.ItemMaster)
+             .WithMany()
+             .HasForeignKey(i => i.ItemMasterId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
         });
 
         b.Entity<QuotationTermin>(e =>

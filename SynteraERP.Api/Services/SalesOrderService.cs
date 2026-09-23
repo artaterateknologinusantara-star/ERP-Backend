@@ -329,6 +329,10 @@ public class SalesOrderService : ISalesOrderService
             QtyShipped = 0,
             Notes = item.Description,
             SortOrder = index,
+            // Bawa link Item Master dari Quotation kalau baris itu sudah ditautkan user (lihat
+            // QuotationItem.ItemMasterId) — supaya GetShippableItemsForSoAsync/DO tidak perlu
+            // menebak lagi dari Sku/nama saat SO ini nanti di-DO-kan.
+            ItemMasterId = item.ItemMasterId,
         }).ToList();
 
         var taxRate = await _taxRateService.GetDefaultRateAsync();

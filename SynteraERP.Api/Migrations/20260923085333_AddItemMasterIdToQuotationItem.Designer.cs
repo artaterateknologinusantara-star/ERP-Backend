@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SynteraERP.Api.Data;
 
@@ -11,9 +12,11 @@ using SynteraERP.Api.Data;
 namespace SynteraERP.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923085333_AddItemMasterIdToQuotationItem")]
+    partial class AddItemMasterIdToQuotationItem
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3962,7 +3965,7 @@ namespace SynteraERP.Api.Migrations
             modelBuilder.Entity("SynteraERP.Api.Models.DownPaymentApplication", b =>
                 {
                     b.HasOne("SynteraERP.Api.Models.Invoice", "Invoice")
-                        .WithMany()
+                        .WithMany("DownPaymentApplications")
                         .HasForeignKey("InvoiceId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -4602,6 +4605,8 @@ namespace SynteraERP.Api.Migrations
 
             modelBuilder.Entity("SynteraERP.Api.Models.Invoice", b =>
                 {
+                    b.Navigation("DownPaymentApplications");
+
                     b.Navigation("Items");
 
                     b.Navigation("Payments");

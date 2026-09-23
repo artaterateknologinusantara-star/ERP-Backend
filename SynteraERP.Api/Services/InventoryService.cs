@@ -207,7 +207,7 @@ public class InventoryService : IInventoryService
 
         // DO manual dibatasi ke item + sisa qty Sales Order yang dipilih, supaya tidak ada standar
         // ganda dengan endpoint from-so — lihat GetShippableItemsForSoAsync untuk perhitungan sisanya.
-        var shippableById = (await GetShippableItemsForSoAsync(so.Id))
+        var shippableById = (await GetShippableItemsForSoAsync(so.Id)).Matched
             .ToDictionary(x => x.ItemMasterId);
 
         // Validate items
@@ -434,7 +434,7 @@ public class InventoryService : IInventoryService
         if (!doItems.Any())
             throw new InvalidOperationException(
                 "Tidak ada item SO yang cocok di Item Master. " +
-                "Pastikan item terdaftar di Item Master dengan SKU atau nama yang sesuai.");
+                "Tautkan item secara manual dulu lewat layar Buat DO, atau pastikan SKU-nya sesuai.");
 
         // 5. Buat DO via method yang sudah ada
         var request = new CreateDeliveryOrderRequest
@@ -450,29 +450,41 @@ public class InventoryService : IInventoryService
         return await CreateDeliveryOrderAsync(request, userId);
     }
 
+    // Match by ItemMasterId eksplisit dulu (link yang sudah di-set — manual oleh user atau
+    // dibawa dari QuotationItem.ItemMasterId saat SO dibuat dari Quotation), baru fallback ke
+    // SKU (Code) exact match. TIDAK ADA fallback tebak-nama lagi — fallback lama ("kata pertama
+    // nama item, ambil FirstOrDefault") pernah salah memetakan SO line "Server Rack 42U" (Sku
+    // "2.1", bukan Code asli) ke Item Master "Server Blade 2U" yang cuma kebetulan sama-sama
+    // diawali kata "Server" tapi stok/riwayatnya sama sekali tidak terkait — DO jadi divalidasi
+    // pakai stok item yang salah. Baris yang tidak match apa pun di sini HARUS ditautkan manual
+    // oleh user (lihat LinkSoItemToItemMasterAsync), bukan ditebak sistem.
     private async Task<ItemMaster?> MatchSoItemToItemMasterAsync(SalesOrderItem soItem)
     {
-        ItemMaster? master = null;
+        if (soItem.ItemMasterId.HasValue)
+            return await _db.ItemMasters.FirstOrDefaultAsync(x =>
+                x.Id == soItem.ItemMasterId.Value && x.IsActive && !x.IsDeleted);
 
-        // Match by SKU (Code) terlebih dahulu
         if (!string.IsNullOrEmpty(soItem.Sku))
-            master = await _db.ItemMasters
-                .FirstOrDefaultAsync(x => x.Code == soItem.Sku && x.IsActive && !x.IsDeleted);
+            return await _db.ItemMasters.FirstOrDefaultAsync(x =>
+                x.Code == soItem.Sku && x.IsActive && !x.IsDeleted);
 
-        // Fallback: match by kata pertama nama item
-        if (master == null && !string.IsNullOrEmpty(soItem.Description))
-        {
-            var firstWord = soItem.Description
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .First()
-                .ToLower();
+        return null;
+    }
 
-            master = await _db.ItemMasters
-                .FirstOrDefaultAsync(x =>
-                    x.Name.ToLower().Contains(firstWord) && x.IsActive && !x.IsDeleted);
-        }
+    /// <summary>Menautkan satu baris SalesOrderItem ke Item Master secara eksplisit — dipanggil
+    /// saat user memilih link manual di layar "Buat DO" untuk baris yang gagal auto-match.
+    /// Disimpan balik ke SalesOrderItem (bukan sekali pakai) supaya DO berikutnya dari SO yang
+    /// sama tidak perlu diulang linknya.</summary>
+    public async Task LinkSoItemToItemMasterAsync(Guid soItemId, Guid itemMasterId)
+    {
+        var soItem = await _db.SalesOrderItems.FirstOrDefaultAsync(x => x.Id == soItemId)
+            ?? throw new InvalidOperationException("Baris Sales Order tidak ditemukan.");
 
-        return master;
+        _ = await _db.ItemMasters.FirstOrDefaultAsync(x => x.Id == itemMasterId && x.IsActive && !x.IsDeleted)
+            ?? throw new InvalidOperationException("Item Master tidak ditemukan atau tidak aktif.");
+
+        soItem.ItemMasterId = itemMasterId;
+        await _db.SaveChangesAsync();
     }
 
     // ─── Sisa qty per item yang bisa di-DO-kan dari satu Sales Order ───────────
@@ -483,7 +495,7 @@ public class InventoryService : IInventoryService
     // dikonfirmasi/stok dikurangi di ConfirmDeliveryOrderAsync), jadi selalu 0. Dipakai
     // oleh form DO manual (wajib pilih SO) dan validasi CreateDeliveryOrderAsync supaya
     // keduanya pakai standar pembatasan yang sama dengan alur from-so.
-    public async Task<List<ShippableSoItemDto>> GetShippableItemsForSoAsync(Guid soId)
+    public async Task<ShippableItemsResultDto> GetShippableItemsForSoAsync(Guid soId)
     {
         var so = await _db.SalesOrders
             .Include(x => x.Items)
@@ -491,14 +503,28 @@ public class InventoryService : IInventoryService
             ?? throw new InvalidOperationException("Sales Order tidak ditemukan.");
 
         var soQtyByItemMaster = new Dictionary<Guid, decimal>();
+        var unmatched = new List<UnmatchedSoItemDto>();
         foreach (var soItem in so.Items.OrderBy(x => x.SortOrder))
         {
             var master = await MatchSoItemToItemMasterAsync(soItem);
             if (master != null)
+            {
                 soQtyByItemMaster[master.Id] = soQtyByItemMaster.GetValueOrDefault(master.Id) + soItem.Qty;
+            }
+            else
+            {
+                unmatched.Add(new UnmatchedSoItemDto
+                {
+                    SoItemId = soItem.Id,
+                    Description = soItem.Description,
+                    Sku = soItem.Sku,
+                    Qty = soItem.Qty,
+                    Uom = soItem.Uom,
+                });
+            }
         }
 
-        var result = new List<ShippableSoItemDto>();
+        var matched = new List<ShippableSoItemDto>();
         foreach (var (itemMasterId, soQty) in soQtyByItemMaster)
         {
             var master = await _db.ItemMasters.FindAsync(itemMasterId);
@@ -510,7 +536,7 @@ public class InventoryService : IInventoryService
                     && !di.DeliveryOrder.IsDeleted)
                 .SumAsync(di => (decimal?)di.Qty) ?? 0;
 
-            result.Add(new ShippableSoItemDto
+            matched.Add(new ShippableSoItemDto
             {
                 ItemMasterId = itemMasterId,
                 ItemName = master.Name,
@@ -523,7 +549,7 @@ public class InventoryService : IInventoryService
             });
         }
 
-        return result;
+        return new ShippableItemsResultDto { Matched = matched, Unmatched = unmatched };
     }
 
     // ─── Numbering ────────────────────────────────────────────────────────────

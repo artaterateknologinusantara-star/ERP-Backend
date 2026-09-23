@@ -17,6 +17,7 @@ public interface IQuotationService
     Task<bool> ApproveAsync(Guid id, Guid approvedByUserId);
     Task<bool> RejectAsync(Guid id);
     Task<bool> DeleteAsync(Guid id);
+    Task LinkItemMasterAsync(Guid quotationItemId, Guid itemMasterId);
     Task<QuotationWorkItemDto> CreateWorkItemAsync(Guid groupId, SaveWorkItemRequest request);
     Task<bool> UpdateWorkItemAsync(Guid id, SaveWorkItemRequest request);
     Task<bool> DeleteWorkItemAsync(Guid id);

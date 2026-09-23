@@ -16,7 +16,8 @@ public interface IInventoryService
     Task DeleteDeliveryOrderAsync(Guid id);
 
     Task<DeliveryOrderDetailDto> CreateDOFromSOAsync(Guid soId, Guid userId);
-    Task<List<ShippableSoItemDto>> GetShippableItemsForSoAsync(Guid soId);
+    Task<ShippableItemsResultDto> GetShippableItemsForSoAsync(Guid soId);
+    Task LinkSoItemToItemMasterAsync(Guid soItemId, Guid itemMasterId);
 
     Task<InventoryStatsDto> GetStatsAsync();
     Task<List<LowStockItemDto>> GetLowStockItemsAsync();
