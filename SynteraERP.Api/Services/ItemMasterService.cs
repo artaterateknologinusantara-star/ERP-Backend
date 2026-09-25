@@ -227,7 +227,7 @@ public class ItemMasterService : IItemMasterService
 
     private Task<string> GenerateCodeAsync()
     {
-        return SequentialCodeHelper.NextCodeAsync(_db.ItemMasters, "ITM", 5);
+        return SequentialCodeHelper.NextCodeAsync(_db.ItemMasters, x => x.Code, "ITM", 5);
     }
 
     private static ItemMasterDto ToDto(ItemMaster item) => new()

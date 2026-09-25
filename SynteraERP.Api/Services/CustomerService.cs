@@ -114,7 +114,7 @@ public class CustomerService : ICustomerService
 
     private Task<string> GenerateCodeAsync()
     {
-        return SequentialCodeHelper.NextCodeAsync(_db.Customers, "CUST", 4);
+        return SequentialCodeHelper.NextCodeAsync(_db.Customers, x => x.Code, "CUST", 4);
     }
 
     private static CustomerDto ToDto(Customer c) => new()

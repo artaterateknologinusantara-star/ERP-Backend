@@ -646,7 +646,7 @@ public class ProjectController(AppDbContext db, IJournalPostingService journalPo
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private Task<string> GenerateCodeAsync() =>
-        SequentialCodeHelper.NextYearCodeAsync(db.Projects, "PRJ", 3, DateTime.UtcNow.Year);
+        SequentialCodeHelper.NextYearCodeAsync(db.Projects, x => x.Code, "PRJ", 3, DateTime.UtcNow.Year);
 
     private static RevenueRecognitionMethod ParseRevenueRecognitionMethod(string? raw)
     {

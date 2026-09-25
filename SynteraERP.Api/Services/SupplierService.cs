@@ -126,7 +126,7 @@ public class SupplierService : ISupplierService
 
     private Task<string> GenerateCodeAsync()
     {
-        return SequentialCodeHelper.NextCodeAsync(_db.Suppliers, "SUPP", 4);
+        return SequentialCodeHelper.NextCodeAsync(_db.Suppliers, x => x.Code, "SUPP", 4);
     }
 
     private static SupplierDto ToDto(Supplier x) => new()

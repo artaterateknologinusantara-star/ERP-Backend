@@ -430,24 +430,45 @@ public class SalesOrderService : ISalesOrderService
         // exhausted (observed twice during testing). One transaction means ANY failure here —
         // QuotationId collision or otherwise — rolls back the SO too; the caller just retries the
         // whole request, and the existingSO check above confirms there's nothing left to clean up.
-        _db.Projects.Add(await BuildProjectForSoAsync(so, grandTotal));
+        var project = await BuildProjectForSoAsync(so, grandTotal);
+        _db.Projects.Add(project);
 
-        try
+        // Task #25: SequentialCodeHelper now generates Project.Code from MAX(ever issued)+1
+        // instead of COUNT(active)+1, which closes the deterministic post-deletion gap collision
+        // — but the TOCTOU race (two concurrent SO creates both reading the same MAX before either
+        // commits) is still possible, same as the QuotationId race handled below. Retrying the
+        // FULL RunWithRetryAsync wrapper here would defeat the single-transaction design above
+        // (SequentialCodeHelper.ChangeTracker.Clear() would also untrack `so`/the quotation status
+        // flip, burning an SO number on every Project.Code retry — the exact orphan-SO failure
+        // mode this method was redesigned to avoid). Instead: on a Project.Code collision only,
+        // regenerate just that property on the SAME already-tracked `project` entity and retry
+        // SaveChangesAsync — `so`/`quotation` stay tracked and untouched throughout.
+        const int maxProjectCodeAttempts = 3;
+        for (var attempt = 1; ; attempt++)
         {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateException ex) when (IsQuotationAlreadyHasSoViolation(ex))
-        {
-            // Two concurrent requests (e.g. a double-submit) can both pass the existingSO == null
-            // check above before either commits — the unique index on SalesOrders.QuotationId is
-            // what actually prevents the duplicate SO. The loser lands here instead of a raw 500;
-            // roll back (the failed insert leaves the transaction unusable for further writes) and
-            // hand back the winner's SO exactly like the existingSO check above would have.
-            await tx.RollbackAsync();
-            _db.ChangeTracker.Clear();
-            var winner = await _db.SalesOrders.FirstOrDefaultAsync(x => x.QuotationId == quotationId && !x.IsDeleted);
-            if (winner is null) throw;
-            return (await GetByIdAsync(winner.Id))!;
+            try
+            {
+                await _db.SaveChangesAsync();
+                break;
+            }
+            catch (DbUpdateException ex) when (IsQuotationAlreadyHasSoViolation(ex))
+            {
+                // Two concurrent requests (e.g. a double-submit) can both pass the existingSO == null
+                // check above before either commits — the unique index on SalesOrders.QuotationId is
+                // what actually prevents the duplicate SO. The loser lands here instead of a raw 500;
+                // roll back (the failed insert leaves the transaction unusable for further writes) and
+                // hand back the winner's SO exactly like the existingSO check above would have.
+                await tx.RollbackAsync();
+                _db.ChangeTracker.Clear();
+                var winner = await _db.SalesOrders.FirstOrDefaultAsync(x => x.QuotationId == quotationId && !x.IsDeleted);
+                if (winner is null) throw;
+                return (await GetByIdAsync(winner.Id))!;
+            }
+            catch (DbUpdateException ex) when (attempt < maxProjectCodeAttempts && IsProjectCodeViolation(ex))
+            {
+                project.Code = await SequentialCodeHelper.NextYearCodeAsync(
+                    _db.Projects, x => x.Code, "PRJ", 3, DateTime.UtcNow.Year);
+            }
         }
 
         await tx.CommitAsync();
@@ -460,9 +481,14 @@ public class SalesOrderService : ISalesOrderService
         && (sqlEx.Number == 2601 || sqlEx.Number == 2627)
         && sqlEx.Message.Contains("IX_SalesOrders_QuotationId", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsProjectCodeViolation(DbUpdateException ex) =>
+        ex.InnerException is SqlException sqlEx
+        && (sqlEx.Number == 2601 || sqlEx.Number == 2627)
+        && sqlEx.Message.Contains("IX_Projects_Code", StringComparison.OrdinalIgnoreCase);
+
     private async Task<Project> BuildProjectForSoAsync(SalesOrder so, decimal budget)
     {
-        var code  = await SequentialCodeHelper.NextYearCodeAsync(_db.Projects, "PRJ", 3, DateTime.UtcNow.Year);
+        var code  = await SequentialCodeHelper.NextYearCodeAsync(_db.Projects, x => x.Code, "PRJ", 3, DateTime.UtcNow.Year);
         var name  = !string.IsNullOrWhiteSpace(so.ProjectName) ? so.ProjectName : so.No;
 
         return new Project
