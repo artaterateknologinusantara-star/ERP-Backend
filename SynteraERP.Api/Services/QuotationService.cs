@@ -120,7 +120,9 @@ public class QuotationService : IQuotationService
         quotation.PaymentTerms = request.PaymentTerms;
         quotation.TermsAndConditions = request.TermsAndConditions;
         quotation.AdditionalNotes = request.AdditionalNotes;
-        quotation.Discount = request.Discount;
+        // Task #42: frontend already clamps Diskon 0-100, but backend never did — a direct API
+        // call with Discount>100 makes TotalBeforeTax/GrandTotal go negative.
+        quotation.Discount = Math.Clamp(request.Discount, 0, 100);
         quotation.TaxRate = request.TaxRate;
         quotation.IsCivilMeMode = request.IsCivilMeMode;
         quotation.TotalAreaSqm = request.TotalAreaSqm;
@@ -464,9 +466,18 @@ public class QuotationService : IQuotationService
     {
         var quotation = await _db.Quotations
             .Include(x => x.Customer)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (quotation is null) return null;
+
+        // Task #42: block a Quotation with no content at all the moment it leaves Draft — sending
+        // it to a customer (let alone approving it) with nothing in it is what let #41's bug
+        // reach SalesOrder in the first place.
+        if (IsQuotationEmpty(quotation))
+            throw new InvalidOperationException(
+                "Penawaran tidak bisa dikirim — belum ada baris Item, Detail Kerja, atau Harga Jual Subkontraktor.");
 
         quotation.Status = QuotationStatus.Terkirim;
         quotation.SentAt = DateTimeOffset.UtcNow;
@@ -603,8 +614,18 @@ public class QuotationService : IQuotationService
 
     public async Task<bool> ApproveAsync(Guid id, Guid approvedByUserId)
     {
-        var quotation = await _db.Quotations.FindAsync(id);
+        var quotation = await _db.Quotations
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (quotation is null || quotation.Status != QuotationStatus.Terkirim) return false;
+
+        // Task #42: content can still change between Send and Approve (UpdateAsync doesn't gate
+        // on Status), so a Quotation that was non-empty when sent could be edited down to nothing
+        // and approved anyway if this weren't checked again here — not just at SendAsync.
+        if (IsQuotationEmpty(quotation))
+            throw new InvalidOperationException(
+                "Penawaran tidak bisa disetujui — belum ada baris Item, Detail Kerja, atau Harga Jual Subkontraktor.");
 
         quotation.Status = QuotationStatus.Disetujui;
         quotation.ApprovedAt = DateTimeOffset.UtcNow;
@@ -1035,7 +1056,7 @@ public class QuotationService : IQuotationService
             PaymentTerms = req.PaymentTerms,
             TermsAndConditions = req.TermsAndConditions,
             AdditionalNotes = req.AdditionalNotes,
-            Discount = req.Discount,
+            Discount = Math.Clamp(req.Discount, 0, 100),
             TaxRate = req.TaxRate,
             IsCivilMeMode = req.IsCivilMeMode,
             TotalAreaSqm = req.TotalAreaSqm,
@@ -1144,6 +1165,27 @@ public class QuotationService : IQuotationService
         q.TotalBeforeTax = subtotal - discountAmount;
         q.TaxAmount = MoneyMath.Round(q.TotalBeforeTax * q.TaxRate / 100);
         q.GrandTotal = q.TotalBeforeTax + q.TaxAmount;
+    }
+
+    // Task #42: "kosong" is existence-based (does at least one row exist), NOT price-based —
+    // Step-0 investigation found GrandTotal<=0 produces a false positive (a Quotation with real
+    // rows and Discount=100% legitimately has GrandTotal=0 but is not empty), and a row priced at
+    // 0 still counts as content. Civil & ME mirrors RecalcTotals' 3-source definition (Group.
+    // FinalSellingPrice, QuotationItem, QuotationWorkDetail) so the two never drift apart. Shared
+    // by SendAsync and ApproveAsync — content can change between the two (UpdateAsync doesn't gate
+    // on Status), so both need the same check, not just one.
+    private static bool IsQuotationEmpty(Models.Quotation q)
+    {
+        var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
+        if (q.IsCivilMeMode)
+        {
+            var hasFinalSellingPrice = allGroups.Any(g => (g.FinalSellingPrice ?? 0) > 0);
+            var hasItems = allGroups.SelectMany(g => g.Items).Any();
+            var hasWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).Any();
+            return !hasFinalSellingPrice && !hasItems && !hasWorkDetails;
+        }
+
+        return !allGroups.SelectMany(g => g.Items).Any();
     }
 
     // Null kalau Status bukan Disetujui atau sudah ada SalesOrder aktif — monitoring read-only,
