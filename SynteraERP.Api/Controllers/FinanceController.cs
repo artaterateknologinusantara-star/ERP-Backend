@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.Models;
 
@@ -24,6 +25,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     };
 
     // ── GET /api/finance/ar ───────────────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("ar")]
     public async Task<IActionResult> GetAR()
     {
@@ -64,6 +66,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     }
 
     // ── GET /api/finance/ar/stats ─────────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("ar/stats")]
     public async Task<IActionResult> GetARStats()
     {
@@ -98,6 +101,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     }
 
     // ── GET /api/finance/ap ───────────────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("ap")]
     public async Task<IActionResult> GetAP()
     {
@@ -138,6 +142,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     }
 
     // ── GET /api/finance/ap/stats ─────────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("ap/stats")]
     public async Task<IActionResult> GetAPStats()
     {
@@ -164,6 +169,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     }
 
     // ── GET /api/finance/cash-in ──────────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("cash-in")]
     public async Task<IActionResult> GetCashIn(
         [FromQuery] string? startDate,
@@ -203,6 +209,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     }
 
     // ── GET /api/finance/cash-out ─────────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("cash-out")]
     public async Task<IActionResult> GetCashOut(
         [FromQuery] string? startDate,
@@ -240,6 +247,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     }
 
     // ── GET /api/finance/summary ──────────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("summary")]
     public async Task<IActionResult> GetSummary()
     {
@@ -285,6 +293,7 @@ public class FinanceController(AppDbContext db) : ControllerBase
     }
 
     // ── GET /api/finance/monthly-chart ────────────────────────────────────────
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("monthly-chart")]
     public async Task<IActionResult> GetMonthlyChart()
     {
