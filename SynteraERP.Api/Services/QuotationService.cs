@@ -52,8 +52,12 @@ public class QuotationService : IQuotationService
             .Where(c => ids.Contains(c.QuotationId))
             .Select(c => c.QuotationId)
             .ToListAsync()).ToHashSet();
+        var soQuotationIds = (await _db.SalesOrders
+            .Where(so => so.QuotationId.HasValue && ids.Contains(so.QuotationId.Value) && !so.IsDeleted)
+            .Select(so => so.QuotationId!.Value)
+            .ToListAsync()).ToHashSet();
 
-        var data = items.Select(x => ToListDto(x, cpoQuotationIds.Contains(x.Id))).ToList();
+        var data = items.Select(x => ToListDto(x, cpoQuotationIds.Contains(x.Id), soQuotationIds.Contains(x.Id))).ToList();
         return PaginatedResponse<QuotationListDto>.Create(data, total, p.Page, p.PerPage);
     }
 
@@ -78,7 +82,9 @@ public class QuotationService : IQuotationService
             approvedByName = approver?.Name;
         }
 
-        return ToDto(q, approvedByName);
+        var hasSalesOrder = await _db.SalesOrders.AnyAsync(so => so.QuotationId == id && !so.IsDeleted);
+
+        return ToDto(q, approvedByName, hasSalesOrder);
     }
 
     public async Task<QuotationDto> CreateAsync(SaveQuotationRequest request)
@@ -1128,7 +1134,14 @@ public class QuotationService : IQuotationService
         q.GrandTotal = q.TotalBeforeTax + q.TaxAmount;
     }
 
-    private static QuotationListDto ToListDto(Models.Quotation x, bool hasCustomerPO = false) => new()
+    // Null kalau Status bukan Disetujui atau sudah ada SalesOrder aktif — monitoring read-only,
+    // mirror PurchaseOrderService's HasActiveSupplierInvoice, bukan gate (lihat komentar DTO).
+    private static int? ComputeDaysApprovedWithoutSalesOrder(Models.Quotation x, bool hasSalesOrder) =>
+        x.Status == QuotationStatus.Disetujui && !hasSalesOrder && x.ApprovedAt.HasValue
+            ? (int)(DateTimeOffset.UtcNow - x.ApprovedAt.Value).TotalDays
+            : null;
+
+    private static QuotationListDto ToListDto(Models.Quotation x, bool hasCustomerPO = false, bool hasSalesOrder = false) => new()
     {
         Id = x.Id,
         No = x.No,
@@ -1144,9 +1157,10 @@ public class QuotationService : IQuotationService
         IsLatestRevision = x.IsLatestRevision,
         SentAt = x.SentAt,
         HasCustomerPO = hasCustomerPO,
+        DaysApprovedWithoutSalesOrder = ComputeDaysApprovedWithoutSalesOrder(x, hasSalesOrder),
     };
 
-    private static QuotationDto ToDto(Models.Quotation x, string? approvedByName = null) => new()
+    private static QuotationDto ToDto(Models.Quotation x, string? approvedByName = null, bool hasSalesOrder = false) => new()
     {
         Id = x.Id,
         No = x.No,
@@ -1186,6 +1200,7 @@ public class QuotationService : IQuotationService
         ParentId = x.ParentId,
         ApprovedAt = x.ApprovedAt,
         ApprovedByName = approvedByName,
+        DaysApprovedWithoutSalesOrder = ComputeDaysApprovedWithoutSalesOrder(x, hasSalesOrder),
         CreatedAt = x.CreatedAt,
         UpdatedAt = x.UpdatedAt,
         Tabs = x.Tabs.OrderBy(t => t.SortOrder).Select(t => new QuotationTabDto

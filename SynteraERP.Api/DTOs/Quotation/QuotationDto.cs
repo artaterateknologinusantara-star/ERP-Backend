@@ -19,6 +19,11 @@ public class QuotationListDto
     public bool IsLatestRevision { get; set; }
     public DateTimeOffset? SentAt { get; set; }
     public bool HasCustomerPO { get; set; }
+
+    // Null kalau Status bukan Disetujui, atau sudah ada SalesOrder aktif untuk Quotation ini.
+    // Jumlah hari sejak ApprovedAt kalau Disetujui dan belum ada SalesOrder — monitoring read-only,
+    // mirror pola PurchaseOrderDto.HasActiveSupplierInvoice (bukan gate/blocking).
+    public int? DaysApprovedWithoutSalesOrder { get; set; }
 }
 
 // ── Send Result ───────────────────────────────────────────────────────────────
