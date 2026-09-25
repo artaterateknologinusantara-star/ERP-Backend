@@ -60,7 +60,6 @@ public class QuotationDto : QuotationListDto
     public string? Location { get; set; }
     public string? Contractor { get; set; }
     public string? ValidityPeriod { get; set; }
-    public string? AreaBlockTender { get; set; }
     public Guid? ParentId { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovedByName { get; set; }
@@ -172,7 +171,6 @@ public class SaveQuotationRequest
     public string? Location { get; set; }
     public string? Contractor { get; set; }
     public string? ValidityPeriod { get; set; }
-    public string? AreaBlockTender { get; set; }
     public List<SaveQuotationTabRequest> Tabs { get; set; } = [];
     public List<SaveQuotationTerminRequest> Termins { get; set; } = [];
 }

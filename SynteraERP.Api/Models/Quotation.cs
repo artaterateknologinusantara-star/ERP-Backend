@@ -36,7 +36,6 @@ public class Quotation : BaseEntity
     public string? Location { get; set; }
     public string? Contractor { get; set; }
     public string? ValidityPeriod { get; set; }
-    public string? AreaBlockTender { get; set; }
     public DateTimeOffset? SentAt { get; set; }
     public Guid? SentBy { get; set; }
     public Guid? SupersededByQuotationId { get; set; }

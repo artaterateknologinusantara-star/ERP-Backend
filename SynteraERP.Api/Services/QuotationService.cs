@@ -131,7 +131,6 @@ public class QuotationService : IQuotationService
         quotation.Location = request.Location;
         quotation.Contractor = request.Contractor;
         quotation.ValidityPeriod = request.ValidityPeriod;
-        quotation.AreaBlockTender = request.AreaBlockTender;
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -389,7 +388,6 @@ public class QuotationService : IQuotationService
             Location = source.Location,
             Contractor = source.Contractor,
             ValidityPeriod = source.ValidityPeriod,
-            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             ParentId = source.Id,
         };
@@ -527,7 +525,6 @@ public class QuotationService : IQuotationService
             Location = source.Location,
             Contractor = source.Contractor,
             ValidityPeriod = source.ValidityPeriod,
-            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             Revision = source.Revision + 1,
             ParentId = source.ParentId ?? source.Id,
@@ -1037,7 +1034,6 @@ public class QuotationService : IQuotationService
             Location = req.Location,
             Contractor = req.Contractor,
             ValidityPeriod = req.ValidityPeriod,
-            AreaBlockTender = req.AreaBlockTender,
             Status = QuotationStatus.Draft,
         };
         q.Tabs = BuildTabs(req.Tabs, q.Id);
@@ -1196,7 +1192,6 @@ public class QuotationService : IQuotationService
         Location = x.Location,
         Contractor = x.Contractor,
         ValidityPeriod = x.ValidityPeriod,
-        AreaBlockTender = x.AreaBlockTender,
         ParentId = x.ParentId,
         ApprovedAt = x.ApprovedAt,
         ApprovedByName = approvedByName,
