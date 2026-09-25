@@ -75,6 +75,8 @@ public class InvoiceService : IInvoiceService
             .Include(x => x.SalesOrder)
             .Include(x => x.Payments)
             .Include(x => x.Items.OrderBy(i => i.SortOrder))
+            .Include(x => x.DownPaymentApplications)
+                .ThenInclude(x => x.SalesOrderPayment)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (inv is null) return null;
@@ -173,6 +175,46 @@ public class InvoiceService : IInvoiceService
 
             if (soItems.Any())
             {
+                var salesOrder = await _db.SalesOrders.FindAsync(request.SalesOrderId.Value)
+                    ?? throw new InvalidOperationException("Sales Order tidak ditemukan.");
+
+                var subTotalForItems  = MoneyMath.Round(soItems.Sum(x => x.Amount));
+                var taxAmountForItems = MoneyMath.Round(subTotalForItems * taxRate);
+                var computedAmount    = subTotalForItems + taxAmountForItems;
+
+                // Invoice tanpa Termin WAJIB mencakup jumlah penuh Sales Order -- source of truth
+                // tetap SO items, bukan angka manual dari request. Sebelumnya request.Amount diam-
+                // diam ditimpa di sini tanpa pemberitahuan (ditemukan lewat QA end-to-end: caller
+                // yang minta invoice parsial dapat invoice full-amount tanpa tahu); sekarang
+                // ditolak eksplisit (toleransi pembulatan Rp1) supaya jelas invoice parsial
+                // non-termin memang tidak didukung -- pakai fitur Termin untuk itu.
+                if (Math.Abs(request.Amount - computedAmount) > 1)
+                    throw new InvalidOperationException(
+                        $"Invoice tanpa Termin harus mencakup jumlah penuh Sales Order (Rp {computedAmount:N0}). " +
+                        $"Gunakan fitur Termin untuk invoice bertahap.");
+
+                // Cap invoice murni terhadap invoice -- DP TIDAK ikut dihitung di sini. DP bukan
+                // beban tambahan terpisah dari SO.Total; dia adalah metode pembayaran untuk invoice
+                // yang sudah ada, dan begitu diterapkan (ApplyToInvoiceAsync) dia MENGURANGI saldo
+                // invoice itu, bukan menambah kuota baru yang dikonsumsi dari SO. Menggabungkan DP
+                // ke cap ini (revisi awal Bug #2) salah -- itu memblokir alur sah "DP diterima
+                // duluan -> nanti diinvoice PENUH -> DP diterapkan mengurangi tagihan", yang justru
+                // tujuan awal fitur DP Diterapkan. Cap ini murni mencegah invoice ganda/berlebih
+                // untuk SO yang sama (mis. double-submit) -- sama sekali tidak bergantung ada/
+                // tidaknya DP, jadi urutan operasi (Invoice dulu vs DP dulu) tidak mengubah hasil.
+                // Cap DP-vs-SO.Total sendiri (terima uang muka tidak boleh melebihi nilai order)
+                // tetap ada, berdiri sendiri, di RecordDownPaymentAsync -- tidak diubah di sini.
+                var totalInvoiced = await _db.Invoices
+                    .Where(i => i.SalesOrderId == request.SalesOrderId.Value && !i.IsDeleted)
+                    .SumAsync(i => (decimal?)i.Amount) ?? 0;
+
+                var projectedInvoiceTotal = totalInvoiced + computedAmount;
+                if (projectedInvoiceTotal > salesOrder.Total)
+                    throw new InvalidOperationException(
+                        $"Total invoice akan menjadi Rp {projectedInvoiceTotal:N0}, melebihi Total Sales Order " +
+                        $"Rp {salesOrder.Total:N0} sebesar Rp {(projectedInvoiceTotal - salesOrder.Total):N0}. " +
+                        $"(Sudah diinvoice Rp {totalInvoiced:N0}, invoice ini Rp {computedAmount:N0}.)");
+
                 inv.Items = soItems.Select((item, index) => new InvoiceItem
                 {
                     Id          = Guid.NewGuid(),
@@ -186,10 +228,7 @@ public class InvoiceService : IInvoiceService
                     SortOrder   = index,
                 }).ToList();
 
-                // Recalculate Amount dari items
-                var subTotalForItems  = MoneyMath.Round(inv.Items.Sum(x => x.Amount));
-                var taxAmountForItems = MoneyMath.Round(subTotalForItems * taxRate);
-                inv.Amount             = subTotalForItems + taxAmountForItems;
+                inv.Amount = computedAmount;
             }
         }
 
@@ -490,7 +529,7 @@ public class InvoiceService : IInvoiceService
         DueDate = x.DueDate,
         CustomerName = x.Customer?.Name ?? string.Empty,
         SalesOrderNo = x.SalesOrder?.No,
-        Status = x.Status == InvoiceStatus.PartialPaid ? "Partial Paid" : x.Status.ToString(),
+        Status = InvoiceStatusText.Format(x.Status),
         Amount = x.Amount,
         Paid = x.Paid,
         Balance = x.Balance,
@@ -522,7 +561,7 @@ public class InvoiceService : IInvoiceService
             DueDate      = x.DueDate,
             CustomerName = x.Customer?.Name ?? string.Empty,
             SalesOrderNo = x.SalesOrder?.No,
-            Status       = x.Status == InvoiceStatus.PartialPaid ? "Partial Paid" : x.Status.ToString(),
+            Status       = InvoiceStatusText.Format(x.Status),
             Amount       = x.Amount,
             Paid         = x.Paid,
             Balance      = x.Balance,
@@ -547,6 +586,17 @@ public class InvoiceService : IInvoiceService
                 Reference   = p.Reference,
                 Notes       = p.Notes,
             }).ToList(),
+            DownPaymentApplications = (x.DownPaymentApplications ?? [])
+                .OrderBy(dp => dp.AppliedAt)
+                .Select(dp => new DownPaymentApplicationDto
+                {
+                    Id            = dp.Id,
+                    AppliedAt     = dp.AppliedAt,
+                    AmountApplied = dp.AmountApplied,
+                    PaymentDate   = dp.SalesOrderPayment.PaymentDate,
+                    Method        = dp.SalesOrderPayment.Method.ToString(),
+                    Reference     = dp.SalesOrderPayment.Reference,
+                }).ToList(),
             Items = (x.Items ?? []).OrderBy(i => i.SortOrder).Select(i => new InvoiceItemResponse
             {
                 Id          = i.Id,

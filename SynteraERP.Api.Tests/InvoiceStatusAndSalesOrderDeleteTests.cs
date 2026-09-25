@@ -175,7 +175,7 @@ public class InvoiceStatusAndSalesOrderDeleteTests : IClassFixture<WebApplicatio
     }
 
     [Fact]
-    public async Task RetentionRelease_and_DownPaymentApplication_unaffected_by_new_status_guard()
+    public async Task RetentionRelease_unaffected_by_status_guard_but_DownPaymentApplication_now_requires_Sent()
     {
         var services = CreateScratchServices();
         using var scope = services.CreateScope();
@@ -218,8 +218,8 @@ public class InvoiceStatusAndSalesOrderDeleteTests : IClassFixture<WebApplicatio
         released!.RetentionReleasedAmount.Should().Be(50_000);
         released.Status.Should().Be("Draft", "ReleaseRetentionAsync tidak pernah mengubah Status invoice");
 
-        // Down Payment application juga TIDAK lewat RecordPaymentAsync (lihat komentar di
-        // Invoice.ApplyPayment) -- harus tetap berhasil meski invoice masih Draft.
+        // ApplyToInvoiceAsync sekarang menolak invoice Draft juga (Bug #4 fix -- sebelumnya ini
+        // satu-satunya jalur pelunasan yang bebas dari gate Draft, asimetri yang tidak disengaja).
         var dpSvc = scope.ServiceProvider.GetRequiredService<ISalesOrderPaymentService>();
         var dp = await dpSvc.RecordDownPaymentAsync(so.Id, new RecordDownPaymentRequest
         {
@@ -227,13 +227,82 @@ public class InvoiceStatusAndSalesOrderDeleteTests : IClassFixture<WebApplicatio
             Method = "Transfer",
         });
 
+        var actDraft = async () => await dpSvc.ApplyToInvoiceAsync(inv.Id, new ApplyDownPaymentRequest
+        {
+            SalesOrderPaymentId = dp.Id,
+            AmountToApply = 300_000,
+        });
+        await actDraft.Should().ThrowAsync<InvalidOperationException>().WithMessage("*belum dikirim*");
+
+        await invoiceSvc.MarkAsSentAsync(inv.Id);
+
         var applied = await dpSvc.ApplyToInvoiceAsync(inv.Id, new ApplyDownPaymentRequest
         {
             SalesOrderPaymentId = dp.Id,
             AmountToApply = 300_000,
         });
         applied!.Paid.Should().Be(300_000);
-        applied.Status.Should().Be("Partial Paid", "ApplyPayment tetap jalan lewat jalur DP, terlepas dari guard baru di RecordPaymentAsync");
+        applied.Status.Should().Be("Partial Paid", "ApplyPayment tetap dipakai untuk transisi status, terlepas dari jalur mana yang memanggilnya");
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_maps_DownPaymentApplications_after_ApplyToInvoiceAsync()
+    {
+        var services = CreateScratchServices();
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        await db.Database.MigrateAsync();
+        await CustomerSeeder.SeedAsync(db);
+        await NumberingConfigSeeder.SeedAsync(db);
+
+        var so = NewSalesOrder("TST-SO-DPDTO-" + Guid.NewGuid().ToString("N")[..6]);
+        db.SalesOrders.Add(so);
+        await db.SaveChangesAsync();
+
+        var invoiceSvc = scope.ServiceProvider.GetRequiredService<IInvoiceService>();
+
+        var inv = new Invoice
+        {
+            Id = Guid.NewGuid(),
+            No = "TST-INV-DPDTO-" + Guid.NewGuid().ToString("N")[..6],
+            CustomerId = SeededCustomerId,
+            SalesOrderId = so.Id,
+            InvoiceDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+            Amount = 1_000_000,
+            Status = InvoiceStatus.Draft,
+        };
+        db.Invoices.Add(inv);
+        await db.SaveChangesAsync();
+
+        var dpSvc = scope.ServiceProvider.GetRequiredService<ISalesOrderPaymentService>();
+        var dp = await dpSvc.RecordDownPaymentAsync(so.Id, new RecordDownPaymentRequest
+        {
+            Amount = 400_000,
+            Method = "Transfer",
+            Reference = "DP-REF-001",
+        });
+
+        // ApplyToInvoiceAsync sekarang menolak invoice Draft (Bug #4 fix) -- kirim dulu.
+        await invoiceSvc.MarkAsSentAsync(inv.Id);
+
+        await dpSvc.ApplyToInvoiceAsync(inv.Id, new ApplyDownPaymentRequest
+        {
+            SalesOrderPaymentId = dp.Id,
+            AmountToApply = 400_000,
+        });
+
+        // GetByIdAsync -> ToDto adalah satu-satunya jalur yang mengekspos DownPaymentApplications
+        // ke API/frontend -- ini menjaga supaya Include + mapping-nya tidak diam-diam putus lagi.
+        var dto = await invoiceSvc.GetByIdAsync(inv.Id);
+
+        dto.Should().NotBeNull();
+        dto!.DownPaymentApplications.Should().HaveCount(1);
+        var dpDto = dto.DownPaymentApplications[0];
+        dpDto.AmountApplied.Should().Be(400_000);
+        dpDto.Method.Should().Be("Transfer");
+        dpDto.Reference.Should().Be("DP-REF-001");
     }
 
     [Fact]

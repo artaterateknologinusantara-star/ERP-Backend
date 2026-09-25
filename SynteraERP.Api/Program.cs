@@ -45,8 +45,12 @@ if (string.IsNullOrWhiteSpace(jwtKey))
         "Jwt:Key is missing. Set it via 'dotnet user-secrets set \"Jwt:Key\" \"...\"' " +
         "(Development) or the Jwt__Key environment variable (other environments).");
 
+// Scheme default ("Bearer") tetap untuk User/Role internal. Scheme "Vendor" kedua ditambahkan
+// khusus untuk SupplierPortalUser (portal vendor) — signing key sama (tidak ada secret kedua
+// yang perlu dikelola), tapi ValidAudience beda dari scheme default, jadi token internal dan
+// token vendor tidak bisa saling dipakai lintas scheme walau key-nya sama. Lihat VendorJwtHelper.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(opt =>
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, opt =>
     {
         opt.TokenValidationParameters = new TokenValidationParameters
         {
@@ -56,6 +60,20 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.Zero,
+        };
+    })
+    .AddJwtBearer("Vendor", opt =>
+    {
+        opt.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:VendorAudience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ClockSkew = TimeSpan.Zero,
         };
@@ -70,6 +88,28 @@ builder.Services.AddAuthorization(opt =>
             var requirement = new ModulePermissionRequirement(module, action);
             opt.AddPolicy(requirement.PolicyName, policy => policy.Requirements.Add(requirement));
         }
+
+    // Controller portal vendor wajib pakai [Authorize(AuthenticationSchemes = "Vendor", Policy =
+    // "VendorOnly")]. AddAuthenticationSchemes("Vendor") memastikan token scheme lain (internal)
+    // ditolak sebelum sempat dicek claim-nya; RequireClaim adalah lapis kedua (defense-in-depth)
+    // untuk kasus scheme salah dikonfigurasi di satu endpoint.
+    opt.AddPolicy("VendorOnly", policy => policy
+        .AddAuthenticationSchemes("Vendor")
+        .RequireAuthenticatedUser()
+        .RequireClaim("principalType", "vendor"));
+
+    // Setiap endpoint tanpa [Authorize]/[AllowAnonymous] eksplisit WAJIB ditolak, bukan
+    // otomatis publik. Tanpa ini, controller yang lupa menaruh [Authorize] (kesalahan manusia,
+    // bukan hipotetis) akan bisa diakses siapa pun tanpa token sama sekali. Endpoint yang
+    // sudah pakai [AllowAnonymous] (login, company-settings/public, company-settings/logo,
+    // demo-lead) tidak terpengaruh — [AllowAnonymous] selalu short-circuit sebelum
+    // FallbackPolicy dievaluasi. Dipin ke scheme "Bearer" (bukan scheme apa pun) — begitu scheme
+    // "Vendor" ada, tanpa pin ini token vendor bisa saja lolos di endpoint internal yang lupa
+    // menaruh [Authorize] eksplisit, karena ASP.NET Core menerima token dari scheme mana pun
+    // yang valid kalau fallback policy tidak dibatasi ke satu scheme tertentu.
+    opt.FallbackPolicy = new AuthorizationPolicyBuilder(JwtBearerDefaults.AuthenticationScheme)
+        .RequireAuthenticatedUser()
+        .Build();
 });
 
 // ── CORS ───────────────────────────────────────────────────────────────────────
@@ -84,6 +124,11 @@ builder.Services.AddCors(opt =>
 // ── Application Services ──────────────────────────────────────────────────────
 builder.Services.AddScoped<JwtHelper>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<VendorJwtHelper>();
+builder.Services.AddScoped<ISupplierPortalAuthService, SupplierPortalAuthService>();
+builder.Services.AddScoped<ISupplierPortalUserService, SupplierPortalUserService>();
+builder.Services.AddScoped<IVendorRabRequestService, VendorRabRequestService>();
+builder.Services.AddScoped<IVendorRabSubmissionService, VendorRabSubmissionService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
 builder.Services.AddScoped<ISalesOrderService, SalesOrderService>();
@@ -96,6 +141,7 @@ builder.Services.AddScoped<ICustomerPoService, CustomerPoService>();
 builder.Services.AddScoped<ISupplierService, SupplierService>();
 builder.Services.AddScoped<IBranchService, BranchService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<ICatalogLinkService, CatalogLinkService>();
 builder.Services.AddScoped<ITaxRateService, TaxRateService>();
 builder.Services.AddScoped<ICompanySettingsService, CompanySettingsService>();
 builder.Services.AddScoped<IAccountService, AccountService>();

@@ -22,6 +22,12 @@ public class AuthController : ControllerBase
         _db = db;
     }
 
+    // Eksplisit [AllowAnonymous] — sebelumnya endpoint ini publik hanya karena TIDAK ADA
+    // [Authorize] apa pun (bukan lewat [AllowAnonymous] eksplisit), yang baru "berhasil" secara
+    // kebetulan karena tidak ada FallbackPolicy. Begitu FallbackPolicy ditambahkan (lihat
+    // Program.cs, blocker infra vendor-portal), endpoint tanpa atribut otomatis butuh login —
+    // yang mengunci endpoint login itu sendiri. WAJIB eksplisit di sini dan di ResetPassword.
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<ApiResponse<LoginResponse>>> Login([FromBody] LoginRequest request)
     {
@@ -43,6 +49,9 @@ public class AuthController : ControllerBase
         return Ok(ApiResponse<ForgotPasswordResponse>.Ok(result));
     }
 
+    // Sama seperti Login di atas — user yang reset password belum (dan tidak bisa) login, jadi
+    // wajib eksplisit [AllowAnonymous] sekarang bahwa FallbackPolicy sudah aktif.
+    [AllowAnonymous]
     [HttpPost("reset-password")]
     public async Task<ActionResult<ApiResponse>> ResetPassword([FromBody] ResetPasswordRequest request)
     {

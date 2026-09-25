@@ -97,6 +97,20 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [HttpPost("delivery-orders/so-items/{soItemId:guid}/link-item-master")]
+    public async Task<IActionResult> LinkSoItemToItemMaster(Guid soItemId, [FromBody] LinkSoItemRequest request)
+    {
+        try
+        {
+            await _svc.LinkSoItemToItemMasterAsync(soItemId, request.ItemMasterId);
+            return Ok(new { success = true, message = "Item berhasil ditautkan." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
     [HttpPost("delivery-orders")]
     public async Task<IActionResult> CreateDeliveryOrder([FromBody] CreateDeliveryOrderRequest request)
     {

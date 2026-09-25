@@ -101,6 +101,13 @@ public class SalesOrderPaymentService : ISalesOrderPaymentService
         var invoice = await _db.Invoices.FirstOrDefaultAsync(x => x.Id == invoiceId);
         if (invoice is null) return null;
 
+        // Sama seperti gate di InvoiceService.RecordPaymentAsync -- sebelumnya DP application
+        // adalah satu-satunya jalur pelunasan yang TIDAK menolak invoice Draft, asimetri yang
+        // tidak disengaja (ditemukan lewat QA end-to-end), bukan perilaku yang dimaksud.
+        if (invoice.Status == InvoiceStatus.Draft)
+            throw new InvalidOperationException(
+                "Invoice belum dikirim — kirim invoice dulu sebelum menerapkan DP.");
+
         var dp = await _db.SalesOrderPayments
             .Include(x => x.Applications)
             .FirstOrDefaultAsync(x => x.Id == request.SalesOrderPaymentId)

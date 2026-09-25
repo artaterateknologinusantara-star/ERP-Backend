@@ -36,6 +36,8 @@ public class InvoicePdfService
                 .ThenInclude(so => so!.Items.OrderBy(i => i.SortOrder))
             .Include(x => x.Items.OrderBy(i => i.SortOrder))
             .Include(x => x.Payments.OrderBy(p => p.PaymentDate))
+            .Include(x => x.DownPaymentApplications)
+                .ThenInclude(x => x.SalesOrderPayment)
             .FirstOrDefaultAsync(x => x.Id == invoiceId && !x.IsDeleted);
 
         if (invoice is null) return null;
@@ -138,9 +140,7 @@ public class InvoicePdfService
                     if (invoice.Status != InvoiceStatus.Paid)
                     {
                         var statusColor = invoice.Status == InvoiceStatus.Overdue ? Red : Blue;
-                        var statusText  = invoice.Status == InvoiceStatus.Overdue
-                            ? "OVERDUE"
-                            : invoice.Status.ToString().ToUpper();
+                        var statusText  = InvoiceStatusText.Format(invoice.Status).ToUpper();
 
                         title.Item().AlignRight().PaddingTop(4)
                             .Background(statusColor).Padding(4)
@@ -386,6 +386,61 @@ public class InvoicePdfService
                                 .FontSize(8).FontColor(Colors.Grey.Medium);
                             pt.Cell().Element(PC).AlignRight()
                                 .Text(FormatRupiah(payment.Amount))
+                                .FontSize(8).FontColor(Green);
+                        }
+                    });
+                });
+            }
+
+            // ── DP Diterapkan ──
+            if (invoice.DownPaymentApplications.Any())
+            {
+                col.Item().Column(dph =>
+                {
+                    dph.Item().PaddingBottom(4)
+                        .Text("DP Diterapkan")
+                        .FontSize(9).Bold().FontColor(Navy);
+
+                    dph.Item().Table(dpt =>
+                    {
+                        dpt.ColumnsDefinition(c =>
+                        {
+                            c.ConstantColumn(80);
+                            c.ConstantColumn(70);
+                            c.RelativeColumn();
+                            c.ConstantColumn(90);
+                        });
+
+                        dpt.Header(h =>
+                        {
+                            static IContainer PH(IContainer c) => c
+                                .Background(LightBlue).Padding(4);
+
+                            h.Cell().Element(PH).Text("Tanggal")
+                                .FontSize(8).Bold().FontColor(Navy);
+                            h.Cell().Element(PH).Text("Metode")
+                                .FontSize(8).Bold().FontColor(Navy);
+                            h.Cell().Element(PH).Text("Referensi")
+                                .FontSize(8).Bold().FontColor(Navy);
+                            h.Cell().Element(PH).AlignRight().Text("Jumlah")
+                                .FontSize(8).Bold().FontColor(Navy);
+                        });
+
+                        foreach (var dp in invoice.DownPaymentApplications.OrderBy(x => x.AppliedAt))
+                        {
+                            static IContainer PC(IContainer c) => c
+                                .BorderBottom(0.5f).BorderColor(SlateGray).Padding(4);
+
+                            dpt.Cell().Element(PC)
+                                .Text(dp.AppliedAt.ToString("dd/MM/yyyy"))
+                                .FontSize(8);
+                            dpt.Cell().Element(PC)
+                                .Text(dp.SalesOrderPayment.Method.ToString()).FontSize(8);
+                            dpt.Cell().Element(PC)
+                                .Text(dp.SalesOrderPayment.Reference ?? "—")
+                                .FontSize(8).FontColor(Colors.Grey.Medium);
+                            dpt.Cell().Element(PC).AlignRight()
+                                .Text(FormatRupiah(dp.AmountApplied))
                                 .FontSize(8).FontColor(Green);
                         }
                     });

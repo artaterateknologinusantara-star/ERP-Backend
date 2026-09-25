@@ -63,7 +63,7 @@ public class QuotationService : IQuotationService
             .AsNoTracking()
             .Include(x => x.Customer)
             .Include(x => x.Sales)
-            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items).ThenInclude(i => i.ItemMaster)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
             .Include(x => x.Termins)
@@ -246,6 +246,7 @@ public class QuotationService : IQuotationService
                     Width = item.Width,
                     Height = item.Height,
                     SortOrder = item.SortOrder,
+                    ItemMasterId = item.ItemMasterId,
                 };
                 // NOT also `group.Items.Add(newItem)` — `GroupId` is already set above, and
                 // `group` is a tracked entity (loaded via Include at the top of UpdateAsync), so
@@ -417,6 +418,7 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
                 }).ToList(),
                 // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
                 // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
@@ -554,6 +556,7 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
                 }).ToList(),
                 // Attachments (gambar) sengaja TIDAK ikut disalin — file per-dokumen asli, wajar
                 // tidak ikut ke duplikat/revisi baru. Data teks/angka RAB/BQ tetap disalin penuh.
@@ -627,13 +630,28 @@ public class QuotationService : IQuotationService
         return true;
     }
 
+    /// <summary>Menautkan satu baris QuotationItem ke Item Master secara eksplisit — dipakai
+    /// oleh layar admin "Item Belum Terhubung" untuk beres-beres data lama (QuotationItem yang
+    /// dibuat sebelum field ItemMasterId ada, atau baris yang sengaja dibiarkan free-text dulu).</summary>
+    public async Task LinkItemMasterAsync(Guid quotationItemId, Guid itemMasterId)
+    {
+        var item = await _db.QuotationItems.FirstOrDefaultAsync(x => x.Id == quotationItemId)
+            ?? throw new InvalidOperationException("Baris Quotation tidak ditemukan.");
+
+        _ = await _db.ItemMasters.FirstOrDefaultAsync(x => x.Id == itemMasterId && x.IsActive && !x.IsDeleted)
+            ?? throw new InvalidOperationException("Item Master tidak ditemukan atau tidak aktif.");
+
+        item.ItemMasterId = itemMasterId;
+        await _db.SaveChangesAsync();
+    }
+
     // ── Item Pekerjaan / Detail Kerja (RAB/BQ) — auto-save per baris, ID stabil ──
     // sepanjang sesi edit (bukan bagian SaveQuotationRequest) supaya lampiran gambar tidak
     // ikut hilang tiap kali quotation induk di-Update (lihat BuildTabs/UpdateAsync di atas).
 
     public async Task<QuotationWorkItemDto> CreateWorkItemAsync(Guid groupId, SaveWorkItemRequest request)
     {
-        var group = await _db.QuotationGroups.FirstOrDefaultAsync(g => g.Id == groupId)
+        var group = await _db.QuotationGroups.Include(g => g.Tab).FirstOrDefaultAsync(g => g.Id == groupId)
             ?? throw new KeyNotFoundException("Group tidak ditemukan.");
 
         var workItem = new QuotationWorkItem
@@ -643,18 +661,30 @@ public class QuotationService : IQuotationService
             SortOrder = request.SortOrder,
         };
         _db.QuotationWorkItems.Add(workItem);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return ToWorkItemDto(workItem);
     }
 
     public async Task<bool> UpdateWorkItemAsync(Guid id, SaveWorkItemRequest request)
     {
-        var workItem = await _db.QuotationWorkItems.FirstOrDefaultAsync(w => w.Id == id);
+        var workItem = await _db.QuotationWorkItems
+            .Include(w => w.Group).ThenInclude(g => g.Tab)
+            .FirstOrDefaultAsync(w => w.Id == id);
         if (workItem is null) return false;
 
         workItem.Name = request.Name;
         workItem.SortOrder = request.SortOrder;
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(workItem.Group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return true;
     }
 
@@ -662,20 +692,29 @@ public class QuotationService : IQuotationService
     {
         var workItem = await _db.QuotationWorkItems
             .Include(w => w.WorkDetails).ThenInclude(d => d.Attachments)
+            .Include(w => w.Group).ThenInclude(g => g.Tab)
             .FirstOrDefaultAsync(w => w.Id == id);
         if (workItem is null) return false;
 
         foreach (var attachment in workItem.WorkDetails.SelectMany(d => d.Attachments))
             DeleteAttachmentFile(attachment.FilePath);
 
+        var quotationId = workItem.Group.Tab.QuotationId;
         _db.QuotationWorkItems.Remove(workItem);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(quotationId);
+        await tx.CommitAsync();
+
         return true;
     }
 
     public async Task<QuotationWorkDetailDto> CreateWorkDetailAsync(Guid workItemId, SaveWorkDetailRequest request)
     {
-        var workItem = await _db.QuotationWorkItems.FirstOrDefaultAsync(w => w.Id == workItemId)
+        var workItem = await _db.QuotationWorkItems
+            .Include(w => w.Group).ThenInclude(g => g.Tab)
+            .FirstOrDefaultAsync(w => w.Id == workItemId)
             ?? throw new KeyNotFoundException("Item Pekerjaan tidak ditemukan.");
 
         var detail = new QuotationWorkDetail
@@ -689,13 +728,20 @@ public class QuotationService : IQuotationService
             SortOrder = request.SortOrder,
         };
         _db.QuotationWorkDetails.Add(detail);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(workItem.Group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return ToWorkDetailDto(detail);
     }
 
     public async Task<bool> UpdateWorkDetailAsync(Guid id, SaveWorkDetailRequest request)
     {
-        var detail = await _db.QuotationWorkDetails.FirstOrDefaultAsync(d => d.Id == id);
+        var detail = await _db.QuotationWorkDetails
+            .Include(d => d.WorkItem).ThenInclude(w => w.Group).ThenInclude(g => g.Tab)
+            .FirstOrDefaultAsync(d => d.Id == id);
         if (detail is null) return false;
 
         detail.Name = request.Name;
@@ -704,7 +750,12 @@ public class QuotationService : IQuotationService
         detail.Unit = request.Unit;
         detail.UnitPrice = request.UnitPrice;
         detail.SortOrder = request.SortOrder;
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(detail.WorkItem.Group.Tab.QuotationId);
+        await tx.CommitAsync();
+
         return true;
     }
 
@@ -712,15 +763,98 @@ public class QuotationService : IQuotationService
     {
         var detail = await _db.QuotationWorkDetails
             .Include(d => d.Attachments)
+            .Include(d => d.WorkItem).ThenInclude(w => w.Group).ThenInclude(g => g.Tab)
             .FirstOrDefaultAsync(d => d.Id == id);
         if (detail is null) return false;
 
         foreach (var attachment in detail.Attachments)
             DeleteAttachmentFile(attachment.FilePath);
 
+        var quotationId = detail.WorkItem.Group.Tab.QuotationId;
         _db.QuotationWorkDetails.Remove(detail);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await _db.SaveChangesAsync();
+        await RecalcAndSaveQuotationTotalsAsync(quotationId);
+        await tx.CommitAsync();
+
         return true;
+    }
+
+    public async Task<QuotationWorkItemDto> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request)
+    {
+        var group = await _db.QuotationGroups.Include(g => g.Tab)
+            .FirstOrDefaultAsync(g => g.Id == request.QuotationGroupId)
+            ?? throw new KeyNotFoundException("Group tidak ditemukan.");
+
+        var nextSortOrder = (await _db.QuotationWorkItems
+            .Where(w => w.GroupId == request.QuotationGroupId)
+            .Select(w => (int?)w.SortOrder)
+            .MaxAsync() ?? -1) + 1;
+
+        var workItem = new QuotationWorkItem
+        {
+            GroupId = request.QuotationGroupId,
+            Name = request.WorkItemName,
+            SortOrder = nextSortOrder,
+        };
+        _db.QuotationWorkItems.Add(workItem);
+
+        // FK di-set eksplisit (bukan lewat nav property) — sama seperti pola Add eksplisit di
+        // UpsertTabs/UpsertGroups, supaya tidak bergantung ke graph-fixup EF. workItem.WorkDetails
+        // diisi manual di bawah supaya ToWorkItemDto bisa langsung dipakai tanpa reload dari DB.
+        var details = request.Lines.Select(line => new QuotationWorkDetail
+        {
+            WorkItemId = workItem.Id,
+            Name = line.Name,
+            Spesifikasi = line.Spesifikasi,
+            Volume = line.Volume,
+            Unit = line.Unit,
+            UnitPrice = line.FinalUnitPrice,
+            SortOrder = line.SortOrder,
+        }).ToList();
+        _db.QuotationWorkDetails.AddRange(details);
+        workItem.WorkDetails = details;
+
+        // VendorRabSubmissionService.ApproveAsync juga menulis status Submission/Request di
+        // DbContext yang SAMA sebagai bagian dari "approve" yang satu ini (rule #5: WorkItem baru
+        // + status Approved wajib atomic bersama-sama) — kalau caller sudah buka transaction
+        // sendiri (CurrentTransaction != null), ikut transaction itu dan jangan commit di sini;
+        // caller yang commit. Dipanggil berdiri sendiri (tanpa ambient transaction) tetap aman,
+        // self-contained seperti 6 endpoint standalone WorkItem/WorkDetail lainnya.
+        var ambientTx = _db.Database.CurrentTransaction;
+        if (ambientTx is not null)
+        {
+            await _db.SaveChangesAsync();
+            await RecalcAndSaveQuotationTotalsAsync(group.Tab.QuotationId);
+        }
+        else
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            await _db.SaveChangesAsync();
+            await RecalcAndSaveQuotationTotalsAsync(group.Tab.QuotationId);
+            await tx.CommitAsync();
+        }
+
+        return ToWorkItemDto(workItem);
+    }
+
+    // Standalone WorkItem/WorkDetail endpoints above load/mutate only the narrow entity in
+    // question, not the full Quotation graph RecalcTotals needs — so unlike UpdateAsync (which
+    // already has that graph loaded), they reload just enough of it here, recompute, and save,
+    // all inside the same transaction as the WorkItem/WorkDetail write itself. Without this,
+    // Quotation.TotalMaterial/TotalService/GrandTotal silently go stale until the next full
+    // UpdateAsync/CreateRevisionAsync/DuplicateAsync call touches the parent Quotation.
+    private async Task RecalcAndSaveQuotationTotalsAsync(Guid quotationId)
+    {
+        var quotation = await _db.Quotations
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
+            .FirstOrDefaultAsync(x => x.Id == quotationId);
+        if (quotation is null) return;
+
+        RecalcTotals(quotation);
+        await _db.SaveChangesAsync();
     }
 
     public async Task<QuotationWorkDetailAttachmentDto> UploadWorkDetailAttachmentAsync(Guid workDetailId, IFormFile file)
@@ -941,6 +1075,7 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
                 }).ToList(),
                 // Create path — incoming.Id (if any) is ignored, every row here is brand-new.
                 // g.WorkItems null (field omitted) just means none were sent — same as [].
@@ -1084,6 +1219,9 @@ public class QuotationService : IQuotationService
                     Width = i.Width,
                     Height = i.Height,
                     SortOrder = i.SortOrder,
+                    ItemMasterId = i.ItemMasterId,
+                    ItemMasterCode = i.ItemMaster?.Code,
+                    ItemMasterName = i.ItemMaster?.Name,
                 }).ToList(),
                 WorkItems = g.WorkItems.OrderBy(w => w.SortOrder).Select(ToWorkItemDto).ToList(),
             }).ToList(),

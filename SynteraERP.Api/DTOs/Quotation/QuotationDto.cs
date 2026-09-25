@@ -139,6 +139,9 @@ public class QuotationItemDto
     public decimal? Width { get; set; }
     public decimal? Height { get; set; }
     public int SortOrder { get; set; }
+    public Guid? ItemMasterId { get; set; }
+    public string? ItemMasterCode { get; set; }
+    public string? ItemMasterName { get; set; }
 }
 
 // ── Create / Update ───────────────────────────────────────────────────────────
@@ -224,6 +227,7 @@ public class SaveQuotationItemRequest
     public decimal? Width { get; set; }
     public decimal? Height { get; set; }
     public int SortOrder { get; set; }
+    public Guid? ItemMasterId { get; set; }
 }
 
 public class SaveQuotationWorkItemRequest

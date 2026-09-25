@@ -86,6 +86,13 @@ public class AppDbContext : DbContext
     // ─── Demo Leads ───────────────────────────────────────────────────────────
     public DbSet<DemoLead> DemoLeads => Set<DemoLead>();
 
+    // ─── Vendor Portal (RAB self-input) ──────────────────────────────────────
+    public DbSet<SupplierPortalUser> SupplierPortalUsers => Set<SupplierPortalUser>();
+    public DbSet<VendorRabRequest> VendorRabRequests => Set<VendorRabRequest>();
+    public DbSet<VendorRabRequestLine> VendorRabRequestLines => Set<VendorRabRequestLine>();
+    public DbSet<VendorRabSubmission> VendorRabSubmissions => Set<VendorRabSubmission>();
+    public DbSet<VendorRabSubmissionLine> VendorRabSubmissionLines => Set<VendorRabSubmissionLine>();
+
     protected override void OnModelCreating(ModelBuilder b)
     {
         base.OnModelCreating(b);
@@ -113,6 +120,8 @@ public class AppDbContext : DbContext
         b.Entity<DemoLead>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<BankStatementImport>().HasQueryFilter(e => !e.IsDeleted);
         b.Entity<BankStatementLine>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<SupplierPortalUser>().HasQueryFilter(e => !e.IsDeleted);
+        b.Entity<VendorRabRequest>().HasQueryFilter(e => !e.IsDeleted);
 
         // ─── Role ─────────────────────────────────────────────────────────────
         b.Entity<Role>(e =>
@@ -283,6 +292,12 @@ public class AppDbContext : DbContext
              .WithMany(g => g.Items)
              .HasForeignKey(i => i.GroupId)
              .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(i => i.ItemMaster)
+             .WithMany()
+             .HasForeignKey(i => i.ItemMasterId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
         });
 
         b.Entity<QuotationTermin>(e =>
@@ -513,7 +528,7 @@ public class AppDbContext : DbContext
              .OnDelete(DeleteBehavior.Restrict);
 
             e.HasOne(x => x.Invoice)
-             .WithMany()
+             .WithMany(x => x.DownPaymentApplications)
              .HasForeignKey(x => x.InvoiceId)
              .OnDelete(DeleteBehavior.Restrict);
         });
@@ -758,6 +773,90 @@ public class AppDbContext : DbContext
             e.Property(x => x.Industry).HasMaxLength(100).IsRequired();
             e.Property(x => x.Need).HasMaxLength(200).IsRequired();
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+        });
+
+        // ─── Vendor Portal (RAB self-input) ──────────────────────────────────
+        b.Entity<SupplierPortalUser>(e =>
+        {
+            // Filtered unique per Supplier (bukan global) — PIC berbeda vendor boleh pakai email
+            // yang sama secara kebetulan, tapi 1 vendor tidak boleh punya 2 akun dengan email sama.
+            // Filtered WHERE IsDeleted=0 mengikuti pola Customer/Supplier/Branch/ItemMaster/Project
+            // supaya akun yang di-nonaktifkan (soft-delete) tidak menyandera email itu selamanya.
+            e.HasIndex(x => new { x.SupplierId, x.Email }).IsUnique().HasFilter("[IsDeleted] = 0");
+            e.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            e.Property(x => x.Email).HasMaxLength(150).IsRequired();
+            e.Property(x => x.PasswordHash).HasMaxLength(255).IsRequired();
+            e.HasOne(x => x.Supplier)
+             .WithMany()
+             .HasForeignKey(x => x.SupplierId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<VendorRabRequest>(e =>
+        {
+            // 1 Group boleh punya banyak request ke vendor BERBEDA, tapi tidak 2 request aktif ke
+            // vendor YANG SAMA untuk Group yang sama (keputusan produk 24 Sep 2026) — tambahan
+            // baris untuk vendor yang sama dilakukan lewat VendorRabRequestLine, bukan request baru.
+            e.HasIndex(x => new { x.QuotationGroupId, x.SupplierId }).IsUnique().HasFilter("[IsDeleted] = 0");
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasOne(x => x.QuotationGroup)
+             .WithMany()
+             .HasForeignKey(x => x.QuotationGroupId)
+             .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Supplier)
+             .WithMany()
+             .HasForeignKey(x => x.SupplierId)
+             .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ApprovedWorkItem)
+             .WithMany()
+             .HasForeignKey(x => x.ApprovedWorkItemId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
+        });
+
+        b.Entity<VendorRabRequestLine>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Unit).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Volume).HasPrecision(12, 4);
+            e.HasOne(x => x.VendorRabRequest)
+             .WithMany(r => r.Lines)
+             .HasForeignKey(x => x.VendorRabRequestId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<VendorRabSubmission>(e =>
+        {
+            // Versioning: 1 attempt = 1 baris, tidak pernah diedit ulang setelah dibuat.
+            e.HasIndex(x => new { x.VendorRabRequestId, x.AttemptNumber }).IsUnique();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.RejectionReason).HasMaxLength(1000);
+            e.HasOne(x => x.VendorRabRequest)
+             .WithMany(r => r.Submissions)
+             .HasForeignKey(x => x.VendorRabRequestId)
+             .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.SubmittedByPortalUser)
+             .WithMany()
+             .HasForeignKey(x => x.SubmittedByPortalUserId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<VendorRabSubmissionLine>(e =>
+        {
+            // 1 harga per baris request per submission — mencegah vendor/duplicate-request
+            // mengirim 2 harga berbeda untuk baris yang sama dalam 1 percobaan.
+            e.HasIndex(x => new { x.VendorRabSubmissionId, x.VendorRabRequestLineId }).IsUnique();
+            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
+            e.Property(x => x.MarkupAmount).HasPrecision(18, 2);
+            e.HasOne(x => x.VendorRabSubmission)
+             .WithMany(s => s.Lines)
+             .HasForeignKey(x => x.VendorRabSubmissionId)
+             .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.VendorRabRequestLine)
+             .WithMany()
+             .HasForeignKey(x => x.VendorRabRequestLineId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ─── StockTransaction ─────────────────────────────────────────────────
@@ -1051,14 +1150,16 @@ public class AppDbContext : DbContext
         b.Entity<CompanySettings>().HasData(new CompanySettings
         {
             Id = new Guid("30000000-0000-0000-0000-000000000001"),
-            CompanyName = "PT Syntera Teknologi Nusantara",
+            // Generic placeholder, not a brand name — matches the "Perusahaan Anda" fallback
+            // already used by every PDF service when no CompanySettings row exists at all
+            // (InvoicePdfService.cs, QuotationPdfService.cs, SalesOrderPdfService.cs, ReportsPdfService.cs).
+            // Email/SignatureName/SignatureTitle stay null for the same reason — each PDF template
+            // already renders those fields conditionally (omitted, or "_____________") when null.
+            CompanyName = "Perusahaan Anda",
             Address = "Jl. Raya Teknologi No. 1, Jakarta Selatan 12190",
             Phone = "+62 21 5555-0100",
-            Email = "info@syntera.id",
             Website = "www.syntera.id",
             FooterText = "Penawaran ini berlaku selama 14 hari. Harga belum termasuk biaya pengiriman dan instalasi kecuali disebutkan. Pembayaran 50% di muka, sisa 50% setelah pekerjaan selesai.",
-            SignatureName = "Budi Santoso",
-            SignatureTitle = "Sales Manager",
             DocumentPrefix = "SYN",
             UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero)
         });
