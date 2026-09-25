@@ -3,6 +3,7 @@ using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using SynteraERP.Api.Data;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 
 namespace SynteraERP.Api.Services;
@@ -284,7 +285,7 @@ public class QuotationPdfService
                     // alone while the totals underneath already include Item/WorkDetail.
                     decimal groupTotal = (g.FinalSellingPrice ?? 0)
                         + g.Items.Sum(i => i.GrandLine)
-                        + g.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => d.TotalHarga);
+                        + g.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => MoneyMath.Round(d.TotalHarga));
                     decimal volume = g.RecapVolume ?? 1;
                     string unit = string.IsNullOrWhiteSpace(g.RecapUnit) ? "Ls" : g.RecapUnit;
                     decimal pricePerUnit = volume != 0 ? groupTotal / volume : 0;
@@ -505,7 +506,7 @@ public class QuotationPdfService
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
                                 .Text(FormatRupiah(detail.UnitPrice)).FontSize(7).AlignRight();
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                .Text(FormatRupiah(detail.TotalHarga)).FontSize(7).AlignRight();
+                                .Text(FormatRupiah(MoneyMath.Round(detail.TotalHarga))).FontSize(7).AlignRight();
 
                             no++;
                         }
@@ -593,7 +594,7 @@ public class QuotationPdfService
                     });
                 }
 
-                decimal groupSubtotal = group.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => d.TotalHarga)
+                decimal groupSubtotal = group.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => MoneyMath.Round(d.TotalHarga))
                     + group.Items.Sum(i => i.GrandLine);
                 col.Item().PaddingTop(2).Background(Colors.Grey.Lighten3).Padding(4).AlignRight()
                     .Text($"Subtotal — {group.Name}: {FormatRupiah(groupSubtotal)}")

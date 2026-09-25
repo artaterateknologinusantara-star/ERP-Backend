@@ -117,6 +117,7 @@ Dokumen investigasi+rencana lengkap: `Portal Vendor RAB Self-Input — Investiga
 - Tidak ada transisi status Invoice Draft→Sent (endpoint tidak ada, tombol UI tidak ada)
 - Item PO tanpa ItemMasterId tidak masuk perhitungan GRNI/Persediaan
 - Validasi status PATCH manual (PurchaseRequestService.UpdateStatusAsync) tidak ketat
+- Residual ±Rp1 di PDF Quotation Civil ME (25 Sep 2026): subtotal BOQ/rekap kategori (`QuotationPdfService.cs`, dibulatkan per-baris lalu dijumlah — fix P0 rounding lanjutan) bisa beda ±Rp1 dari subtotal blok pajak (`Quotation.TotalBeforeTax`, hasil `RecalcTotals` yang sum-then-round) kalau ada `WorkDetail.Volume` pecahan. Sengaja tidak disamakan — `RecalcTotals` adalah jalur tunggal untuk SalesOrder/Invoice/pajak, mengubah strategi roundingnya demi kosmetik PDF membuka blast radius jauh lebih besar daripada manfaatnya. Keputusan sadar, bukan terlewat.
 
 ## ⏸️ Ditunda (keputusan bisnis, dipikirkan lagi nanti)
 
