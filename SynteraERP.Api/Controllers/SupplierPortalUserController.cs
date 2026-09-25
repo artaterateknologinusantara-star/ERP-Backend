@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.VendorPortal;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -21,6 +23,7 @@ public class SupplierPortalUserController : ControllerBase
         _svc = svc;
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<SupplierPortalUserDto>>>> List(Guid supplierId)
     {
@@ -28,6 +31,7 @@ public class SupplierPortalUserController : ControllerBase
         return Ok(ApiResponse<List<SupplierPortalUserDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<SupplierPortalUserDto>>> Create(
         Guid supplierId, [FromBody] CreateSupplierPortalUserRequest request)
@@ -47,6 +51,7 @@ public class SupplierPortalUserController : ControllerBase
         }
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPut("{id:guid}/deactivate")]
     public async Task<ActionResult<ApiResponse>> Deactivate(Guid supplierId, Guid id)
     {
@@ -55,6 +60,7 @@ public class SupplierPortalUserController : ControllerBase
         return Ok(ApiResponse.Ok("Akun portal vendor berhasil dinonaktifkan."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPut("{id:guid}/activate")]
     public async Task<ActionResult<ApiResponse>> Activate(Guid supplierId, Guid id)
     {

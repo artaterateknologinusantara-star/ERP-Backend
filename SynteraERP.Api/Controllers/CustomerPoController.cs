@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.CustomerPO;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -15,6 +17,7 @@ public class CustomerPoController : ControllerBase
 
     public CustomerPoController(ICustomerPoService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<CustomerPoListDto>>>> List([FromQuery] PaginationParams p)
     {
@@ -22,6 +25,7 @@ public class CustomerPoController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<CustomerPoListDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<CustomerPoDto>>> Get(Guid id)
     {
@@ -30,6 +34,7 @@ public class CustomerPoController : ControllerBase
         return Ok(ApiResponse<CustomerPoDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("by-quotation/{quotationId:guid}")]
     public async Task<ActionResult<ApiResponse<CustomerPoDto>>> GetByQuotation(Guid quotationId)
     {
@@ -38,6 +43,7 @@ public class CustomerPoController : ControllerBase
         return Ok(ApiResponse<CustomerPoDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Create)]
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<ApiResponse<CustomerPoDto>>> Create(
@@ -49,6 +55,7 @@ public class CustomerPoController : ControllerBase
             ApiResponse<CustomerPoDto>.Ok(item, "Customer PO berhasil disimpan."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}/attachment")]
     public async Task<IActionResult> GetAttachment(Guid id)
     {
@@ -58,6 +65,7 @@ public class CustomerPoController : ControllerBase
         return File(data, contentType, fileName);
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
@@ -66,6 +74,7 @@ public class CustomerPoController : ControllerBase
         return Ok(ApiResponse.Ok("Customer PO berhasil dihapus."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPatch("{id:guid}/number")]
     public async Task<ActionResult<ApiResponse<CustomerPoDto>>> UpdateNumber(Guid id, [FromBody] UpdateNumberRequest req)
     {
@@ -88,6 +97,7 @@ public class CustomerPoController : ControllerBase
         }
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}/history")]
     public async Task<ActionResult<ApiResponse<IEnumerable<CustomerPoHistoryDto>>>> History(Guid id)
     {

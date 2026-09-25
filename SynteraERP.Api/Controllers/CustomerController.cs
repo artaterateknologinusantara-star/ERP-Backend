@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Customer;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -15,6 +17,7 @@ public class CustomerController : ControllerBase
 
     public CustomerController(ICustomerService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<CustomerDto>>>> List([FromQuery] CustomerParams p)
     {
@@ -22,6 +25,7 @@ public class CustomerController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<CustomerDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<CustomerDto>>> Get(Guid id)
     {
@@ -30,6 +34,7 @@ public class CustomerController : ControllerBase
         return Ok(ApiResponse<CustomerDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<CustomerDto>>> Create([FromBody] CreateCustomerRequest request)
     {
@@ -37,6 +42,7 @@ public class CustomerController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<CustomerDto>.Ok(item, "Customer berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ApiResponse<CustomerDto>>> Update(Guid id, [FromBody] UpdateCustomerRequest request)
     {
@@ -45,6 +51,7 @@ public class CustomerController : ControllerBase
         return Ok(ApiResponse<CustomerDto>.Ok(item, "Customer berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> SetStatus(Guid id, [FromBody] SetStatusRequest request)
     {
@@ -53,6 +60,7 @@ public class CustomerController : ControllerBase
         return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
