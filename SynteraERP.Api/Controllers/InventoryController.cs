@@ -2,7 +2,9 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Inventory;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -16,6 +18,7 @@ public class InventoryController : ControllerBase
 
     public InventoryController(IInventoryService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Inventory, PermissionActions.View)]
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
@@ -23,6 +26,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.View)]
     [HttpGet("low-stock")]
     public async Task<IActionResult> GetLowStock()
     {
@@ -30,6 +34,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.View)]
     [HttpGet("stock-history")]
     public async Task<IActionResult> GetStockHistory(
         [FromQuery] Guid? itemMasterId,
@@ -41,6 +46,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Create)]
     [HttpPost("stock-in")]
     public async Task<IActionResult> StockIn([FromBody] RecordStockInRequest request)
     {
@@ -52,6 +58,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.View)]
     [HttpGet("delivery-orders")]
     public async Task<IActionResult> GetDeliveryOrders(
         [FromQuery] int page = 1,
@@ -63,6 +70,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.View)]
     [HttpGet("delivery-orders/{id:guid}")]
     public async Task<IActionResult> GetDeliveryOrder(Guid id)
     {
@@ -72,6 +80,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Create)]
     [HttpPost("delivery-orders/from-so/{soId:guid}")]
     public async Task<IActionResult> CreateDOFromSO(Guid soId)
     {
@@ -90,6 +99,7 @@ public class InventoryController : ControllerBase
         }
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.View)]
     [HttpGet("delivery-orders/shippable-items/{soId:guid}")]
     public async Task<IActionResult> GetShippableItemsForSo(Guid soId)
     {
@@ -97,6 +107,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Edit)]
     [HttpPost("delivery-orders/so-items/{soItemId:guid}/link-item-master")]
     public async Task<IActionResult> LinkSoItemToItemMaster(Guid soItemId, [FromBody] LinkSoItemRequest request)
     {
@@ -111,6 +122,7 @@ public class InventoryController : ControllerBase
         }
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Create)]
     [HttpPost("delivery-orders")]
     public async Task<IActionResult> CreateDeliveryOrder([FromBody] CreateDeliveryOrderRequest request)
     {
@@ -123,6 +135,7 @@ public class InventoryController : ControllerBase
             new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Edit)]
     [HttpPost("delivery-orders/{id:guid}/confirm")]
     public async Task<IActionResult> ConfirmDeliveryOrder(Guid id)
     {
@@ -134,6 +147,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Edit)]
     [HttpPost("delivery-orders/{id:guid}/delivered")]
     public async Task<IActionResult> MarkDelivered(Guid id)
     {
@@ -141,6 +155,7 @@ public class InventoryController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Delete)]
     [HttpDelete("delivery-orders/{id:guid}")]
     public async Task<IActionResult> DeleteDeliveryOrder(Guid id)
     {

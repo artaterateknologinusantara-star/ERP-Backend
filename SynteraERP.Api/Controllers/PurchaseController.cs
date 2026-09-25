@@ -24,6 +24,7 @@ public class PurchaseRequestController : ControllerBase
         _authz = authz;
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseRequestListDto>>>> List([FromQuery] PurchaseRequestQueryParams p)
     {
@@ -31,6 +32,7 @@ public class PurchaseRequestController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<PurchaseRequestListDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
@@ -38,6 +40,7 @@ public class PurchaseRequestController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<PurchaseRequestDto>>> Get(Guid id)
     {
@@ -46,6 +49,7 @@ public class PurchaseRequestController : ControllerBase
         return Ok(ApiResponse<PurchaseRequestDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<PurchaseRequestDto>>> Create([FromBody] CreatePurchaseRequestRequest request)
     {
@@ -58,6 +62,7 @@ public class PurchaseRequestController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<PurchaseRequestDto>.Ok(item, "Purchase Request berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Create)]
     [HttpPost("generate-from-so/{soId:guid}")]
     public async Task<ActionResult<ApiResponse<PurchaseRequestDto>>> GenerateFromSo(Guid soId)
     {
@@ -75,11 +80,13 @@ public class PurchaseRequestController : ControllerBase
             ApiResponse<PurchaseRequestDto>.Ok(item, "Purchase Request berhasil di-generate dari Sales Order."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> UpdateStatus(Guid id, [FromBody] UpdatePRStatusRequest request)
     {
         // Purchase Request has no dedicated /approve endpoint — Approved/Rejected are set through
-        // this generic status setter, so the Approve-permission gate has to live here.
+        // this generic status setter, so the Approve-permission gate has to live here (on top of the
+        // Edit gate above, which covers ordinary lifecycle transitions like Draft->Submitted).
         Guid? userId = null;
         if (string.Equals(request.Status, nameof(PurchaseRequestStatus.Approved), StringComparison.OrdinalIgnoreCase)
             || string.Equals(request.Status, nameof(PurchaseRequestStatus.Rejected), StringComparison.OrdinalIgnoreCase))
@@ -99,6 +106,7 @@ public class PurchaseRequestController : ControllerBase
         return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
@@ -120,6 +128,7 @@ public class PurchaseOrderController : ControllerBase
         _svc = svc;
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<PurchaseOrderListDto>>>> List(
         [FromQuery] PurchaseOrderQueryParams p, [FromQuery] Guid? purchaseRequestId, [FromQuery] string? purchaseRequestIds)
@@ -137,6 +146,7 @@ public class PurchaseOrderController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<PurchaseOrderListDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
@@ -144,6 +154,7 @@ public class PurchaseOrderController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<PurchaseOrderDto>>> Get(Guid id)
     {
@@ -152,6 +163,7 @@ public class PurchaseOrderController : ControllerBase
         return Ok(ApiResponse<PurchaseOrderDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<PurchaseOrderDto>>> Create([FromBody] CreatePurchaseOrderRequest request)
     {
@@ -159,6 +171,7 @@ public class PurchaseOrderController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<PurchaseOrderDto>.Ok(item, "Purchase Order berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Create)]
     [HttpPost("from-pr/{prId:guid}")]
     public async Task<ActionResult<ApiResponse<PurchaseOrderDto>>> CreateFromPr(Guid prId, [FromBody] CreatePoFromPrRequest request)
     {
@@ -169,6 +182,7 @@ public class PurchaseOrderController : ControllerBase
             ApiResponse<PurchaseOrderDto>.Ok(item, "Purchase Order berhasil dibuat dari Purchase Request."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> UpdateStatus(Guid id, [FromBody] UpdatePOStatusRequest request)
     {
@@ -177,6 +191,7 @@ public class PurchaseOrderController : ControllerBase
         return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPost("{id:guid}/receive")]
     public async Task<ActionResult<ApiResponse<PurchaseOrderDto>>> ReceiveGoods(Guid id, [FromBody] ReceiveGoodsRequest request)
     {
@@ -190,6 +205,7 @@ public class PurchaseOrderController : ControllerBase
         return Ok(ApiResponse<PurchaseOrderDto>.Ok(item, "Penerimaan barang berhasil dicatat."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPost("{id:guid}/payments")]
     public async Task<IActionResult> RecordPayment(Guid id, [FromBody] RecordPOPaymentRequest request)
     {
@@ -204,6 +220,7 @@ public class PurchaseOrderController : ControllerBase
         }
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {

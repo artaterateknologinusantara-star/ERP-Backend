@@ -26,6 +26,7 @@ public class ExpenseController : ControllerBase
         return Guid.TryParse(sub, out var id) ? id : null;
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<ExpenseListDto>>>> List([FromQuery] ExpenseQueryParams p)
     {
@@ -33,6 +34,7 @@ public class ExpenseController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<ExpenseListDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<ExpenseDto>>> Get(Guid id)
     {
@@ -41,6 +43,7 @@ public class ExpenseController : ControllerBase
         return Ok(ApiResponse<ExpenseDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Create)]
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<ApiResponse<ExpenseDto>>> Create(
@@ -52,6 +55,7 @@ public class ExpenseController : ControllerBase
             ApiResponse<ExpenseDto>.Ok(item, "Expense berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("{id:guid}/attachment")]
     public async Task<IActionResult> GetAttachment(Guid id)
     {
@@ -61,6 +65,7 @@ public class ExpenseController : ControllerBase
         return File(data, contentType, fileName);
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Edit)]
     [HttpPost("{id:guid}/submit")]
     public async Task<ActionResult<ApiResponse<ExpenseDto>>> Submit(Guid id)
     {

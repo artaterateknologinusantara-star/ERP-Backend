@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Supplier;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -15,6 +17,7 @@ public class SupplierController : ControllerBase
 
     public SupplierController(ISupplierService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<SupplierDto>>>> List([FromQuery] SupplierParams p)
     {
@@ -22,6 +25,7 @@ public class SupplierController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<SupplierDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<SupplierDto>>> Get(Guid id)
     {
@@ -30,6 +34,7 @@ public class SupplierController : ControllerBase
         return Ok(ApiResponse<SupplierDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<SupplierDto>>> Create([FromBody] CreateSupplierRequest request)
     {
@@ -37,6 +42,7 @@ public class SupplierController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<SupplierDto>.Ok(item, "Supplier berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ApiResponse<SupplierDto>>> Update(Guid id, [FromBody] UpdateSupplierRequest request)
     {
@@ -45,6 +51,7 @@ public class SupplierController : ControllerBase
         return Ok(ApiResponse<SupplierDto>.Ok(item, "Supplier berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> SetStatus(Guid id, [FromBody] SetStatusRequest request)
     {
@@ -53,6 +60,7 @@ public class SupplierController : ControllerBase
         return Ok(ApiResponse.Ok("Status berhasil diperbarui."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {

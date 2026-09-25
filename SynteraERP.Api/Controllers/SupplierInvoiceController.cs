@@ -27,6 +27,7 @@ public class SupplierInvoiceController : ControllerBase
         return Guid.TryParse(sub, out var id) ? id : null;
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<SupplierInvoiceListDto>>>> List([FromQuery] SupplierInvoiceQueryParams p)
     {
@@ -34,6 +35,7 @@ public class SupplierInvoiceController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<SupplierInvoiceListDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<SupplierInvoiceDto>>> Get(Guid id)
     {
@@ -42,6 +44,7 @@ public class SupplierInvoiceController : ControllerBase
         return Ok(ApiResponse<SupplierInvoiceDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<SupplierInvoiceDto>>> Create([FromBody] CreateSupplierInvoiceRequest request)
     {
@@ -58,6 +61,7 @@ public class SupplierInvoiceController : ControllerBase
         return Ok(ApiResponse<SupplierInvoiceDto>.Ok(item, "Bill berhasil di-approve."));
     }
 
+    [RequirePermission(Modules.Purchasing, PermissionActions.Edit)]
     [HttpPost("{id:guid}/payments")]
     public async Task<ActionResult<ApiResponse<SupplierInvoiceDto>>> RecordPayment(Guid id, [FromBody] RecordPOPaymentRequest request)
     {
