@@ -273,8 +273,8 @@ public class QuotationPdfService
                 var groups = q.Tabs.OrderBy(t => t.SortOrder)
                     .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
                     .ToList();
+                var categoryLetters = BuildGroupCategoryLetters(q);
 
-                int no = 1;
                 decimal grandTotal = 0;
 
                 foreach (var g in groups)
@@ -294,7 +294,7 @@ public class QuotationPdfService
                     string volumeText = volume % 1 == 0 ? ((int)volume).ToString() : volume.ToString("N2");
 
                     table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
-                        .Text(no.ToString()).AlignCenter();
+                        .Text(categoryLetters[g.Id] + ".").AlignCenter();
                     table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
                         .Text(g.Name).Bold();
                     table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
@@ -305,8 +305,6 @@ public class QuotationPdfService
                         .Text(FormatRupiah(pricePerUnit)).AlignRight();
                     table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(4)
                         .Text(FormatRupiah(groupTotal)).AlignRight();
-
-                    no++;
                 }
 
                 table.Cell().ColumnSpan(5).Background(Colors.Grey.Lighten3).Padding(4)
@@ -447,6 +445,10 @@ public class QuotationPdfService
                 .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
                 .Where(g => g.WorkItems.Count > 0 || g.Items.Count > 0)
                 .ToList();
+            // Task #45: dari daftar Group LENGKAP (BuildGroupCategoryLetters), bukan dari `groups`
+            // di atas yang sudah difilter — supaya huruf tiap Group tetap sama dengan yang dipakai
+            // RenderSummaryContent walau Group itu kosong di BOQ (lihat komentar di helper-nya).
+            var categoryLetters = BuildGroupCategoryLetters(q);
 
             // Task #44: WorkDetail (BOQ) split into Jasa/Material, same as QuotationItem — 4 price
             // columns (Price per Unit x2, Price Total x2) instead of 1 blended pair. Shared by both
@@ -493,7 +495,7 @@ public class QuotationPdfService
 
             foreach (var group in groups)
             {
-                col.Item().PaddingTop(6).Text(group.Name).Bold().FontSize(10).FontColor(Colors.Blue.Darken2);
+                col.Item().PaddingTop(6).Text($"{categoryLetters[group.Id]}. {group.Name}").Bold().FontSize(10).FontColor(Colors.Blue.Darken2);
 
                 foreach (var workItem in group.WorkItems.OrderBy(w => w.SortOrder))
                 {
@@ -590,7 +592,7 @@ public class QuotationPdfService
                 decimal groupSubtotal = group.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => MoneyMath.Round(d.TotalHarga))
                     + group.Items.Sum(i => i.GrandLine);
                 col.Item().PaddingTop(2).Background(Colors.Grey.Lighten3).Padding(4).AlignRight()
-                    .Text($"Subtotal — {group.Name}: {FormatRupiah(groupSubtotal)}")
+                    .Text($"Subtotal — {categoryLetters[group.Id]}. {group.Name}: {FormatRupiah(groupSubtotal)}")
                     .Bold().FontSize(8).FontColor(Colors.Blue.Darken2);
             }
         });
@@ -899,6 +901,37 @@ public class QuotationPdfService
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private static string FormatRupiah(decimal value) => $"Rp {value:N0}";
+
+    // Task #45: huruf kategori (A, B, C, ..., Z, AA, AB, ...) computed-on-render dari urutan
+    // Tab->Group — TIDAK persist, tidak ada migration. Dihitung dari daftar Group LENGKAP (sama
+    // seperti list yang dipakai RenderSummaryContent) supaya jadi satu sumber kebenaran; jangan
+    // hitung ulang dari list Group milik masing-masing method, karena RenderWorkItemsContent
+    // memfilter Group yang tidak punya WorkItems/Items (lihat `groups` di method itu) — kalau
+    // huruf dihitung dari list yang sudah difilter itu, Group yang sama bisa dapat huruf BEDA di
+    // BOQ vs Recapitulation begitu ada Group kosong-BOQ di tengah urutan.
+    internal static Dictionary<Guid, string> BuildGroupCategoryLetters(Quotation q)
+    {
+        var groups = q.Tabs.OrderBy(t => t.SortOrder)
+            .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
+            .ToList();
+        return groups
+            .Select((g, index) => (g.Id, Letter: ToCategoryLetter(index)))
+            .ToDictionary(x => x.Id, x => x.Letter);
+    }
+
+    // 0->"A", 1->"B", ..., 25->"Z", 26->"AA", 27->"AB", ... (basis-26, pola sama seperti penamaan
+    // kolom Excel).
+    internal static string ToCategoryLetter(int index)
+    {
+        var letters = "";
+        var n = index;
+        do
+        {
+            letters = (char)('A' + n % 26) + letters;
+            n = n / 26 - 1;
+        } while (n >= 0);
+        return letters;
+    }
 
     private record PdfLineItem(string Tab, Guid GroupId, string GroupName, QuotationItem Item);
 }
