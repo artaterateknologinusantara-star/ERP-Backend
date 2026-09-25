@@ -21,3 +21,4 @@ SynteraERP.Api/uploads/
 # OS
 .DS_Store
 Thumbs.db
+_manual_check_*/
