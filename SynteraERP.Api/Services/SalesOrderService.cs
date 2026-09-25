@@ -388,8 +388,27 @@ public class SalesOrderService : ISalesOrderService
 
         var taxRate = await _taxRateService.GetDefaultRateAsync();
         var subTotal = MoneyMath.Round(soItems.Sum(x => x.Amount));
-        var taxAmount = MoneyMath.Round(subTotal * taxRate);
-        var grandTotal = subTotal + taxAmount;
+        // Task #43 (found en route while adding the GrandTotal invariant check below):
+        // Quotation.Discount was never applied here — SO.Total silently ended up as the FULL
+        // undiscounted line total, overcharging by the discount amount for any Quotation with
+        // Discount>0 (0 rows currently have Discount>0 in dev/scratch, so no existing converted
+        // SO has been affected yet). Mirrors RecalcTotals' order: discount reduces the subtotal
+        // BEFORE tax, tax is computed on the discounted amount, not after.
+        var discountAmount = MoneyMath.Round(subTotal * quotation.Discount / 100);
+        var totalBeforeTax = subTotal - discountAmount;
+        var taxAmount = MoneyMath.Round(totalBeforeTax * taxRate);
+        var grandTotal = totalBeforeTax + taxAmount;
+
+        // Task #43: Quotation.GrandTotal and this grandTotal are computed independently
+        // (RecalcTotals sums-then-rounds per category; soItems above rounds per line then sums) —
+        // a future content source added to one and forgotten in the other (exactly #41's bug)
+        // would silently diverge here again. Tolerance scales with line count, not a flat Rp1 —
+        // each line's own rounding can contribute up to Rp1 of divergence between the two
+        // rounding orders, so a BOQ with many lines can legitimately accumulate more than that.
+        var totalTolerance = soItems.Count;
+        if (Math.Abs(grandTotal - quotation.GrandTotal) > totalTolerance)
+            throw new InvalidOperationException(
+                $"SalesOrder tidak bisa dibuat — Total hasil konversi (Rp {grandTotal:N0}) berbeda dari Total Quotation yang disetujui (Rp {quotation.GrandTotal:N0}) melebihi toleransi pembulatan. Selisih: Rp {Math.Abs(grandTotal - quotation.GrandTotal):N0}.");
 
         var no = await NextNumberAsync();
 
@@ -517,12 +536,16 @@ public class SalesOrderService : ISalesOrderService
     private static SalesOrderDetailResponse ToDetailResponse(
         SalesOrder so, decimal taxRate, string phase, Dictionary<Guid, Guid> invoiceByTerminId)
     {
-        var subTotal = so.Items.Any()
-            ? MoneyMath.Round(so.Items.Sum(x => x.Amount))
-            : MoneyMath.Round(so.Total / (1 + taxRate));
-
-        var taxAmount = MoneyMath.Round(subTotal * taxRate);
-        var grandTotal = so.Items.Any() ? subTotal + taxAmount : so.Total;
+        // Task #43 (found en route): this used to recompute subTotal/grandTotal from raw
+        // so.Items.Sum() whenever Items existed, silently ignoring so.Total (and therefore any
+        // Quotation.Discount folded into it) — the persisted so.Total was correct, but every
+        // DTO response showing GrandTotal for a discounted SO with Items displayed the FULL
+        // undiscounted amount instead. so.Total is now always the single source of truth,
+        // reverse-derived into subTotal/taxAmount the same way the (previously Items-less-only)
+        // fallback branch already did — no more special-casing on Items.Any().
+        var subTotal = MoneyMath.Round(so.Total / (1 + taxRate));
+        var taxAmount = so.Total - subTotal;
+        var grandTotal = so.Total;
 
         return new SalesOrderDetailResponse
         {
