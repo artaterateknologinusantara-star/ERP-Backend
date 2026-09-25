@@ -4,9 +4,10 @@ using SynteraERP.Api.DTOs.VendorPortal;
 namespace SynteraERP.Api.Services;
 
 // Template per VendorRabRequest: kolom A (ID baris, GUID) di-hide + dikunci, kolom Nama/
-// Spesifikasi/Volume/Satuan dikunci (read-only), hanya kolom Harga Satuan yang bisa diisi
-// vendor. Kolom ID adalah join key saat parse balik — BUKAN posisi baris — supaya vendor boleh
-// menyisipkan/menghapus/mengurutkan ulang baris tanpa salah pasang harga (lihat bagian 5
+// Spesifikasi/Volume/Satuan dikunci (read-only), hanya kolom Harga Jasa dan Harga Material yang
+// bisa diisi vendor (task #44 Bagian 2, Opsi B — vendor submit breakdown-nya sendiri, bukan 1
+// harga blended). Kolom ID adalah join key saat parse balik — BUKAN posisi baris — supaya vendor
+// boleh menyisipkan/menghapus/mengurutkan ulang baris tanpa salah pasang harga (lihat bagian 5
 // dokumen rencana). Proteksi sheet ini cuma UX nicety (file .xlsx bisa saja di-unprotect
 // manual) — batas keamanan yang sesungguhnya adalah validasi ID di server saat parse balik,
 // sama seperti CreateVendorRabSubmissionRequest lewat form web.
@@ -17,7 +18,8 @@ public static class VendorRabExcelService
     private const int ColSpec = 3;
     private const int ColVolume = 4;
     private const int ColUnit = 5;
-    private const int ColUnitPrice = 6;
+    private const int ColServicePrice = 6;
+    private const int ColMaterialPrice = 7;
 
     public static byte[] GenerateTemplate(VendorRabRequestDto request)
     {
@@ -29,7 +31,8 @@ public static class VendorRabExcelService
         ws.Cell(1, ColSpec).Value = "Spesifikasi";
         ws.Cell(1, ColVolume).Value = "Volume";
         ws.Cell(1, ColUnit).Value = "Satuan";
-        ws.Cell(1, ColUnitPrice).Value = "Harga Satuan (isi di sini)";
+        ws.Cell(1, ColServicePrice).Value = "Harga Jasa (isi di sini)";
+        ws.Cell(1, ColMaterialPrice).Value = "Harga Material (isi di sini)";
         ws.Row(1).Style.Font.Bold = true;
 
         var row = 2;
@@ -46,8 +49,8 @@ public static class VendorRabExcelService
 
         if (lastRow >= 2)
         {
-            ws.Range(1, ColId, lastRow, ColUnitPrice).Style.Protection.Locked = true;
-            ws.Range(2, ColUnitPrice, lastRow, ColUnitPrice).Style.Protection.Locked = false;
+            ws.Range(1, ColId, lastRow, ColMaterialPrice).Style.Protection.Locked = true;
+            ws.Range(2, ColServicePrice, lastRow, ColMaterialPrice).Style.Protection.Locked = false;
         }
 
         ws.Column(ColId).Hide();
@@ -89,11 +92,12 @@ public static class VendorRabExcelService
             for (var row = 2; row <= lastRowUsed; row++)
             {
                 var idCell = ws.Cell(row, ColId).GetString().Trim();
-                var priceCell = ws.Cell(row, ColUnitPrice);
+                var servicePriceCell = ws.Cell(row, ColServicePrice);
+                var materialPriceCell = ws.Cell(row, ColMaterialPrice);
 
                 // Baris kosong total (tidak ada ID maupun harga) dilewati diam-diam — bukan error,
                 // ini cuma baris kosong sisa di bawah data (umum terjadi di Excel).
-                if (idCell.Length == 0 && priceCell.IsEmpty()) continue;
+                if (idCell.Length == 0 && servicePriceCell.IsEmpty() && materialPriceCell.IsEmpty()) continue;
 
                 if (!Guid.TryParse(idCell, out var lineId))
                 {
@@ -101,22 +105,29 @@ public static class VendorRabExcelService
                     continue;
                 }
 
-                if (priceCell.IsEmpty() || !priceCell.TryGetValue<decimal>(out var unitPrice))
+                if (servicePriceCell.IsEmpty() || !servicePriceCell.TryGetValue<decimal>(out var servicePrice))
                 {
-                    errors.Add($"Baris {row}: Harga Satuan kosong atau bukan angka.");
+                    errors.Add($"Baris {row}: Harga Jasa kosong atau bukan angka.");
                     continue;
                 }
 
-                if (unitPrice < 0)
+                if (materialPriceCell.IsEmpty() || !materialPriceCell.TryGetValue<decimal>(out var materialPrice))
                 {
-                    errors.Add($"Baris {row}: Harga Satuan tidak boleh negatif.");
+                    errors.Add($"Baris {row}: Harga Material kosong atau bukan angka.");
+                    continue;
+                }
+
+                if (servicePrice < 0 || materialPrice < 0)
+                {
+                    errors.Add($"Baris {row}: Harga Jasa/Material tidak boleh negatif.");
                     continue;
                 }
 
                 lines.Add(new CreateVendorRabSubmissionLineRequest
                 {
                     VendorRabRequestLineId = lineId,
-                    UnitPrice = unitPrice,
+                    ServicePrice = servicePrice,
+                    MaterialPrice = materialPrice,
                 });
             }
         }

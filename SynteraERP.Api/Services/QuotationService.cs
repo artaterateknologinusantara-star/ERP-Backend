@@ -337,7 +337,8 @@ public class QuotationService : IQuotationService
             detail.Spesifikasi = incoming.Spesifikasi;
             detail.Volume = incoming.Volume;
             detail.Unit = incoming.Unit;
-            detail.UnitPrice = incoming.UnitPrice;
+            detail.ServicePrice = incoming.ServicePrice;
+            detail.MaterialPrice = incoming.MaterialPrice;
             detail.SortOrder = incoming.SortOrder;
         }
     }
@@ -438,7 +439,8 @@ public class QuotationService : IQuotationService
                         Spesifikasi = d.Spesifikasi,
                         Volume = d.Volume,
                         Unit = d.Unit,
-                        UnitPrice = d.UnitPrice,
+                        ServicePrice = d.ServicePrice,
+                        MaterialPrice = d.MaterialPrice,
                         SortOrder = d.SortOrder,
                     }).ToList(),
                 }).ToList(),
@@ -573,7 +575,8 @@ public class QuotationService : IQuotationService
                         Spesifikasi = d.Spesifikasi,
                         Volume = d.Volume,
                         Unit = d.Unit,
-                        UnitPrice = d.UnitPrice,
+                        ServicePrice = d.ServicePrice,
+                        MaterialPrice = d.MaterialPrice,
                         SortOrder = d.SortOrder,
                     }).ToList(),
                 }).ToList(),
@@ -727,7 +730,8 @@ public class QuotationService : IQuotationService
             Spesifikasi = request.Spesifikasi,
             Volume = request.Volume,
             Unit = request.Unit,
-            UnitPrice = request.UnitPrice,
+            ServicePrice = request.ServicePrice,
+            MaterialPrice = request.MaterialPrice,
             SortOrder = request.SortOrder,
         };
         _db.QuotationWorkDetails.Add(detail);
@@ -751,7 +755,8 @@ public class QuotationService : IQuotationService
         detail.Spesifikasi = request.Spesifikasi;
         detail.Volume = request.Volume;
         detail.Unit = request.Unit;
-        detail.UnitPrice = request.UnitPrice;
+        detail.ServicePrice = request.ServicePrice;
+        detail.MaterialPrice = request.MaterialPrice;
         detail.SortOrder = request.SortOrder;
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -813,7 +818,13 @@ public class QuotationService : IQuotationService
             Spesifikasi = line.Spesifikasi,
             Volume = line.Volume,
             Unit = line.Unit,
-            UnitPrice = line.FinalUnitPrice,
+            // Task #44 Bagian 2 (Opsi B, keputusan 26 Sep 2026): vendor sendiri submit harga Jasa
+            // dan Material terpisah (VendorRabSubmissionLine.ServicePrice/MaterialPrice), maincon
+            // markup juga per-kategori (ServiceMarkup/MaterialMarkup) — FinalServicePrice/
+            // FinalMaterialPrice dari VendorRabSubmissionService.ApproveAsync sudah hasil akhirnya,
+            // tulis langsung tanpa realokasi lagi di sini.
+            ServicePrice = line.FinalServicePrice,
+            MaterialPrice = line.FinalMaterialPrice,
             SortOrder = line.SortOrder,
         }).ToList();
         _db.QuotationWorkDetails.AddRange(details);
@@ -962,7 +973,8 @@ public class QuotationService : IQuotationService
         Spesifikasi = d.Spesifikasi,
         Volume = d.Volume,
         Unit = d.Unit,
-        UnitPrice = d.UnitPrice,
+        ServicePrice = d.ServicePrice,
+        MaterialPrice = d.MaterialPrice,
         TotalHarga = d.TotalHarga,
         SortOrder = d.SortOrder,
         Attachments = d.Attachments.OrderBy(a => a.SortOrder)
@@ -1091,7 +1103,8 @@ public class QuotationService : IQuotationService
                         Spesifikasi = d.Spesifikasi,
                         Volume = d.Volume,
                         Unit = d.Unit,
-                        UnitPrice = d.UnitPrice,
+                        ServicePrice = d.ServicePrice,
+                        MaterialPrice = d.MaterialPrice,
                         SortOrder = d.SortOrder,
                     }).ToList(),
                 }).ToList(),
@@ -1107,15 +1120,18 @@ public class QuotationService : IQuotationService
             // harga jual ke customer — FinalSubconCost is cost-basis only, used for margin, never
             // summed here), QuotationItem (equipment/material lines, same as standard mode — Qty *
             // MaterialPrice goes to TotalMaterial, Qty * ServicePrice to TotalService), and
-            // QuotationWorkDetail/BOQ (TotalHarga is a single blended price — no Jasa/Material
-            // split source, so it's added to TotalService alongside FinalSellingPrice).
+            // QuotationWorkDetail/BOQ (Volume * MaterialPrice goes to TotalMaterial, Volume *
+            // ServicePrice to TotalService alongside FinalSellingPrice — same Jasa/Material split
+            // as QuotationItem, task #44).
             var civilMeItems = allGroups.SelectMany(g => g.Items).ToList();
             var allWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).ToList();
-            q.TotalMaterial = MoneyMath.Round(civilMeItems.Sum(i => i.Qty * i.MaterialPrice));
+            q.TotalMaterial = MoneyMath.Round(
+                civilMeItems.Sum(i => i.Qty * i.MaterialPrice)
+                + allWorkDetails.Sum(d => d.Volume * d.MaterialPrice));
             q.TotalService = MoneyMath.Round(
                 allGroups.Sum(g => g.FinalSellingPrice ?? 0)
                 + civilMeItems.Sum(i => i.Qty * i.ServicePrice)
-                + allWorkDetails.Sum(d => d.TotalHarga));
+                + allWorkDetails.Sum(d => d.Volume * d.ServicePrice));
         }
         else
         {

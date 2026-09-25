@@ -448,6 +448,49 @@ public class QuotationPdfService
                 .Where(g => g.WorkItems.Count > 0 || g.Items.Count > 0)
                 .ToList();
 
+            // Task #44: WorkDetail (BOQ) split into Jasa/Material, same as QuotationItem — 4 price
+            // columns (Price per Unit x2, Price Total x2) instead of 1 blended pair. Shared by both
+            // tables below (WorkDetail's own + QuotationItem-in-BOQ) so they stay pixel-identical —
+            // the existing invariant is the client must not be able to tell the two sources apart.
+            void DefineBoqColumns(TableColumnsDefinitionDescriptor cols)
+            {
+                cols.ConstantColumn(18);   // No
+                cols.RelativeColumn(3);    // Detail Kerja
+                cols.RelativeColumn(3);    // Spesifikasi
+                cols.ConstantColumn(35);   // Vol
+                cols.ConstantColumn(30);   // Sat
+                cols.ConstantColumn(52);   // Jasa / Satuan
+                cols.ConstantColumn(52);   // Jasa Total
+                cols.ConstantColumn(56);   // Material / Satuan
+                cols.ConstantColumn(56);   // Material Total
+            }
+
+            void RenderBoqHeader(TableDescriptor table)
+            {
+                table.Header(h =>
+                {
+                    void HeaderCell(IContainer cell, string text, bool alignRight = false)
+                    {
+                        var t = cell.Background(Colors.Grey.Darken1).Padding(3)
+                            .Text(text).Bold().FontColor(Colors.White).FontSize(7);
+                        if (alignRight) t.AlignRight();
+                        else t.AlignCenter();
+                    }
+
+                    HeaderCell(h.Cell(), "No");
+                    h.Cell().Background(Colors.Grey.Darken1).Padding(3)
+                        .Text("Detail Kerja").Bold().FontColor(Colors.White).FontSize(7);
+                    h.Cell().Background(Colors.Grey.Darken1).Padding(3)
+                        .Text("Spesifikasi").Bold().FontColor(Colors.White).FontSize(7);
+                    HeaderCell(h.Cell(), "Vol");
+                    HeaderCell(h.Cell(), "Sat");
+                    HeaderCell(h.Cell(), "Jasa / Satuan", alignRight: true);
+                    HeaderCell(h.Cell(), "Jasa Total", alignRight: true);
+                    HeaderCell(h.Cell(), "Material / Satuan", alignRight: true);
+                    HeaderCell(h.Cell(), "Material Total", alignRight: true);
+                });
+            }
+
             foreach (var group in groups)
             {
                 col.Item().PaddingTop(6).Text(group.Name).Bold().FontSize(10).FontColor(Colors.Blue.Darken2);
@@ -458,37 +501,8 @@ public class QuotationPdfService
 
                     col.Item().Table(table =>
                     {
-                        table.ColumnsDefinition(cols =>
-                        {
-                            cols.ConstantColumn(20);   // No
-                            cols.RelativeColumn(3);    // Detail Kerja
-                            cols.RelativeColumn(4);    // Spesifikasi
-                            cols.ConstantColumn(45);   // Vol
-                            cols.ConstantColumn(40);   // Sat
-                            cols.ConstantColumn(75);   // Harga Satuan
-                            cols.ConstantColumn(75);   // Total
-                        });
-
-                        table.Header(h =>
-                        {
-                            void HeaderCell(IContainer cell, string text, bool alignRight = false)
-                            {
-                                var t = cell.Background(Colors.Grey.Darken1).Padding(3)
-                                    .Text(text).Bold().FontColor(Colors.White).FontSize(7);
-                                if (alignRight) t.AlignRight();
-                                else t.AlignCenter();
-                            }
-
-                            HeaderCell(h.Cell(), "No");
-                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
-                                .Text("Detail Kerja").Bold().FontColor(Colors.White).FontSize(7);
-                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
-                                .Text("Spesifikasi").Bold().FontColor(Colors.White).FontSize(7);
-                            HeaderCell(h.Cell(), "Vol");
-                            HeaderCell(h.Cell(), "Sat");
-                            HeaderCell(h.Cell(), "Harga Satuan", alignRight: true);
-                            HeaderCell(h.Cell(), "Total", alignRight: true);
-                        });
+                        table.ColumnsDefinition(DefineBoqColumns);
+                        RenderBoqHeader(table);
 
                         int no = 1;
                         foreach (var detail in workItem.WorkDetails.OrderBy(d => d.SortOrder))
@@ -504,9 +518,13 @@ public class QuotationPdfService
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
                                 .Text(detail.Unit).FontSize(7).AlignCenter();
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                .Text(FormatRupiah(detail.UnitPrice)).FontSize(7).AlignRight();
+                                .Text(FormatRupiah(detail.ServicePrice)).FontSize(7).AlignRight();
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                .Text(FormatRupiah(MoneyMath.Round(detail.TotalHarga))).FontSize(7).AlignRight();
+                                .Text(FormatRupiah(MoneyMath.Round(detail.Volume * detail.ServicePrice))).FontSize(7).AlignRight();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(detail.MaterialPrice)).FontSize(7).AlignRight();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(MoneyMath.Round(detail.Volume * detail.MaterialPrice))).FontSize(7).AlignRight();
 
                             no++;
                         }
@@ -539,37 +557,8 @@ public class QuotationPdfService
                 {
                     col.Item().Table(table =>
                     {
-                        table.ColumnsDefinition(cols =>
-                        {
-                            cols.ConstantColumn(20);   // No
-                            cols.RelativeColumn(3);    // Detail Kerja
-                            cols.RelativeColumn(4);    // Spesifikasi
-                            cols.ConstantColumn(45);   // Vol
-                            cols.ConstantColumn(40);   // Sat
-                            cols.ConstantColumn(75);   // Harga Satuan
-                            cols.ConstantColumn(75);   // Total
-                        });
-
-                        table.Header(h =>
-                        {
-                            void HeaderCell(IContainer cell, string text, bool alignRight = false)
-                            {
-                                var t = cell.Background(Colors.Grey.Darken1).Padding(3)
-                                    .Text(text).Bold().FontColor(Colors.White).FontSize(7);
-                                if (alignRight) t.AlignRight();
-                                else t.AlignCenter();
-                            }
-
-                            HeaderCell(h.Cell(), "No");
-                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
-                                .Text("Detail Kerja").Bold().FontColor(Colors.White).FontSize(7);
-                            h.Cell().Background(Colors.Grey.Darken1).Padding(3)
-                                .Text("Spesifikasi").Bold().FontColor(Colors.White).FontSize(7);
-                            HeaderCell(h.Cell(), "Vol");
-                            HeaderCell(h.Cell(), "Sat");
-                            HeaderCell(h.Cell(), "Harga Satuan", alignRight: true);
-                            HeaderCell(h.Cell(), "Total", alignRight: true);
-                        });
+                        table.ColumnsDefinition(DefineBoqColumns);
+                        RenderBoqHeader(table);
 
                         int no = 1;
                         foreach (var item in group.Items.OrderBy(i => i.SortOrder))
@@ -585,9 +574,13 @@ public class QuotationPdfService
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
                                 .Text(item.Unit).FontSize(7).AlignCenter();
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                .Text(FormatRupiah(item.ServicePrice + item.MaterialPrice)).FontSize(7).AlignRight();
+                                .Text(FormatRupiah(item.ServicePrice)).FontSize(7).AlignRight();
                             table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
-                                .Text(FormatRupiah(item.GrandLine)).FontSize(7).AlignRight();
+                                .Text(FormatRupiah(MoneyMath.Round(item.TotalService))).FontSize(7).AlignRight();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(item.MaterialPrice)).FontSize(7).AlignRight();
+                            table.Cell().BorderBottom(0.5f).BorderColor(Colors.Grey.Lighten2).Padding(3)
+                                .Text(FormatRupiah(MoneyMath.Round(item.TotalMaterial))).FontSize(7).AlignRight();
 
                             no++;
                         }

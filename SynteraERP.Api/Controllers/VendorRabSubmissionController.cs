@@ -41,7 +41,7 @@ public class VendorRabSubmissionController : ControllerBase
     {
         try
         {
-            var ok = await _svc.SetLineMarkupAsync(id, lineId, request.MarkupAmount);
+            var ok = await _svc.SetLineMarkupAsync(id, lineId, request.ServiceMarkup, request.MaterialMarkup);
             if (!ok) return NotFound(ApiResponse.Fail("Baris submission tidak ditemukan."));
             return Ok(ApiResponse.Ok("Markup berhasil disimpan."));
         }

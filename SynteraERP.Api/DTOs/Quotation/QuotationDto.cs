@@ -115,7 +115,8 @@ public class QuotationWorkDetailDto
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
     public decimal TotalHarga { get; set; }
     public int SortOrder { get; set; }
     public List<QuotationWorkDetailAttachmentDto> Attachments { get; set; } = [];
@@ -254,7 +255,8 @@ public class SaveQuotationWorkDetailRequest
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
     public int SortOrder { get; set; }
 }
 
@@ -276,7 +278,8 @@ public class SaveWorkDetailRequest
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
     public int SortOrder { get; set; }
 }
 

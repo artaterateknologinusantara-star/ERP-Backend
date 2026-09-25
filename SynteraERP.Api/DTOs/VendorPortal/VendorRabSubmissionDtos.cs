@@ -21,9 +21,12 @@ public class VendorRabSubmissionLineDto
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
-    public decimal MarkupAmount { get; set; }
-    public decimal FinalUnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
+    public decimal ServiceMarkup { get; set; }
+    public decimal MaterialMarkup { get; set; }
+    public decimal FinalServicePrice { get; set; }
+    public decimal FinalMaterialPrice { get; set; }
     public decimal TotalHarga { get; set; }
 }
 
@@ -38,12 +41,14 @@ public class CreateVendorRabSubmissionRequest
 public class CreateVendorRabSubmissionLineRequest
 {
     public Guid VendorRabRequestLineId { get; set; }
-    public decimal UnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
 }
 
 public class SetSubmissionLineMarkupRequest
 {
-    public decimal MarkupAmount { get; set; }
+    public decimal ServiceMarkup { get; set; }
+    public decimal MaterialMarkup { get; set; }
 }
 
 public class RejectVendorRabSubmissionRequest

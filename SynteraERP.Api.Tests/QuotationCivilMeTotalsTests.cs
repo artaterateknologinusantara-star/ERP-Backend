@@ -108,7 +108,8 @@ public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<P
         var workItem = await quotationSvc.CreateWorkItemAsync(groupId, new SaveWorkItemRequest { Name = "Pemasangan Kabel", SortOrder = 0 });
         await quotationSvc.CreateWorkDetailAsync(workItem.Id, new SaveWorkDetailRequest
         {
-            Name = "Kabel NYY 4x6mm", Spesifikasi = "Supreme", Volume = 5, Unit = "meter", UnitPrice = 200_000, SortOrder = 0,
+            Name = "Kabel NYY 4x6mm", Spesifikasi = "Supreme", Volume = 5, Unit = "meter",
+            ServicePrice = 120_000, MaterialPrice = 80_000, SortOrder = 0,
         });
 
         // ── 3. "Submit Penawaran" lagi (UpdateAsync) — path paling sering dipakai user setelah
@@ -152,12 +153,13 @@ public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<P
             ],
         });
 
-        // Expected: Material = Item.Qty*MaterialPrice = 2*50.000 = 100.000
-        //           Service  = FinalSellingPrice + Item.Qty*ServicePrice + WorkDetail.TotalHarga
-        //                    = 10.000.000 + (2*100.000) + (5*200.000) = 10.000.000 + 200.000 + 1.000.000 = 11.200.000
+        // Expected: Material = Item.Qty*MaterialPrice + WorkDetail.Volume*MaterialPrice
+        //                    = (2*50.000) + (5*80.000) = 100.000 + 400.000 = 500.000
+        //           Service  = FinalSellingPrice + Item.Qty*ServicePrice + WorkDetail.Volume*ServicePrice
+        //                    = 10.000.000 + (2*100.000) + (5*120.000) = 10.000.000 + 200.000 + 600.000 = 10.800.000
         //           Subtotal = 11.300.000, PPN 11% = 1.243.000, GrandTotal = 12.543.000
-        updated!.TotalMaterial.Should().Be(100_000);
-        updated.TotalService.Should().Be(11_200_000);
+        updated!.TotalMaterial.Should().Be(500_000);
+        updated.TotalService.Should().Be(10_800_000);
         updated.TotalBeforeTax.Should().Be(11_300_000);
         updated.TaxAmount.Should().Be(1_243_000);
         updated.GrandTotal.Should().Be(12_543_000);

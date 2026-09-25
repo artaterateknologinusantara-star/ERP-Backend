@@ -323,7 +323,8 @@ public class AppDbContext : DbContext
             e.Property(d => d.Name).HasMaxLength(200).IsRequired();
             e.Property(d => d.Unit).HasMaxLength(20).IsRequired();
             e.Property(d => d.Volume).HasPrecision(12, 4);
-            e.Property(d => d.UnitPrice).HasPrecision(18, 2);
+            e.Property(d => d.ServicePrice).HasPrecision(18, 2);
+            e.Property(d => d.MaterialPrice).HasPrecision(18, 2);
             e.Ignore(d => d.TotalHarga);
             e.HasOne(d => d.WorkItem)
              .WithMany(w => w.WorkDetails)
@@ -846,8 +847,10 @@ public class AppDbContext : DbContext
             // 1 harga per baris request per submission — mencegah vendor/duplicate-request
             // mengirim 2 harga berbeda untuk baris yang sama dalam 1 percobaan.
             e.HasIndex(x => new { x.VendorRabSubmissionId, x.VendorRabRequestLineId }).IsUnique();
-            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
-            e.Property(x => x.MarkupAmount).HasPrecision(18, 2);
+            e.Property(x => x.ServicePrice).HasPrecision(18, 2);
+            e.Property(x => x.MaterialPrice).HasPrecision(18, 2);
+            e.Property(x => x.ServiceMarkup).HasPrecision(18, 2);
+            e.Property(x => x.MaterialMarkup).HasPrecision(18, 2);
             e.HasOne(x => x.VendorRabSubmission)
              .WithMany(s => s.Lines)
              .HasForeignKey(x => x.VendorRabSubmissionId)

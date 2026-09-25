@@ -115,7 +115,7 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
                                         new SaveQuotationWorkDetailRequest
                                         {
                                             Name = "Cor Beton", Volume = 10, Unit = "m3",
-                                            UnitPrice = 500_000, SortOrder = 0,
+                                            ServicePrice = 300_000, MaterialPrice = 200_000, SortOrder = 0,
                                         },
                                     ],
                                 },
@@ -128,8 +128,10 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
 
         try
         {
-            quotation.TotalMaterial.Should().Be(0);
-            quotation.GrandTotal.Should().BeGreaterThan(0); // 10*500.000 = 5.000.000, +11% = 5.550.000
+            // Zero QuotationItem, tapi WorkDetail.MaterialPrice tetap kontribusi ke TotalMaterial
+            // (task #44) — "zero item" di nama test ini soal QuotationItem, bukan soal Material.
+            quotation.TotalMaterial.Should().Be(2_000_000); // 10*200.000
+            quotation.GrandTotal.Should().BeGreaterThan(0); // 10*(300.000+200.000) = 5.000.000, +11% = 5.550.000
             quotation.GrandTotal.Should().Be(5_550_000);
 
             await quotationSvc.UpdateStatusAsync(quotation.Id, "Disetujui");
@@ -202,7 +204,7 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
                                         new SaveQuotationWorkDetailRequest
                                         {
                                             Name = "Cor Beton", Volume = 16, Unit = "m3",
-                                            UnitPrice = 500_000, SortOrder = 0,
+                                            ServicePrice = 300_000, MaterialPrice = 200_000, SortOrder = 0,
                                         },
                                     ],
                                 },
@@ -215,7 +217,8 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
 
         try
         {
-            // Material = 15.000.000, Service = 2.000.000 (FSP) + 0 (item service) + 8.000.000 (WD) = 10.000.000
+            // Material = 15.000.000 (item) + 16*200.000 (WD) = 18.200.000
+            // Service  = 2.000.000 (FSP) + 0 (item service) + 16*300.000 (WD) = 6.800.000
             // Subtotal = 25.000.000, PPN 11% = 2.750.000, GrandTotal = 27.750.000
             quotation.GrandTotal.Should().Be(27_750_000);
 

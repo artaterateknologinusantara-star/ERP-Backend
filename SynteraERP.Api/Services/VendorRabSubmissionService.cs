@@ -62,10 +62,10 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
                 $"Ada {missing.Count} baris yang belum diisi harganya. Semua baris permintaan RAB harus diisi.");
 
         // Sama seperti jalur Excel (VendorRabExcelService) — harga satuan tidak boleh negatif.
-        var negativeCount = request.Lines.Count(l => l.UnitPrice < 0);
+        var negativeCount = request.Lines.Count(l => l.ServicePrice < 0 || l.MaterialPrice < 0);
         if (negativeCount > 0)
             throw new InvalidOperationException(
-                $"Ada {negativeCount} baris dengan Harga Satuan negatif. Harga Satuan tidak boleh negatif.");
+                $"Ada {negativeCount} baris dengan Harga Jasa/Material negatif. Harga tidak boleh negatif.");
 
         var nextAttempt = (rabRequest.Submissions.Count == 0 ? 0 : rabRequest.Submissions.Max(s => s.AttemptNumber)) + 1;
 
@@ -83,8 +83,10 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         {
             VendorRabSubmissionId = submission.Id,
             VendorRabRequestLineId = l.VendorRabRequestLineId,
-            UnitPrice = l.UnitPrice,
-            MarkupAmount = 0,
+            ServicePrice = l.ServicePrice,
+            MaterialPrice = l.MaterialPrice,
+            ServiceMarkup = 0,
+            MaterialMarkup = 0,
         }).ToList();
         _db.VendorRabSubmissionLines.AddRange(lines);
         submission.Lines = lines;
@@ -101,7 +103,7 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         return s is null ? null : ToDto(s);
     }
 
-    public async Task<bool> SetLineMarkupAsync(Guid submissionId, Guid lineId, decimal markupAmount)
+    public async Task<bool> SetLineMarkupAsync(Guid submissionId, Guid lineId, decimal serviceMarkup, decimal materialMarkup)
     {
         var line = await _db.VendorRabSubmissionLines
             .Include(l => l.VendorRabSubmission)
@@ -111,11 +113,12 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         if (line.VendorRabSubmission.Status != VendorRabSubmissionStatus.PendingReview)
             throw new InvalidOperationException("Markup hanya bisa diubah selama submission masih menunggu review.");
 
-        if (line.UnitPrice + markupAmount < 0)
+        if (line.ServicePrice + serviceMarkup < 0 || line.MaterialPrice + materialMarkup < 0)
             throw new InvalidOperationException(
-                "Harga Satuan + Markup tidak boleh negatif.");
+                "Harga + Markup tidak boleh negatif (Jasa maupun Material).");
 
-        line.MarkupAmount = markupAmount;
+        line.ServiceMarkup = serviceMarkup;
+        line.MaterialMarkup = materialMarkup;
         await _db.SaveChangesAsync();
         return true;
     }
@@ -141,7 +144,8 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
                 Spesifikasi = l.VendorRabRequestLine.Spesifikasi,
                 Volume = l.VendorRabRequestLine.Volume,
                 Unit = l.VendorRabRequestLine.Unit,
-                FinalUnitPrice = l.UnitPrice + l.MarkupAmount,
+                FinalServicePrice = l.ServicePrice + l.ServiceMarkup,
+                FinalMaterialPrice = l.MaterialPrice + l.MaterialMarkup,
                 SortOrder = l.VendorRabRequestLine.SortOrder,
             }).ToList(),
         };
@@ -211,10 +215,14 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
             Spesifikasi = l.VendorRabRequestLine.Spesifikasi,
             Volume = l.VendorRabRequestLine.Volume,
             Unit = l.VendorRabRequestLine.Unit,
-            UnitPrice = l.UnitPrice,
-            MarkupAmount = l.MarkupAmount,
-            FinalUnitPrice = l.UnitPrice + l.MarkupAmount,
-            TotalHarga = l.VendorRabRequestLine.Volume * (l.UnitPrice + l.MarkupAmount),
+            ServicePrice = l.ServicePrice,
+            MaterialPrice = l.MaterialPrice,
+            ServiceMarkup = l.ServiceMarkup,
+            MaterialMarkup = l.MaterialMarkup,
+            FinalServicePrice = l.ServicePrice + l.ServiceMarkup,
+            FinalMaterialPrice = l.MaterialPrice + l.MaterialMarkup,
+            TotalHarga = l.VendorRabRequestLine.Volume
+                * (l.ServicePrice + l.ServiceMarkup + l.MaterialPrice + l.MaterialMarkup),
         }).ToList(),
     };
 }

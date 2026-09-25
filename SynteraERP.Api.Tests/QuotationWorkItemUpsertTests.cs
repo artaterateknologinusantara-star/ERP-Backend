@@ -109,7 +109,7 @@ public class QuotationWorkItemUpsertTests : IClassFixture<WebApplicationFactory<
                                 new SaveQuotationWorkDetailRequest
                                 {
                                     Name = "Kabel NYY 4x6mm", Spesifikasi = "Supreme",
-                                    Volume = 5, Unit = "meter", UnitPrice = 200_000, SortOrder = 0,
+                                    Volume = 5, Unit = "meter", MaterialPrice = 200_000, SortOrder = 0,
                                 },
                             ],
                         },
@@ -162,7 +162,7 @@ public class QuotationWorkItemUpsertTests : IClassFixture<WebApplicationFactory<
                                 new SaveQuotationWorkDetailRequest
                                 {
                                     Name = "Kabel NYY 4x6mm", Spesifikasi = "Supreme",
-                                    Volume = 5, Unit = "meter", UnitPrice = 200_000, SortOrder = 0,
+                                    Volume = 5, Unit = "meter", MaterialPrice = 200_000, SortOrder = 0,
                                 },
                             ],
                         },
@@ -202,7 +202,7 @@ public class QuotationWorkItemUpsertTests : IClassFixture<WebApplicationFactory<
                                 {
                                     Id = workDetailId,
                                     Name = "Kabel NYY 4x6mm", Spesifikasi = "Supreme",
-                                    Volume = 10, Unit = "meter", UnitPrice = 250_000, SortOrder = 0,
+                                    Volume = 10, Unit = "meter", MaterialPrice = 250_000, SortOrder = 0,
                                 },
                             ],
                         },
@@ -221,7 +221,7 @@ public class QuotationWorkItemUpsertTests : IClassFixture<WebApplicationFactory<
         var updatedDetail = updatedWorkItem.WorkDetails.Should().ContainSingle().Subject;
         updatedDetail.Id.Should().Be(workDetailId); // same row, not a new Guid
         updatedDetail.Volume.Should().Be(10);
-        updatedDetail.UnitPrice.Should().Be(250_000);
+        updatedDetail.MaterialPrice.Should().Be(250_000);
 
         await CleanupAsync(db, created.Id);
     }
@@ -260,12 +260,12 @@ public class QuotationWorkItemUpsertTests : IClassFixture<WebApplicationFactory<
                                 new SaveQuotationWorkDetailRequest
                                 {
                                     Name = "Kabel yang akan dihapus", Volume = 5, Unit = "meter",
-                                    UnitPrice = 200_000, SortOrder = 0,
+                                    MaterialPrice = 200_000, SortOrder = 0,
                                 },
                                 new SaveQuotationWorkDetailRequest
                                 {
                                     Name = "Kabel yang bertahan", Volume = 3, Unit = "meter",
-                                    UnitPrice = 100_000, SortOrder = 1,
+                                    MaterialPrice = 100_000, SortOrder = 1,
                                 },
                             ],
                         },
@@ -314,7 +314,7 @@ public class QuotationWorkItemUpsertTests : IClassFixture<WebApplicationFactory<
                                 {
                                     Id = toKeepId,
                                     Name = "Kabel yang bertahan", Volume = 3, Unit = "meter",
-                                    UnitPrice = 100_000, SortOrder = 1,
+                                    MaterialPrice = 100_000, SortOrder = 1,
                                 },
                             ],
                         },
@@ -371,7 +371,7 @@ public class QuotationWorkItemUpsertTests : IClassFixture<WebApplicationFactory<
                                 new SaveQuotationWorkDetailRequest
                                 {
                                     Name = "Kabel A", Volume = 5, Unit = "meter",
-                                    UnitPrice = 200_000, SortOrder = 0,
+                                    MaterialPrice = 200_000, SortOrder = 0,
                                 },
                             ],
                         },
