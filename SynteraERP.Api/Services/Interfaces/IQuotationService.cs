@@ -27,4 +27,9 @@ public interface IQuotationService
     Task<QuotationWorkDetailAttachmentDto> UploadWorkDetailAttachmentAsync(Guid workDetailId, IFormFile file);
     Task<bool> DeleteWorkDetailAttachmentAsync(Guid attachmentId);
     Task<(byte[] data, string contentType, string fileName)?> GetWorkDetailAttachmentAsync(Guid attachmentId);
+
+    // Dipanggil oleh VendorRabSubmissionService saat maincon approve submission vendor — satu-
+    // satunya jalur yang boleh menulis data vendor jadi QuotationWorkDetail resmi (lihat komentar
+    // di ApplyVendorRabSubmissionRequest).
+    Task<QuotationWorkItemDto> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request);
 }

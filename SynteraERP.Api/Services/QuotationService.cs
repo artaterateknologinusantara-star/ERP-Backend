@@ -781,6 +781,64 @@ public class QuotationService : IQuotationService
         return true;
     }
 
+    public async Task<QuotationWorkItemDto> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request)
+    {
+        var group = await _db.QuotationGroups.Include(g => g.Tab)
+            .FirstOrDefaultAsync(g => g.Id == request.QuotationGroupId)
+            ?? throw new KeyNotFoundException("Group tidak ditemukan.");
+
+        var nextSortOrder = (await _db.QuotationWorkItems
+            .Where(w => w.GroupId == request.QuotationGroupId)
+            .Select(w => (int?)w.SortOrder)
+            .MaxAsync() ?? -1) + 1;
+
+        var workItem = new QuotationWorkItem
+        {
+            GroupId = request.QuotationGroupId,
+            Name = request.WorkItemName,
+            SortOrder = nextSortOrder,
+        };
+        _db.QuotationWorkItems.Add(workItem);
+
+        // FK di-set eksplisit (bukan lewat nav property) — sama seperti pola Add eksplisit di
+        // UpsertTabs/UpsertGroups, supaya tidak bergantung ke graph-fixup EF. workItem.WorkDetails
+        // diisi manual di bawah supaya ToWorkItemDto bisa langsung dipakai tanpa reload dari DB.
+        var details = request.Lines.Select(line => new QuotationWorkDetail
+        {
+            WorkItemId = workItem.Id,
+            Name = line.Name,
+            Spesifikasi = line.Spesifikasi,
+            Volume = line.Volume,
+            Unit = line.Unit,
+            UnitPrice = line.FinalUnitPrice,
+            SortOrder = line.SortOrder,
+        }).ToList();
+        _db.QuotationWorkDetails.AddRange(details);
+        workItem.WorkDetails = details;
+
+        // VendorRabSubmissionService.ApproveAsync juga menulis status Submission/Request di
+        // DbContext yang SAMA sebagai bagian dari "approve" yang satu ini (rule #5: WorkItem baru
+        // + status Approved wajib atomic bersama-sama) — kalau caller sudah buka transaction
+        // sendiri (CurrentTransaction != null), ikut transaction itu dan jangan commit di sini;
+        // caller yang commit. Dipanggil berdiri sendiri (tanpa ambient transaction) tetap aman,
+        // self-contained seperti 6 endpoint standalone WorkItem/WorkDetail lainnya.
+        var ambientTx = _db.Database.CurrentTransaction;
+        if (ambientTx is not null)
+        {
+            await _db.SaveChangesAsync();
+            await RecalcAndSaveQuotationTotalsAsync(group.Tab.QuotationId);
+        }
+        else
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            await _db.SaveChangesAsync();
+            await RecalcAndSaveQuotationTotalsAsync(group.Tab.QuotationId);
+            await tx.CommitAsync();
+        }
+
+        return ToWorkItemDto(workItem);
+    }
+
     // Standalone WorkItem/WorkDetail endpoints above load/mutate only the narrow entity in
     // question, not the full Quotation graph RecalcTotals needs — so unlike UpdateAsync (which
     // already has that graph loaded), they reload just enough of it here, recompute, and save,
