@@ -510,16 +510,8 @@ public class InvoiceService : IInvoiceService
         };
     }
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "INVOICE")
-            ?? throw new InvalidOperationException("NumberingConfig for INVOICE not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.Invoices, x => x.No, "INVOICE");
 
     private static InvoiceListDto ToListDto(Models.Invoice x, DateOnly today) => new()
     {

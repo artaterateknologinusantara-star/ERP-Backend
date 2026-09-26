@@ -522,16 +522,8 @@ public class SalesOrderService : ISalesOrderService
         };
     }
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "SALES_ORDER")
-            ?? throw new InvalidOperationException("NumberingConfig for SALES_ORDER not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.SalesOrders, x => x.No, "SALES_ORDER");
 
     private static SalesOrderDetailResponse ToDetailResponse(
         SalesOrder so, decimal taxRate, string phase, Dictionary<Guid, Guid> invoiceByTerminId)

@@ -478,16 +478,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         };
     }
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "PURCHASE_ORDER")
-            ?? throw new InvalidOperationException("NumberingConfig for PURCHASE_ORDER not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.PurchaseOrders, x => x.No, "PURCHASE_ORDER");
 
     private static string PurchaseOrderStatusString(PurchaseOrderStatus s) =>
         s == PurchaseOrderStatus.PartialReceive ? "Partial Receive" : s.ToString();

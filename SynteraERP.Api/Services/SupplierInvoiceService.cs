@@ -215,16 +215,8 @@ public class SupplierInvoiceService : ISupplierInvoiceService
         return (await GetByIdAsync(id))!;
     }
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "SUPPLIER_INVOICE")
-            ?? throw new InvalidOperationException("NumberingConfig for SUPPLIER_INVOICE not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.SupplierInvoices, x => x.No, "SUPPLIER_INVOICE");
 
     private static SupplierInvoiceListDto ToListDto(Models.SupplierInvoice x)
     {

@@ -1005,42 +1005,8 @@ public class QuotationService : IQuotationService
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "QUOTATION")
-            ?? throw new InvalidOperationException("NumberingConfig for QUOTATION not found");
-
-        // Sync LastNumber with the actual highest number in DB.
-        // Prevents unique-constraint violations when a migration reset the counter
-        // while existing quotation rows with higher numbers still exist.
-        var year = DateTime.UtcNow.ToString("yy");
-        var yearPrefix = $"{config.Prefix}-{year}.";
-
-        var existingNos = await _db.Quotations
-            .IgnoreQueryFilters()
-            .Where(q => q.No.StartsWith(yearPrefix))
-            .Select(q => q.No)
-            .ToListAsync();
-
-        if (existingNos.Count > 0)
-        {
-            var actualMax = existingNos
-                .Select(no =>
-                {
-                    var suffix = no.Length > yearPrefix.Length ? no[yearPrefix.Length..] : "0";
-                    return int.TryParse(suffix, out var n) ? n : 0;
-                })
-                .Max();
-
-            if (actualMax >= config.LastNumber)
-                config.LastNumber = actualMax;
-        }
-
-        var docNo = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return docNo;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.Quotations, q => q.No, "QUOTATION");
 
     private static Models.Quotation MapFromRequest(SaveQuotationRequest req, string no)
     {

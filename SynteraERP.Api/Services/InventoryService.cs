@@ -554,16 +554,8 @@ public class InventoryService : IInventoryService
 
     // ─── Numbering ────────────────────────────────────────────────────────────
 
-    private async Task<string> NextDONumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "DELIVERY_ORDER")
-            ?? throw new InvalidOperationException("NumberingConfig for DELIVERY_ORDER not found. Please seed the numbering config.");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextDONumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.DeliveryOrders, x => x.No, "DELIVERY_ORDER");
 
     // ─── Mapping helpers ──────────────────────────────────────────────────────
 

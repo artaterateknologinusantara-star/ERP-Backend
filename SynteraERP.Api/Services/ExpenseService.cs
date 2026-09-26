@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Expense;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -247,16 +248,8 @@ public class ExpenseService : IExpenseService
             throw new InvalidOperationException($"Tidak bisa mengubah status Expense dari {from} ke {to}.");
     }
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "EXPENSE")
-            ?? throw new InvalidOperationException("NumberingConfig for EXPENSE not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.Expenses, x => x.ExpenseNo, "EXPENSE");
 
     private static string GetContentType(string path) =>
         Path.GetExtension(path).ToLowerInvariant() switch
