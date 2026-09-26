@@ -197,34 +197,8 @@ public class PurchaseOrderService : IPurchaseOrderService
         return payment;
     }
 
-    // Pola sama persis dengan ExpenseService.CreateAsync: kalau CashBankAccountId tidak diisi,
-    // default ke akun Kas (1-1001) supaya Cash Out lama yang tidak mengisi akun tetap ter-posting
-    // persis seperti sebelum field ini ada.
-    private async Task<(Guid Id, string Code)> ResolveCashBankAccountAsync(Guid? cashBankAccountId)
-    {
-        if (cashBankAccountId.HasValue)
-        {
-            var account = await _db.Accounts
-                .Where(x => x.Id == cashBankAccountId.Value && !x.IsDeleted)
-                .Select(x => new { x.Id, x.Code })
-                .FirstOrDefaultAsync();
-
-            if (account is null)
-                throw new InvalidOperationException("Akun Kas/Bank yang dipilih tidak ditemukan.");
-
-            return (account.Id, account.Code);
-        }
-
-        var defaultAccount = await _db.Accounts
-            .Where(x => x.Code == "1-1001" && !x.IsDeleted)
-            .Select(x => new { x.Id, x.Code })
-            .FirstOrDefaultAsync();
-
-        if (defaultAccount is null)
-            throw new InvalidOperationException("Akun default Kas (1-1001) tidak ditemukan di Chart of Accounts.");
-
-        return (defaultAccount.Id, defaultAccount.Code);
-    }
+    private Task<(Guid Id, string Code)> ResolveCashBankAccountAsync(Guid? cashBankAccountId) =>
+        CashBankAccountHelper.ResolveAsync(_db, cashBankAccountId);
 
     private static POPaymentResponse ToPaymentResponse(POPayment payment) => new()
     {

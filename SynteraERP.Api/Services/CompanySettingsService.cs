@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.CompanySettings;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Services;
@@ -115,7 +116,7 @@ public class CompanySettingsService : ICompanySettingsService
         if (!File.Exists(fullPath)) return null;
 
         var data = await File.ReadAllBytesAsync(fullPath);
-        var contentType = GetContentType(settings.LogoPath);
+        var contentType = ContentTypeHelper.FromPath(settings.LogoPath);
         var fileName = settings.LogoFileName ?? Path.GetFileName(settings.LogoPath);
         return (data, contentType, fileName);
     }
@@ -199,16 +200,6 @@ public class CompanySettingsService : ICompanySettingsService
             .ToList();
 
     // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private static string GetContentType(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            _ => "application/octet-stream",
-        };
 
     private static CompanySettingsDto ToDto(Models.CompanySettings x) => new()
     {

@@ -86,25 +86,7 @@ public class ExpenseService : IExpenseService
         if (!category.IsActive)
             throw new InvalidOperationException($"Expense Category '{category.Name}' sudah tidak aktif.");
 
-        Guid cashBankAccountId;
-        if (request.CashBankAccountId.HasValue)
-        {
-            var accountExists = await _db.Accounts.AnyAsync(x => x.Id == request.CashBankAccountId.Value && !x.IsDeleted);
-            if (!accountExists)
-                throw new InvalidOperationException("Akun Kas/Bank tidak ditemukan.");
-            cashBankAccountId = request.CashBankAccountId.Value;
-        }
-        else
-        {
-            // Default akun Kas/Bank ke "1-1001 Kas", mengikuti keputusan Fase 2.
-            cashBankAccountId = await _db.Accounts
-                .Where(x => x.Code == "1-1001" && !x.IsDeleted)
-                .Select(x => x.Id)
-                .FirstOrDefaultAsync();
-
-            if (cashBankAccountId == Guid.Empty)
-                throw new InvalidOperationException("Akun default Kas (1-1001) tidak ditemukan di Chart of Accounts.");
-        }
+        var (cashBankAccountId, _) = await CashBankAccountHelper.ResolveAsync(_db, request.CashBankAccountId);
 
         if (request.VendorId.HasValue)
         {
@@ -235,7 +217,7 @@ public class ExpenseService : IExpenseService
         if (!File.Exists(fullPath)) return null;
 
         var data = await File.ReadAllBytesAsync(fullPath);
-        var contentType = GetContentType(exp.AttachmentPath);
+        var contentType = ContentTypeHelper.FromPath(exp.AttachmentPath);
         var fileName = exp.AttachmentName ?? Path.GetFileName(exp.AttachmentPath);
         return (data, contentType, fileName);
     }
@@ -250,17 +232,6 @@ public class ExpenseService : IExpenseService
 
     private Task<string> NextNumberAsync() =>
         NumberingResyncHelper.NextNumberAsync(_db, _db.Expenses, x => x.ExpenseNo, "EXPENSE");
-
-    private static string GetContentType(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".pdf" => "application/pdf",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            _ => "application/octet-stream",
-        };
 
     private static ExpenseListDto ToListDto(Models.Expense x) => new()
     {
