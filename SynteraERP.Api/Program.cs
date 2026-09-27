@@ -133,6 +133,7 @@ builder.Services.AddScoped<ISupplierInvoiceService, SupplierInvoiceService>();
 builder.Services.AddScoped<IExpenseCategoryService, ExpenseCategoryService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<IReportsService, ReportsService>();
+builder.Services.AddScoped<ISubconMarginReportService, SubconMarginReportService>();
 builder.Services.AddScoped<QuotationPdfService>();
 builder.Services.AddScoped<SalesOrderPdfService>();
 builder.Services.AddScoped<InvoicePdfService>();
