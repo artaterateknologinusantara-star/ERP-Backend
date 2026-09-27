@@ -1088,10 +1088,21 @@ public class AppDbContext : DbContext
         var salesRoleId = new Guid("10000000-0000-0000-0000-000000000002");
         var financeRoleId = new Guid("10000000-0000-0000-0000-000000000003");
 
+        // Fixed sentinel date (bukan DateTimeOffset.UtcNow) — sama seperti permSeedDate/acctSeedDate
+        // di bawah. DateTimeOffset.UtcNow di HasData() dievaluasi ulang setiap kali `dotnet ef
+        // migrations add` dijalankan, jadi EF Core mengira model berubah dan meregenerasi UpdateData
+        // yang me-reset CreatedAt/UpdatedAt baris ini di HAMPIR SETIAP migration baru (dikonfirmasi:
+        // 50 dari 126 migration existing kena, termasuk yang paling baru) — kelas bug yang sama
+        // dengan insiden NumberingConfig lama (lihat catatan di bawah), bedanya di sini yang kena
+        // cuma kolom audit CreatedAt/UpdatedAt (bukan field bisnis), jadi selama ini tidak
+        // ketahuan/berdampak nyata (Role.CreatedAt tidak pernah dikirim ke frontend sama sekali,
+        // User.CreatedAt dikirim tapi tidak pernah dirender di UI manapun).
+        var roleUserSeedDate = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero);
+
         b.Entity<Role>().HasData(
-            new Role { Id = adminRoleId, Name = "Administrator", Description = "Full system access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow },
-            new Role { Id = salesRoleId, Name = "Sales", Description = "Quotation and sales module access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow },
-            new Role { Id = financeRoleId, Name = "Finance", Description = "Invoice and payment access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }
+            new Role { Id = adminRoleId, Name = "Administrator", Description = "Full system access", IsActive = true, CreatedAt = roleUserSeedDate, UpdatedAt = roleUserSeedDate },
+            new Role { Id = salesRoleId, Name = "Sales", Description = "Quotation and sales module access", IsActive = true, CreatedAt = roleUserSeedDate, UpdatedAt = roleUserSeedDate },
+            new Role { Id = financeRoleId, Name = "Finance", Description = "Invoice and payment access", IsActive = true, CreatedAt = roleUserSeedDate, UpdatedAt = roleUserSeedDate }
         );
 
         var adminId = new Guid("20000000-0000-0000-0000-000000000001");
@@ -1105,8 +1116,8 @@ public class AppDbContext : DbContext
                 // password: Admin@123
                 PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
                 IsActive = true,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
+                CreatedAt = roleUserSeedDate,
+                UpdatedAt = roleUserSeedDate
             }
         );
 
