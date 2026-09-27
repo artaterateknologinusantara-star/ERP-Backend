@@ -810,7 +810,7 @@ public class QuotationService : IQuotationService
         return true;
     }
 
-    public async Task<QuotationWorkItemDto> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request)
+    public async Task<List<QuotationWorkItemDto>> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request)
     {
         var group = await _db.QuotationGroups.Include(g => g.Tab)
             .FirstOrDefaultAsync(g => g.Id == request.QuotationGroupId)
@@ -821,35 +821,52 @@ public class QuotationService : IQuotationService
             .Select(w => (int?)w.SortOrder)
             .MaxAsync() ?? -1) + 1;
 
-        var workItem = new QuotationWorkItem
-        {
-            GroupId = request.QuotationGroupId,
-            Name = request.WorkItemName,
-            SortOrder = nextSortOrder,
-        };
-        _db.QuotationWorkItems.Add(workItem);
+        // Fan-out: kelompokkan baris per WorkItemName vendor — 1 kelompok jadi 1 QuotationWorkItem
+        // (bukan lagi 1 WorkItem untuk semua baris). Baris tanpa WorkItemName (null/kosong) masuk
+        // kelompok default (DefaultWorkItemName = VendorRabRequest.Name), supaya tidak ada baris
+        // yang hilang dari fan-out. GroupBy LINQ stabil (mempertahankan urutan kemunculan pertama
+        // tiap key, dan urutan asli di dalam tiap grup).
+        var lineGroups = request.Lines
+            .GroupBy(line => string.IsNullOrWhiteSpace(line.WorkItemName) ? request.DefaultWorkItemName : line.WorkItemName!)
+            .ToList();
 
         // FK di-set eksplisit (bukan lewat nav property) — sama seperti pola Add eksplisit di
-        // UpsertTabs/UpsertGroups, supaya tidak bergantung ke graph-fixup EF. workItem.WorkDetails
-        // diisi manual di bawah supaya ToWorkItemDto bisa langsung dipakai tanpa reload dari DB.
-        var details = request.Lines.Select(line => new QuotationWorkDetail
+        // UpsertTabs/UpsertGroups, supaya tidak bergantung ke graph-fixup EF. WorkDetails diisi
+        // manual di bawah supaya ToWorkItemDto bisa langsung dipakai tanpa reload dari DB.
+        var workItems = new List<QuotationWorkItem>();
+        var sortOrder = nextSortOrder;
+        foreach (var lineGroup in lineGroups)
         {
-            WorkItemId = workItem.Id,
-            Name = line.Name,
-            Spesifikasi = line.Spesifikasi,
-            Volume = line.Volume,
-            Unit = line.Unit,
+            var workItem = new QuotationWorkItem
+            {
+                GroupId = request.QuotationGroupId,
+                Name = lineGroup.Key,
+                SortOrder = sortOrder++,
+                SourceVendorRabRequestId = request.SourceVendorRabRequestId,
+            };
+            _db.QuotationWorkItems.Add(workItem);
+
             // Task #44 Bagian 2 (Opsi B, keputusan 26 Sep 2026): vendor sendiri submit harga Jasa
             // dan Material terpisah (VendorRabSubmissionLine.ServicePrice/MaterialPrice), maincon
             // markup juga per-kategori (ServiceMarkup/MaterialMarkup) — FinalServicePrice/
             // FinalMaterialPrice dari VendorRabSubmissionService.ApproveAsync sudah hasil akhirnya,
             // tulis langsung tanpa realokasi lagi di sini.
-            ServicePrice = line.FinalServicePrice,
-            MaterialPrice = line.FinalMaterialPrice,
-            SortOrder = line.SortOrder,
-        }).ToList();
-        _db.QuotationWorkDetails.AddRange(details);
-        workItem.WorkDetails = details;
+            var details = lineGroup.Select((line, index) => new QuotationWorkDetail
+            {
+                WorkItemId = workItem.Id,
+                Name = line.Name,
+                Spesifikasi = line.Spesifikasi,
+                Volume = line.Volume,
+                Unit = line.Unit,
+                ServicePrice = line.FinalServicePrice,
+                MaterialPrice = line.FinalMaterialPrice,
+                SortOrder = index,
+            }).ToList();
+            _db.QuotationWorkDetails.AddRange(details);
+            workItem.WorkDetails = details;
+
+            workItems.Add(workItem);
+        }
 
         // VendorRabSubmissionService.ApproveAsync juga menulis status Submission/Request di
         // DbContext yang SAMA sebagai bagian dari "approve" yang satu ini (rule #5: WorkItem baru
@@ -871,7 +888,7 @@ public class QuotationService : IQuotationService
             await tx.CommitAsync();
         }
 
-        return ToWorkItemDto(workItem);
+        return workItems.Select(ToWorkItemDto).ToList();
     }
 
     // Standalone WorkItem/WorkDetail endpoints above load/mutate only the narrow entity in

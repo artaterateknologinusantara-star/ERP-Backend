@@ -53,24 +53,45 @@ public class VendorRabSubmissionController : ControllerBase
 
     [RequirePermission(Modules.Sales, PermissionActions.Approve)]
     [HttpPost("{id:guid}/approve")]
-    public async Task<ActionResult<ApiResponse<Guid>>> Approve(Guid id)
+    public async Task<ActionResult<ApiResponse<List<Guid>>>> Approve(Guid id)
     {
         var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (sub is null || !Guid.TryParse(sub, out var userId))
-            return Unauthorized(ApiResponse<Guid>.Fail("User tidak teridentifikasi."));
+            return Unauthorized(ApiResponse<List<Guid>>.Fail("User tidak teridentifikasi."));
 
         try
         {
-            var workItemId = await _svc.ApproveAsync(id, userId);
-            return Ok(ApiResponse<Guid>.Ok(workItemId, "Submission disetujui, baris RAB resmi sudah ditambahkan ke Quotation."));
+            var workItemIds = await _svc.ApproveAsync(id, userId);
+            return Ok(ApiResponse<List<Guid>>.Ok(workItemIds, "Submission disetujui, baris RAB resmi sudah ditambahkan ke Quotation."));
         }
         catch (KeyNotFoundException ex)
         {
-            return NotFound(ApiResponse<Guid>.Fail(ex.Message));
+            return NotFound(ApiResponse<List<Guid>>.Fail(ex.Message));
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ApiResponse<Guid>.Fail(ex.Message));
+            return BadRequest(ApiResponse<List<Guid>>.Fail(ex.Message));
+        }
+    }
+
+    [RequirePermission(Modules.Sales, PermissionActions.Approve)]
+    [HttpPost("{id:guid}/request-revision")]
+    public async Task<ActionResult<ApiResponse>> RequestRevision(Guid id, [FromBody] RequestVendorRabRevisionRequest request)
+    {
+        var sub = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (sub is null || !Guid.TryParse(sub, out var userId))
+            return Unauthorized(ApiResponse.Fail("User tidak teridentifikasi."));
+
+        try
+        {
+            var ok = await _svc.RequestRevisionAsync(
+                id, request.Lines.Select(l => (l.LineId, l.Note)).ToList(), userId);
+            if (!ok) return NotFound(ApiResponse.Fail("Submission tidak ditemukan."));
+            return Ok(ApiResponse.Ok("Permintaan revisi terkirim. Vendor bisa submit ulang dengan baris yang ditandai."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse.Fail(ex.Message));
         }
     }
 

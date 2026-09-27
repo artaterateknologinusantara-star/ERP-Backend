@@ -10,7 +10,7 @@ public class VendorRabRequestDto
     public string Status { get; set; } = string.Empty;
     public DateTimeOffset? SentAt { get; set; }
     public DateTimeOffset? DueDate { get; set; }
-    public Guid? ApprovedWorkItemId { get; set; }
+    public List<Guid> ApprovedWorkItemIds { get; set; } = [];
     public List<VendorRabRequestLineDto> Lines { get; set; } = [];
     public List<VendorRabSubmissionSummaryDto> Submissions { get; set; } = [];
 }
@@ -31,6 +31,9 @@ public class VendorRabSubmissionSummaryDto
     public int AttemptNumber { get; set; }
     public string Status { get; set; } = string.Empty;
     public DateTimeOffset SubmittedAt { get; set; }
+    // Baris lengkap ikut disertakan (bukan cuma ringkasan) supaya portal vendor bisa pre-fill
+    // form dari attempt terakhir saat status RevisionRequested, tanpa endpoint terpisah.
+    public List<VendorRabSubmissionLineDto> Lines { get; set; } = [];
 }
 
 public class CreateVendorRabRequestRequest

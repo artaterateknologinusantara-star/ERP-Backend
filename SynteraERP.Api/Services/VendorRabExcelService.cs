@@ -3,17 +3,13 @@ using SynteraERP.Api.DTOs.VendorPortal;
 
 namespace SynteraERP.Api.Services;
 
-// Template per VendorRabRequest: kolom A (ID baris, GUID) di-hide + dikunci, kolom Nama/
-// Spesifikasi/Volume/Satuan dikunci (read-only), hanya kolom Harga Jasa dan Harga Material yang
-// bisa diisi vendor (task #44 Bagian 2, Opsi B — vendor submit breakdown-nya sendiri, bukan 1
-// harga blended). Kolom ID adalah join key saat parse balik — BUKAN posisi baris — supaya vendor
-// boleh menyisipkan/menghapus/mengurutkan ulang baris tanpa salah pasang harga (lihat bagian 5
-// dokumen rencana). Proteksi sheet ini cuma UX nicety (file .xlsx bisa saja di-unprotect
-// manual) — batas keamanan yang sesungguhnya adalah validasi ID di server saat parse balik,
-// sama seperti CreateVendorRabSubmissionRequest lewat form web.
+// Template kosong sepenuhnya — subcon adalah pihak yang menyusun RAB sesungguhnya (nama
+// bagian/item/spesifikasi/volume/satuan/harga), bukan cuma isi harga ke baris yang sudah
+// di-draft maincon (lihat perubahan arah task RAB Sep 2026). Tidak ada lagi kolom ID
+// tersembunyi/join-key — semua baris di file memang baru, tidak mencocokkan ke baris lama.
 public static class VendorRabExcelService
 {
-    private const int ColId = 1;
+    private const int ColWorkItemName = 1;
     private const int ColName = 2;
     private const int ColSpec = 3;
     private const int ColVolume = 4;
@@ -21,41 +17,20 @@ public static class VendorRabExcelService
     private const int ColServicePrice = 6;
     private const int ColMaterialPrice = 7;
 
-    public static byte[] GenerateTemplate(VendorRabRequestDto request)
+    public static byte[] GenerateTemplate()
     {
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("RAB");
 
-        ws.Cell(1, ColId).Value = "ID (jangan diubah)";
-        ws.Cell(1, ColName).Value = "Nama Pekerjaan";
+        ws.Cell(1, ColWorkItemName).Value = "Nama Bagian/Pekerjaan";
+        ws.Cell(1, ColName).Value = "Nama Item";
         ws.Cell(1, ColSpec).Value = "Spesifikasi";
         ws.Cell(1, ColVolume).Value = "Volume";
         ws.Cell(1, ColUnit).Value = "Satuan";
-        ws.Cell(1, ColServicePrice).Value = "Harga Jasa (isi di sini)";
-        ws.Cell(1, ColMaterialPrice).Value = "Harga Material (isi di sini)";
+        ws.Cell(1, ColServicePrice).Value = "Harga Jasa";
+        ws.Cell(1, ColMaterialPrice).Value = "Harga Material";
         ws.Row(1).Style.Font.Bold = true;
-
-        var row = 2;
-        foreach (var line in request.Lines.OrderBy(l => l.SortOrder))
-        {
-            ws.Cell(row, ColId).Value = line.Id.ToString();
-            ws.Cell(row, ColName).Value = line.Name;
-            ws.Cell(row, ColSpec).Value = line.Spesifikasi ?? "";
-            ws.Cell(row, ColVolume).Value = line.Volume;
-            ws.Cell(row, ColUnit).Value = line.Unit;
-            row++;
-        }
-        var lastRow = row - 1;
-
-        if (lastRow >= 2)
-        {
-            ws.Range(1, ColId, lastRow, ColMaterialPrice).Style.Protection.Locked = true;
-            ws.Range(2, ColServicePrice, lastRow, ColMaterialPrice).Style.Protection.Locked = false;
-        }
-
-        ws.Column(ColId).Hide();
         ws.Columns().AdjustToContents();
-        ws.Protect();
 
         using var stream = new MemoryStream();
         wb.SaveAs(stream);
@@ -91,17 +66,35 @@ public static class VendorRabExcelService
             var lastRowUsed = ws.LastRowUsed()?.RowNumber() ?? 1;
             for (var row = 2; row <= lastRowUsed; row++)
             {
-                var idCell = ws.Cell(row, ColId).GetString().Trim();
+                var workItemName = ws.Cell(row, ColWorkItemName).GetString().Trim();
+                var name = ws.Cell(row, ColName).GetString().Trim();
+                var spec = ws.Cell(row, ColSpec).GetString().Trim();
+                var unit = ws.Cell(row, ColUnit).GetString().Trim();
+                var volumeCell = ws.Cell(row, ColVolume);
                 var servicePriceCell = ws.Cell(row, ColServicePrice);
                 var materialPriceCell = ws.Cell(row, ColMaterialPrice);
 
-                // Baris kosong total (tidak ada ID maupun harga) dilewati diam-diam — bukan error,
-                // ini cuma baris kosong sisa di bawah data (umum terjadi di Excel).
-                if (idCell.Length == 0 && servicePriceCell.IsEmpty() && materialPriceCell.IsEmpty()) continue;
+                // Baris kosong total dilewati diam-diam — bukan error, ini cuma baris kosong sisa
+                // di bawah data (umum terjadi di Excel).
+                if (workItemName.Length == 0 && name.Length == 0 && spec.Length == 0 && unit.Length == 0
+                    && volumeCell.IsEmpty() && servicePriceCell.IsEmpty() && materialPriceCell.IsEmpty())
+                    continue;
 
-                if (!Guid.TryParse(idCell, out var lineId))
+                if (name.Length == 0)
                 {
-                    errors.Add($"Baris {row}: kolom ID kosong atau rusak — jangan ubah/hapus kolom ID di template.");
+                    errors.Add($"Baris {row}: Nama Item tidak boleh kosong.");
+                    continue;
+                }
+
+                if (volumeCell.IsEmpty() || !volumeCell.TryGetValue<decimal>(out var volume) || volume <= 0)
+                {
+                    errors.Add($"Baris {row}: Volume kosong, bukan angka, atau tidak lebih dari 0.");
+                    continue;
+                }
+
+                if (unit.Length == 0)
+                {
+                    errors.Add($"Baris {row}: Satuan tidak boleh kosong.");
                     continue;
                 }
 
@@ -125,7 +118,11 @@ public static class VendorRabExcelService
 
                 lines.Add(new CreateVendorRabSubmissionLineRequest
                 {
-                    VendorRabRequestLineId = lineId,
+                    WorkItemName = workItemName.Length > 0 ? workItemName : null,
+                    Name = name,
+                    Spesifikasi = spec.Length > 0 ? spec : null,
+                    Volume = volume,
+                    Unit = unit,
                     ServicePrice = servicePrice,
                     MaterialPrice = materialPrice,
                 });
@@ -133,7 +130,7 @@ public static class VendorRabExcelService
         }
 
         if (errors.Count > 0) return (null, errors);
-        if (lines.Count == 0) return (null, ["File tidak berisi baris harga apa pun."]);
+        if (lines.Count == 0) return (null, ["File tidak berisi baris apa pun."]);
 
         return (new CreateVendorRabSubmissionRequest { Lines = lines }, []);
     }

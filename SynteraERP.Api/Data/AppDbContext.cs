@@ -316,6 +316,11 @@ public class AppDbContext : DbContext
              .WithMany(g => g.WorkItems)
              .HasForeignKey(w => w.GroupId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(w => w.SourceVendorRabRequest)
+             .WithMany(r => r.ApprovedWorkItems)
+             .HasForeignKey(w => w.SourceVendorRabRequestId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
         });
 
         b.Entity<QuotationWorkDetail>(e =>
@@ -808,11 +813,6 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(x => x.SupplierId)
              .OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.ApprovedWorkItem)
-             .WithMany()
-             .HasForeignKey(x => x.ApprovedWorkItemId)
-             .OnDelete(DeleteBehavior.SetNull)
-             .IsRequired(false);
         });
 
         b.Entity<VendorRabRequestLine>(e =>
@@ -844,21 +844,30 @@ public class AppDbContext : DbContext
 
         b.Entity<VendorRabSubmissionLine>(e =>
         {
-            // 1 harga per baris request per submission — mencegah vendor/duplicate-request
-            // mengirim 2 harga berbeda untuk baris yang sama dalam 1 percobaan.
-            e.HasIndex(x => new { x.VendorRabSubmissionId, x.VendorRabRequestLineId }).IsUnique();
+            // Nama/Spesifikasi/Volume/Unit sekarang milik baris ini sendiri (bukan lagi dikunci
+            // 1:1 ke VendorRabRequestLine) — vendor bebas tambah/hapus baris, jadi unique index
+            // lama (VendorRabSubmissionId, VendorRabRequestLineId) sudah tidak relevan lagi.
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.WorkItemName).HasMaxLength(200);
+            e.Property(x => x.Unit).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Volume).HasPrecision(12, 4);
             e.Property(x => x.ServicePrice).HasPrecision(18, 2);
             e.Property(x => x.MaterialPrice).HasPrecision(18, 2);
             e.Property(x => x.ServiceMarkup).HasPrecision(18, 2);
             e.Property(x => x.MaterialMarkup).HasPrecision(18, 2);
+            e.Property(x => x.NegotiationNote).HasMaxLength(1000);
             e.HasOne(x => x.VendorRabSubmission)
              .WithMany(s => s.Lines)
              .HasForeignKey(x => x.VendorRabSubmissionId)
              .OnDelete(DeleteBehavior.Cascade);
+            // SetNull ditolak SQL Server di sini (multiple cascade paths lewat
+            // VendorRabSubmission -> VendorRabRequest -> Lines) — dikonfirmasi lewat percobaan
+            // apply migration ke scratch DB, bukan cuma dibaca dari kode (rule #3 CLAUDE.md).
             e.HasOne(x => x.VendorRabRequestLine)
              .WithMany()
              .HasForeignKey(x => x.VendorRabRequestLineId)
-             .OnDelete(DeleteBehavior.Restrict);
+             .OnDelete(DeleteBehavior.Restrict)
+             .IsRequired(false);
         });
 
         // ─── StockTransaction ─────────────────────────────────────────────────

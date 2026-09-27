@@ -65,7 +65,8 @@ public class VendorRabRequestService : IVendorRabRequestService
             .AsNoTracking()
             .Include(r => r.Supplier)
             .Include(r => r.Lines)
-            .Include(r => r.Submissions)
+            .Include(r => r.Submissions).ThenInclude(s => s.Lines)
+            .Include(r => r.ApprovedWorkItems)
             .Where(r => r.QuotationGroupId == quotationGroupId)
             .OrderByDescending(r => r.CreatedAt)
             .ToListAsync();
@@ -85,7 +86,8 @@ public class VendorRabRequestService : IVendorRabRequestService
             .AsNoTracking()
             .Include(r => r.Supplier)
             .Include(r => r.Lines)
-            .Include(r => r.Submissions)
+            .Include(r => r.Submissions).ThenInclude(s => s.Lines)
+            .Include(r => r.ApprovedWorkItems)
             .Where(r => r.SupplierId == supplierId)
             .OrderByDescending(r => r.CreatedAt)
             .ToListAsync();
@@ -107,7 +109,8 @@ public class VendorRabRequestService : IVendorRabRequestService
             .AsNoTracking()
             .Include(r => r.Supplier)
             .Include(r => r.Lines)
-            .Include(r => r.Submissions)
+            .Include(r => r.Submissions).ThenInclude(s => s.Lines)
+            .Include(r => r.ApprovedWorkItems)
             .FirstOrDefaultAsync(r => r.Id == requestId);
 
     private static VendorRabRequestDto ToDto(
@@ -121,7 +124,7 @@ public class VendorRabRequestService : IVendorRabRequestService
         Status = r.Status.ToString(),
         SentAt = r.SentAt,
         DueDate = r.DueDate,
-        ApprovedWorkItemId = r.ApprovedWorkItemId,
+        ApprovedWorkItemIds = r.ApprovedWorkItems.Select(w => w.Id).ToList(),
         Lines = r.Lines.OrderBy(l => l.SortOrder).Select(l => new VendorRabRequestLineDto
         {
             Id = l.Id,
@@ -137,6 +140,25 @@ public class VendorRabRequestService : IVendorRabRequestService
             AttemptNumber = s.AttemptNumber,
             Status = s.Status.ToString(),
             SubmittedAt = s.SubmittedAt,
+            Lines = s.Lines.OrderBy(l => l.SortOrder).Select(l => new VendorRabSubmissionLineDto
+            {
+                Id = l.Id,
+                VendorRabRequestLineId = l.VendorRabRequestLineId,
+                WorkItemName = l.WorkItemName,
+                Name = l.Name,
+                Spesifikasi = l.Spesifikasi,
+                Volume = l.Volume,
+                Unit = l.Unit,
+                SortOrder = l.SortOrder,
+                ServicePrice = l.ServicePrice,
+                MaterialPrice = l.MaterialPrice,
+                ServiceMarkup = l.ServiceMarkup,
+                MaterialMarkup = l.MaterialMarkup,
+                FinalServicePrice = l.ServicePrice + l.ServiceMarkup,
+                FinalMaterialPrice = l.MaterialPrice + l.MaterialMarkup,
+                TotalHarga = l.Volume * (l.ServicePrice + l.ServiceMarkup + l.MaterialPrice + l.MaterialMarkup),
+                NegotiationNote = l.NegotiationNote,
+            }).ToList(),
         }).ToList(),
     };
 }

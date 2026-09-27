@@ -41,27 +41,26 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
             throw new InvalidOperationException(
                 "Masih ada submission yang menunggu review atau sudah disetujui untuk permintaan ini.");
 
-        // Reject-all: baris yang dikirim harus PERSIS sama dengan seluruh baris yang diminta —
-        // tidak boleh ada yang hilang, tidak dikenal, atau duplikat (prinsip sama seperti
-        // validasi import Excel di bagian 5 dokumen rencana, supaya form web dan Excel konsisten).
-        var requestLineIds = rabRequest.Lines.Select(l => l.Id).ToHashSet();
-        var submittedLineIds = request.Lines.Select(l => l.VendorRabRequestLineId).ToList();
+        // Vendor menyusun RAB-nya sendiri dari nol sekarang — bukan lagi isi-harga-ke-baris-
+        // yang-diminta, jadi tidak ada lagi pencocokan terhadap rabRequest.Lines di sini.
+        // Validasi standar saja, sama untuk jalur form web maupun Excel (ParseSubmission sudah
+        // menolak per-baris duluan di jalur Excel; ini jaring pengaman terakhir yang berlaku sama
+        // untuk kedua jalur).
+        if (request.Lines.Count == 0)
+            throw new InvalidOperationException("Submission harus punya minimal 1 baris.");
 
-        var unknown = submittedLineIds.Where(id => !requestLineIds.Contains(id)).ToList();
-        if (unknown.Count > 0)
-            throw new InvalidOperationException(
-                $"Ada {unknown.Count} baris yang tidak dikenal (bukan bagian dari permintaan RAB ini).");
+        var emptyNameCount = request.Lines.Count(l => string.IsNullOrWhiteSpace(l.Name));
+        if (emptyNameCount > 0)
+            throw new InvalidOperationException($"Ada {emptyNameCount} baris dengan Nama Item kosong.");
 
-        var duplicates = submittedLineIds.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-        if (duplicates.Count > 0)
-            throw new InvalidOperationException("Ada baris yang dikirim lebih dari sekali dalam 1 submission.");
+        var emptyUnitCount = request.Lines.Count(l => string.IsNullOrWhiteSpace(l.Unit));
+        if (emptyUnitCount > 0)
+            throw new InvalidOperationException($"Ada {emptyUnitCount} baris dengan Satuan kosong.");
 
-        var missing = requestLineIds.Except(submittedLineIds).ToList();
-        if (missing.Count > 0)
-            throw new InvalidOperationException(
-                $"Ada {missing.Count} baris yang belum diisi harganya. Semua baris permintaan RAB harus diisi.");
+        var badVolumeCount = request.Lines.Count(l => l.Volume <= 0);
+        if (badVolumeCount > 0)
+            throw new InvalidOperationException($"Ada {badVolumeCount} baris dengan Volume tidak lebih dari 0.");
 
-        // Sama seperti jalur Excel (VendorRabExcelService) — harga satuan tidak boleh negatif.
         var negativeCount = request.Lines.Count(l => l.ServicePrice < 0 || l.MaterialPrice < 0);
         if (negativeCount > 0)
             throw new InvalidOperationException(
@@ -79,10 +78,15 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         };
         _db.VendorRabSubmissions.Add(submission);
 
-        var lines = request.Lines.Select(l => new VendorRabSubmissionLine
+        var lines = request.Lines.Select((l, index) => new VendorRabSubmissionLine
         {
             VendorRabSubmissionId = submission.Id,
-            VendorRabRequestLineId = l.VendorRabRequestLineId,
+            WorkItemName = l.WorkItemName,
+            Name = l.Name,
+            Spesifikasi = l.Spesifikasi,
+            Volume = l.Volume,
+            Unit = l.Unit,
+            SortOrder = index,
             ServicePrice = l.ServicePrice,
             MaterialPrice = l.MaterialPrice,
             ServiceMarkup = 0,
@@ -123,10 +127,10 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         return true;
     }
 
-    public async Task<Guid> ApproveAsync(Guid submissionId, Guid approvedByUserId)
+    public async Task<List<Guid>> ApproveAsync(Guid submissionId, Guid approvedByUserId)
     {
         var submission = await _db.VendorRabSubmissions
-            .Include(s => s.Lines).ThenInclude(l => l.VendorRabRequestLine)
+            .Include(s => s.Lines)
             .Include(s => s.VendorRabRequest)
             .FirstOrDefaultAsync(s => s.Id == submissionId)
             ?? throw new KeyNotFoundException("Submission tidak ditemukan.");
@@ -137,16 +141,18 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         var applyRequest = new ApplyVendorRabSubmissionRequest
         {
             QuotationGroupId = submission.VendorRabRequest.QuotationGroupId,
-            WorkItemName = submission.VendorRabRequest.Name,
-            Lines = submission.Lines.Select(l => new ApplyVendorRabSubmissionLine
+            SourceVendorRabRequestId = submission.VendorRabRequestId,
+            DefaultWorkItemName = submission.VendorRabRequest.Name,
+            Lines = submission.Lines.OrderBy(l => l.SortOrder).Select(l => new ApplyVendorRabSubmissionLine
             {
-                Name = l.VendorRabRequestLine.Name,
-                Spesifikasi = l.VendorRabRequestLine.Spesifikasi,
-                Volume = l.VendorRabRequestLine.Volume,
-                Unit = l.VendorRabRequestLine.Unit,
+                WorkItemName = l.WorkItemName,
+                Name = l.Name,
+                Spesifikasi = l.Spesifikasi,
+                Volume = l.Volume,
+                Unit = l.Unit,
                 FinalServicePrice = l.ServicePrice + l.ServiceMarkup,
                 FinalMaterialPrice = l.MaterialPrice + l.MaterialMarkup,
-                SortOrder = l.VendorRabRequestLine.SortOrder,
+                SortOrder = l.SortOrder,
             }).ToList(),
         };
 
@@ -157,19 +163,22 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         // PendingReview" kalau salah satu langkah gagal.
         await using var tx = await _db.Database.BeginTransactionAsync();
 
-        var workItemDto = await _quotationSvc.ApplyApprovedVendorRabSubmissionAsync(applyRequest);
+        var workItemDtos = await _quotationSvc.ApplyApprovedVendorRabSubmissionAsync(applyRequest);
 
         submission.Status = VendorRabSubmissionStatus.Approved;
         submission.ReviewedBy = approvedByUserId;
         submission.ReviewedAt = DateTimeOffset.UtcNow;
 
         submission.VendorRabRequest.Status = VendorRabRequestStatus.Approved;
-        submission.VendorRabRequest.ApprovedWorkItemId = workItemDto.Id;
+        // Jejak WorkItem hasil approval ada di QuotationWorkItem.SourceVendorRabRequestId sendiri
+        // (ditulis oleh ApplyApprovedVendorRabSubmissionAsync) — tidak ada lagi field di
+        // VendorRabRequest yang perlu di-set di sini, karena approval 1 submission sekarang bisa
+        // fan-out jadi banyak WorkItem, bukan 1.
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        return workItemDto.Id;
+        return workItemDtos.Select(w => w.Id).ToList();
     }
 
     public async Task<bool> RejectAsync(Guid submissionId, Guid rejectedByUserId, string? reason)
@@ -191,10 +200,53 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         return true;
     }
 
+    public async Task<bool> RequestRevisionAsync(
+        Guid submissionId, List<(Guid lineId, string note)> flaggedLines, Guid requestedByUserId)
+    {
+        var submission = await _db.VendorRabSubmissions
+            .Include(s => s.Lines)
+            .FirstOrDefaultAsync(s => s.Id == submissionId);
+        if (submission is null) return false;
+
+        if (submission.Status != VendorRabSubmissionStatus.PendingReview)
+            throw new InvalidOperationException("Submission ini sudah diputuskan sebelumnya (bukan PendingReview).");
+
+        if (flaggedLines.Count == 0)
+            throw new InvalidOperationException("Pilih minimal 1 baris untuk diminta revisi.");
+
+        var lineIds = submission.Lines.Select(l => l.Id).ToHashSet();
+        var unknown = flaggedLines.Select(f => f.lineId).Where(id => !lineIds.Contains(id)).ToList();
+        if (unknown.Count > 0)
+            throw new InvalidOperationException(
+                $"Ada {unknown.Count} baris yang tidak dikenal (bukan bagian dari submission ini).");
+
+        var emptyNoteCount = flaggedLines.Count(f => string.IsNullOrWhiteSpace(f.note));
+        if (emptyNoteCount > 0)
+            throw new InvalidOperationException($"Ada {emptyNoteCount} baris yang ditandai tanpa catatan revisi.");
+
+        // Tidak membuat attempt/row baru di sini — cuma menandai baris yang perlu diubah vendor.
+        // Baris yang TIDAK di-flag di-clear NegotiationNote-nya (kalau ada sisa dari permintaan
+        // revisi sebelumnya) supaya vendor tidak salah kira baris itu masih perlu diubah.
+        foreach (var line in submission.Lines)
+        {
+            var flagged = flaggedLines.FirstOrDefault(f => f.lineId == line.Id);
+            line.NegotiationNote = flagged.lineId == line.Id ? flagged.note : null;
+        }
+
+        submission.Status = VendorRabSubmissionStatus.RevisionRequested;
+        submission.ReviewedBy = requestedByUserId;
+        submission.ReviewedAt = DateTimeOffset.UtcNow;
+
+        // Request TIDAK berubah status (tetap Sent) — vendor boleh submit ulang sebagai attempt
+        // berikutnya, persis seperti alur Reject (bukan clone-forward attempt baru di sini).
+        await _db.SaveChangesAsync();
+        return true;
+    }
+
     private async Task<VendorRabSubmission?> LoadDetailAsync(Guid submissionId) =>
         await _db.VendorRabSubmissions
             .AsNoTracking()
-            .Include(s => s.Lines).ThenInclude(l => l.VendorRabRequestLine)
+            .Include(s => s.Lines)
             .FirstOrDefaultAsync(s => s.Id == submissionId);
 
     private static VendorRabSubmissionDto ToDto(VendorRabSubmission s) => new()
@@ -207,22 +259,24 @@ public class VendorRabSubmissionService : IVendorRabSubmissionService
         ReviewedBy = s.ReviewedBy,
         ReviewedAt = s.ReviewedAt,
         RejectionReason = s.RejectionReason,
-        Lines = s.Lines.OrderBy(l => l.VendorRabRequestLine.SortOrder).Select(l => new VendorRabSubmissionLineDto
+        Lines = s.Lines.OrderBy(l => l.SortOrder).Select(l => new VendorRabSubmissionLineDto
         {
             Id = l.Id,
             VendorRabRequestLineId = l.VendorRabRequestLineId,
-            Name = l.VendorRabRequestLine.Name,
-            Spesifikasi = l.VendorRabRequestLine.Spesifikasi,
-            Volume = l.VendorRabRequestLine.Volume,
-            Unit = l.VendorRabRequestLine.Unit,
+            WorkItemName = l.WorkItemName,
+            Name = l.Name,
+            Spesifikasi = l.Spesifikasi,
+            Volume = l.Volume,
+            Unit = l.Unit,
+            SortOrder = l.SortOrder,
             ServicePrice = l.ServicePrice,
             MaterialPrice = l.MaterialPrice,
             ServiceMarkup = l.ServiceMarkup,
             MaterialMarkup = l.MaterialMarkup,
             FinalServicePrice = l.ServicePrice + l.ServiceMarkup,
             FinalMaterialPrice = l.MaterialPrice + l.MaterialMarkup,
-            TotalHarga = l.VendorRabRequestLine.Volume
-                * (l.ServicePrice + l.ServiceMarkup + l.MaterialPrice + l.MaterialMarkup),
+            TotalHarga = l.Volume * (l.ServicePrice + l.ServiceMarkup + l.MaterialPrice + l.MaterialMarkup),
+            NegotiationNote = l.NegotiationNote,
         }).ToList(),
     };
 }

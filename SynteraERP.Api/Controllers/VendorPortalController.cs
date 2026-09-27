@@ -72,7 +72,7 @@ public class VendorPortalController : ControllerBase
         var request = await _requestSvc.GetForVendorAsync(id, supplierId);
         if (request is null) return NotFound(ApiResponse.Fail("Permintaan RAB tidak ditemukan."));
 
-        var bytes = VendorRabExcelService.GenerateTemplate(request);
+        var bytes = VendorRabExcelService.GenerateTemplate();
         return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             $"RAB-{request.Name}-{request.Id}.xlsx");
     }

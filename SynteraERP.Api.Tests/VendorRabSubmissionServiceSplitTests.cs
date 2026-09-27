@@ -88,8 +88,10 @@ public class VendorRabSubmissionServiceSplitTests : IClassFixture<WebApplication
         });
         var groupId = quotation.Tabs[0].Groups[0].Id;
 
-        // ── 2. VendorRabRequest + 1 Line, dibangun langsung (bypass endpoint create/send —
-        //      di luar scope test ini) + 1 SupplierPortalUser sebagai pengirim submission ──
+        // ── 2. VendorRabRequest, dibangun langsung (bypass endpoint create/send — di luar scope
+        //      test ini) + 1 SupplierPortalUser sebagai pengirim submission. Tidak ada
+        //      VendorRabRequestLine lagi — vendor menyusun baris (Nama/Volume/Satuan) sendiri
+        //      langsung di VendorRabSubmissionLine (lihat perubahan arah task RAB Sep 2026). ──
         var portalUser = new SupplierPortalUser
         {
             SupplierId = SeededSupplierId,
@@ -107,17 +109,12 @@ public class VendorRabSubmissionServiceSplitTests : IClassFixture<WebApplication
             Status = VendorRabRequestStatus.Sent,
             SentAt = DateTimeOffset.UtcNow,
         };
-        var requestLine = new VendorRabRequestLine
-        {
-            VendorRabRequest = rabRequest,
-            Name = "Cor Beton", Volume = 10, Unit = "m3", SortOrder = 0,
-        };
-        rabRequest.Lines.Add(requestLine);
         db.VendorRabRequests.Add(rabRequest);
         await db.SaveChangesAsync();
 
         // ── 3. Vendor submit: ServicePrice 300rb + MaterialPrice 200rb per unit (BUKAN 1 angka
-        //      blended — ini inti Opsi B) ──
+        //      blended — ini inti Opsi B). WorkItemName dikosongkan supaya masuk kelompok default
+        //      (nama request) saat fan-out di approve. ──
         var submission = await vendorSubmissionSvc.CreateAsync(
             rabRequest.Id, SeededSupplierId, portalUser.Id,
             new CreateVendorRabSubmissionRequest
@@ -126,7 +123,9 @@ public class VendorRabSubmissionServiceSplitTests : IClassFixture<WebApplication
                 [
                     new CreateVendorRabSubmissionLineRequest
                     {
-                        VendorRabRequestLineId = requestLine.Id,
+                        Name = "Cor Beton",
+                        Volume = 10,
+                        Unit = "m3",
                         ServicePrice = 300_000,
                         MaterialPrice = 200_000,
                     },
@@ -143,8 +142,11 @@ public class VendorRabSubmissionServiceSplitTests : IClassFixture<WebApplication
             markupOk.Should().BeTrue();
 
             // ── 5. Approve — FinalServicePrice=350rb, FinalMaterialPrice=220rb harus masuk
-            //      QuotationWorkDetail.ServicePrice/MaterialPrice apa adanya ──
-            var workItemId = await vendorSubmissionSvc.ApproveAsync(submission.Id, SeededAdminId);
+            //      QuotationWorkDetail.ServicePrice/MaterialPrice apa adanya. Satu-satunya baris
+            //      tidak punya WorkItemName sendiri, jadi fan-out menghasilkan tepat 1 WorkItem
+            //      (kelompok default). ──
+            var workItemIds = await vendorSubmissionSvc.ApproveAsync(submission.Id, SeededAdminId);
+            var workItemId = workItemIds.Should().ContainSingle().Subject;
 
             var reloaded = await quotationSvc.GetByIdAsync(quotation.Id);
             var workItem = reloaded!.Tabs[0].Groups[0].WorkItems.Should().ContainSingle().Subject;
@@ -164,18 +166,19 @@ public class VendorRabSubmissionServiceSplitTests : IClassFixture<WebApplication
         }
         finally
         {
-            // Cleanup, urutan wajib: VendorRabSubmissionLine.VendorRabRequestLineId FK adalah
-            // Restrict (bukan Cascade), jadi Submission+Lines harus dihapus manual DULU sebelum
-            // VendorRabRequest (yang baru bisa cascade-hapus Lines-nya sendiri dengan aman) ->
-            // SupplierPortalUser -> Quotation (cascade Tabs/Groups/WorkItems/WorkDetails).
+            // Cleanup: Submission+Lines dulu (VendorRabSubmission -> VendorRabRequest adalah
+            // Cascade, tapi dihapus manual di sini untuk kejelasan) baru VendorRabRequest ->
+            // SupplierPortalUser -> Quotation (cascade Tabs/Groups/WorkItems/WorkDetails). Tidak
+            // ada lagi VendorRabRequestLine yang perlu diurus terpisah (submission line sekarang
+            // memegang datanya sendiri, tidak lagi FK ke VendorRabRequestLine).
             var submissionIds = await db.VendorRabSubmissions
                 .Where(s => s.VendorRabRequestId == rabRequest.Id).Select(s => s.Id).ToListAsync();
             await db.VendorRabSubmissionLines.Where(l => submissionIds.Contains(l.VendorRabSubmissionId)).ExecuteDeleteAsync();
             await db.VendorRabSubmissions.Where(s => s.VendorRabRequestId == rabRequest.Id).ExecuteDeleteAsync();
 
             // ExecuteDeleteAsync bypasses the change tracker (bulk SQL DELETE) — clear it so the
-            // tracked VendorRabRequestLine/VendorRabRequest below don't see stale in-memory
-            // references to the SubmissionLines that were just deleted server-side.
+            // tracked VendorRabRequest below doesn't see stale in-memory references to the
+            // Submissions/Lines that were just deleted server-side.
             db.ChangeTracker.Clear();
 
             var toDeleteRequest = await db.VendorRabRequests.FirstOrDefaultAsync(r => r.Id == rabRequest.Id);
