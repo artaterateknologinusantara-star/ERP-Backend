@@ -339,4 +339,61 @@ public class InvoiceDpValidationFixesTests : IClassFixture<WebApplicationFactory
         });
         applied!.Paid.Should().Be(2_000_000);
     }
+
+    // Bug ditemukan 27 Sep 2026 (investigasi manual saat mengerjakan backlog "double-invoice"
+    // untuk SalesOrder yang sama): cabang CreateAsync untuk SO TANPA SalesOrderItems ("jasa
+    // murni") sebelumnya melewati seluruh cap-check yang berlaku untuk cabang ber-item -- SO bisa
+    // di-invoice berkali-kali tanpa penolakan apa pun selama request.Amount tidak divalidasi
+    // sendiri di sisi caller. Test ini mengonfirmasi cap `totalInvoiced + request.Amount >
+    // salesOrder.Total` sekarang berlaku juga untuk cabang tanpa item, sama seperti cabang ber-item.
+    [Fact]
+    public async Task CreateAsync_rejects_second_invoice_over_SalesOrder_Total_when_SO_has_no_items()
+    {
+        var services = CreateScratchServices();
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.MigrateAsync();
+        await CustomerSeeder.SeedAsync(db);
+        await NumberingConfigSeeder.SeedAsync(db);
+
+        var invoiceSvc = scope.ServiceProvider.GetRequiredService<IInvoiceService>();
+
+        var so = new SalesOrder
+        {
+            Id = Guid.NewGuid(),
+            No = "TST-SO-NOITEMS-" + Guid.NewGuid().ToString("N")[..6],
+            CustomerId = SeededCustomerId,
+            ProjectName = "Jasa Murni Tanpa Item",
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            SalesId = SeededAdminId,
+            Status = SalesOrderStatus.Open,
+            Total = 5_000_000,
+        };
+        db.SalesOrders.Add(so);
+        await db.SaveChangesAsync();
+
+        // Invoice pertama, pas di Total -- harus sukses (perilaku lama, tidak berubah).
+        var firstInvoice = await invoiceSvc.CreateAsync(new CreateInvoiceRequest
+        {
+            CustomerId = so.CustomerId,
+            SalesOrderId = so.Id,
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+            Amount = 5_000_000,
+        });
+        firstInvoice.Amount.Should().Be(5_000_000);
+
+        // Invoice kedua untuk SO yang sama -- SEBELUM fix ini, request ini sukses tanpa penolakan
+        // apa pun (bug). Sekarang harus ditolak, sama seperti cabang ber-item.
+        var actSecondInvoice = async () => await invoiceSvc.CreateAsync(new CreateInvoiceRequest
+        {
+            CustomerId = so.CustomerId,
+            SalesOrderId = so.Id,
+            Date = DateOnly.FromDateTime(DateTime.UtcNow),
+            DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+            Amount = 1_000_000,
+        });
+        await actSecondInvoice.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*melebihi Total Sales Order*");
+    }
 }

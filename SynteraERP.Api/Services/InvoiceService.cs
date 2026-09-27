@@ -230,6 +230,30 @@ public class InvoiceService : IInvoiceService
 
                 inv.Amount = computedAmount;
             }
+            else
+            {
+                // SO jasa murni (tanpa SalesOrderItems sama sekali, mis. proyek jasa tanpa
+                // material fisik) -- tidak ada computedAmount dari item untuk dijadikan source of
+                // truth, jadi request.Amount dipakai apa adanya (perilaku lama, TIDAK diubah).
+                // Tapi cap yang sama seperti cabang ber-item di atas WAJIB tetap berlaku di sini --
+                // sebelum perbaikan ini, cabang soItems-kosong ini melewati SELURUH cap-check,
+                // sehingga SO jasa murni bisa di-invoice berkali-kali tanpa penolakan apa pun
+                // (ditemukan lewat investigasi manual, bukan lewat test yang gagal -- tidak ada
+                // test existing yang menyentuh skenario ini).
+                var salesOrder = await _db.SalesOrders.FindAsync(request.SalesOrderId.Value)
+                    ?? throw new InvalidOperationException("Sales Order tidak ditemukan.");
+
+                var totalInvoiced = await _db.Invoices
+                    .Where(i => i.SalesOrderId == request.SalesOrderId.Value && !i.IsDeleted)
+                    .SumAsync(i => (decimal?)i.Amount) ?? 0;
+
+                var projectedInvoiceTotal = totalInvoiced + request.Amount;
+                if (projectedInvoiceTotal > salesOrder.Total)
+                    throw new InvalidOperationException(
+                        $"Total invoice akan menjadi Rp {projectedInvoiceTotal:N0}, melebihi Total Sales Order " +
+                        $"Rp {salesOrder.Total:N0} sebesar Rp {(projectedInvoiceTotal - salesOrder.Total):N0}. " +
+                        $"(Sudah diinvoice Rp {totalInvoiced:N0}, invoice ini Rp {request.Amount:N0}.)");
+            }
         }
 
         // Posting GL: Debit Piutang Usaha = Total, Kredit Pendapatan Penjualan = Subtotal, Kredit
