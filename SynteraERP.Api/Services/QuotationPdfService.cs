@@ -279,12 +279,10 @@ public class QuotationPdfService
 
                 foreach (var g in groups)
                 {
-                    // Same 3-source formula as QuotationService.RecalcTotals (FinalSellingPrice +
-                    // QuotationItem + WorkDetail) so this per-category number reconciles with the
-                    // Subtotal/PPN/Grand Total block below, instead of showing FinalSellingPrice
-                    // alone while the totals underneath already include Item/WorkDetail.
-                    decimal groupTotal = (g.FinalSellingPrice ?? 0)
-                        + g.Items.Sum(i => i.GrandLine)
+                    // Same 2-source formula as QuotationService.RecalcTotals (QuotationItem +
+                    // WorkDetail) so this per-category number reconciles with the Subtotal/PPN/
+                    // Grand Total block below.
+                    decimal groupTotal = g.Items.Sum(i => i.GrandLine)
                         + g.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => MoneyMath.Round(d.TotalHarga));
                     decimal volume = g.RecapVolume ?? 1;
                     string unit = string.IsNullOrWhiteSpace(g.RecapUnit) ? "Ls" : g.RecapUnit;

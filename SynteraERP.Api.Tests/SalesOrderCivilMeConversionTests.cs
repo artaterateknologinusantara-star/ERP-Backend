@@ -150,10 +150,13 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
         }
     }
 
-    // Skenario (b): campuran QuotationItem + WorkDetail (+ FinalSellingPrice) dalam satu Quotation
-    // — reproduksi pola nyata yang ditemukan di scratch DB (Q.SYN-26.0333).
+    // Skenario (b): campuran QuotationItem + WorkDetail dalam satu Quotation — reproduksi pola
+    // nyata yang ditemukan di scratch DB (Q.SYN-26.0333). FinalSellingPrice sengaja tidak lagi
+    // dipakai di sini (dihapus total dari schema, lihat
+    // MigrateFinalSellingPriceToWorkDetailAndDropSubconFields) — WorkDetail sendiri sudah cukup
+    // untuk menutupi skenario "lump-sum non-Item" yang jadi inti test ini.
     [Fact]
-    public async Task CivilMe_mixed_Item_and_WorkDetail_and_FinalSellingPrice_converts_to_SO_with_matching_total()
+    public async Task CivilMe_mixed_Item_and_WorkDetail_converts_to_SO_with_matching_total()
     {
         var services = CreateScratchServices();
         using var scope = services.CreateScope();
@@ -185,7 +188,6 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
                         new SaveQuotationGroupRequest
                         {
                             Name = "Group 1", SortOrder = 0,
-                            FinalSellingPrice = 2_000_000,
                             Items =
                             [
                                 new SaveQuotationItemRequest
@@ -218,14 +220,14 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
         try
         {
             // Material = 15.000.000 (item) + 16*200.000 (WD) = 18.200.000
-            // Service  = 2.000.000 (FSP) + 0 (item service) + 16*300.000 (WD) = 6.800.000
-            // Subtotal = 25.000.000, PPN 11% = 2.750.000, GrandTotal = 27.750.000
-            quotation.GrandTotal.Should().Be(27_750_000);
+            // Service  = 0 (item service) + 16*300.000 (WD) = 4.800.000
+            // Subtotal = 23.000.000, PPN 11% = 2.530.000, GrandTotal = 25.530.000
+            quotation.GrandTotal.Should().Be(25_530_000);
 
             await quotationSvc.UpdateStatusAsync(quotation.Id, "Disetujui");
             var so = await salesOrderSvc.CreateFromQuotationAsync(quotation.Id, SeededAdminId);
 
-            so.Items.Should().HaveCount(2); // 1 QuotationItem + 1 lump-sum (FSP+WD)
+            so.Items.Should().HaveCount(2); // 1 QuotationItem + 1 lump-sum (WorkDetail only now)
             so.GrandTotal.Should().Be(quotation.GrandTotal);
 
             var soEntity = await db.SalesOrders.FirstAsync(x => x.Id == so.Id);

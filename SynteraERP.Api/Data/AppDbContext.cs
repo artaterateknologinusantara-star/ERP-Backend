@@ -262,16 +262,10 @@ public class AppDbContext : DbContext
             e.Property(g => g.Name).HasMaxLength(200).IsRequired();
             e.Property(g => g.RecapVolume).HasPrecision(12, 4);
             e.Property(g => g.RecapUnit).HasMaxLength(20);
-            e.Property(g => g.FinalSubconCost).HasPrecision(18, 2);
-            e.Property(g => g.FinalSellingPrice).HasPrecision(18, 2);
             e.HasOne(g => g.Tab)
              .WithMany(t => t.Groups)
              .HasForeignKey(g => g.TabId)
              .OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(g => g.Subcontractor)
-             .WithMany()
-             .HasForeignKey(g => g.SubcontractorId)
-             .OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<QuotationItem>(e =>

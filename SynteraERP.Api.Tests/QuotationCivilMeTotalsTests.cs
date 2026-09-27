@@ -13,12 +13,14 @@ using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Tests;
 
-// Civil & ME Total kategori harus menjumlah 3 sumber: FinalSellingPrice (Subkontraktor SOW) +
-// QuotationItem (equipment/material, sama seperti mode standard) + QuotationWorkDetail/BOQ
-// (TotalHarga). Sebelum fix ini, RecalcTotals cuma sum FinalSellingPrice, dan UpdateAsync/
-// DuplicateAsync/CreateRevisionAsync tidak nge-Include WorkItems sama sekali (jadi walau
-// formula dibenerin, WorkDetail tetap tidak ke-hitung di path yang paling sering dipakai —
-// "Submit Penawaran" pada draft yang sudah punya isi RAB/BQ).
+// Civil & ME Total kategori harus menjumlah 2 sumber: QuotationItem (equipment/material, sama
+// seperti mode standard) + QuotationWorkDetail/BOQ (TotalHarga). Sebelum fix ini, RecalcTotals
+// cuma sum FinalSellingPrice, dan UpdateAsync/DuplicateAsync/CreateRevisionAsync tidak
+// nge-Include WorkItems sama sekali (jadi walau formula dibenerin, WorkDetail tetap tidak
+// ke-hitung di path yang paling sering dipakai — "Submit Penawaran" pada draft yang sudah punya
+// isi RAB/BQ). FinalSellingPrice (dan QuotationGroup.SubcontractorId/FinalSubconCost) kemudian
+// dihapus total dari formula dan dari schema — lihat migration
+// MigrateFinalSellingPriceToWorkDetailAndDropSubconFields.
 public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private static readonly Guid SeededAdminId = new("20000000-0000-0000-0000-000000000001");
@@ -51,7 +53,7 @@ public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<P
     }
 
     [Fact]
-    public async Task CivilMe_group_total_sums_FinalSellingPrice_plus_Item_plus_WorkDetail()
+    public async Task CivilMe_group_total_sums_Item_plus_WorkDetail()
     {
         var services = CreateScratchServices();
         using var scope = services.CreateScope();
@@ -63,7 +65,7 @@ public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<P
 
         var quotationSvc = scope.ServiceProvider.GetRequiredService<IQuotationService>();
 
-        // ── 1. Quotation Civil ME, 1 grup: FinalSellingPrice (Subkontraktor SOW) + 1 QuotationItem ──
+        // ── 1. Quotation Civil ME, 1 grup: 1 QuotationItem (WorkDetail ditambahkan di langkah 2) ──
         var quotation = await quotationSvc.CreateAsync(new SaveQuotationRequest
         {
             CustomerId = SeededCustomerId,
@@ -86,7 +88,6 @@ public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<P
                         {
                             Name = "Pekerjaan Campuran",
                             SortOrder = 0,
-                            FinalSellingPrice = 10_000_000,
                             Items =
                             [
                                 new SaveQuotationItemRequest
@@ -138,7 +139,6 @@ public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<P
                             Id = groupId, // keep same Group.Id so WorkItems/WorkDetails survive
                             Name = "Pekerjaan Campuran",
                             SortOrder = 0,
-                            FinalSellingPrice = 10_000_000,
                             Items =
                             [
                                 new SaveQuotationItemRequest
@@ -155,14 +155,14 @@ public class QuotationCivilMeTotalsTests : IClassFixture<WebApplicationFactory<P
 
         // Expected: Material = Item.Qty*MaterialPrice + WorkDetail.Volume*MaterialPrice
         //                    = (2*50.000) + (5*80.000) = 100.000 + 400.000 = 500.000
-        //           Service  = FinalSellingPrice + Item.Qty*ServicePrice + WorkDetail.Volume*ServicePrice
-        //                    = 10.000.000 + (2*100.000) + (5*120.000) = 10.000.000 + 200.000 + 600.000 = 10.800.000
-        //           Subtotal = 11.300.000, PPN 11% = 1.243.000, GrandTotal = 12.543.000
+        //           Service  = Item.Qty*ServicePrice + WorkDetail.Volume*ServicePrice
+        //                    = (2*100.000) + (5*120.000) = 200.000 + 600.000 = 800.000
+        //           Subtotal = 1.300.000, PPN 11% = 143.000, GrandTotal = 1.443.000
         updated!.TotalMaterial.Should().Be(500_000);
-        updated.TotalService.Should().Be(10_800_000);
-        updated.TotalBeforeTax.Should().Be(11_300_000);
-        updated.TaxAmount.Should().Be(1_243_000);
-        updated.GrandTotal.Should().Be(12_543_000);
+        updated.TotalService.Should().Be(800_000);
+        updated.TotalBeforeTax.Should().Be(1_300_000);
+        updated.TaxAmount.Should().Be(143_000);
+        updated.GrandTotal.Should().Be(1_443_000);
 
         // Confirms the WorkDetail row survived the update (Include-fix) and is still attached
         // to the same Group rather than orphaned/lost.

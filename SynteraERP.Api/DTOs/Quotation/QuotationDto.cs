@@ -92,10 +92,6 @@ public class QuotationGroupDto
     public int SortOrder { get; set; }
     public decimal? RecapVolume { get; set; }
     public string? RecapUnit { get; set; }
-    public Guid? SubcontractorId { get; set; }
-    public string? SubcontractorName { get; set; }
-    public decimal? FinalSubconCost { get; set; }
-    public decimal? FinalSellingPrice { get; set; }
     public List<QuotationItemDto> Items { get; set; } = [];
     public List<QuotationWorkItemDto> WorkItems { get; set; } = [];
 }
@@ -203,9 +199,6 @@ public class SaveQuotationGroupRequest
     public int SortOrder { get; set; }
     public decimal? RecapVolume { get; set; }
     public string? RecapUnit { get; set; }
-    public Guid? SubcontractorId { get; set; }
-    public decimal? FinalSubconCost { get; set; }
-    public decimal? FinalSellingPrice { get; set; }
     public List<SaveQuotationItemRequest> Items { get; set; } = [];
 
     /// <summary>Null (field absent from the request body) means "leave this group's WorkItems

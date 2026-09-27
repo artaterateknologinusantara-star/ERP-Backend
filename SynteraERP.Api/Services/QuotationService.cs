@@ -68,7 +68,6 @@ public class QuotationService : IQuotationService
             .Include(x => x.Customer)
             .Include(x => x.Sales)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items).ThenInclude(i => i.ItemMaster)
-            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
             .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
@@ -228,9 +227,6 @@ public class QuotationService : IQuotationService
             group.SortOrder = incoming.SortOrder;
             group.RecapVolume = incoming.RecapVolume;
             group.RecapUnit = incoming.RecapUnit;
-            group.SubcontractorId = incoming.SubcontractorId;
-            group.FinalSubconCost = incoming.FinalSubconCost;
-            group.FinalSellingPrice = incoming.FinalSellingPrice;
 
             // Items have no children of their own (no attachment hangs off Item.Id) — a full
             // per-group replace is still the simplest correct approach for them.
@@ -407,9 +403,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     GroupId = Guid.Empty,
@@ -477,7 +470,7 @@ public class QuotationService : IQuotationService
         // reach SalesOrder in the first place.
         if (IsQuotationEmpty(quotation))
             throw new InvalidOperationException(
-                "Penawaran tidak bisa dikirim — belum ada baris Item, Detail Kerja, atau Harga Jual Subkontraktor.");
+                "Penawaran tidak bisa dikirim — belum ada baris Item atau Detail Kerja.");
 
         quotation.Status = QuotationStatus.Terkirim;
         quotation.SentAt = DateTimeOffset.UtcNow;
@@ -555,9 +548,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -625,7 +615,7 @@ public class QuotationService : IQuotationService
         // and approved anyway if this weren't checked again here — not just at SendAsync.
         if (IsQuotationEmpty(quotation))
             throw new InvalidOperationException(
-                "Penawaran tidak bisa disetujui — belum ada baris Item, Detail Kerja, atau Harga Jual Subkontraktor.");
+                "Penawaran tidak bisa disetujui — belum ada baris Item atau Detail Kerja.");
 
         quotation.Status = QuotationStatus.Disetujui;
         quotation.ApprovedAt = DateTimeOffset.UtcNow;
@@ -1076,9 +1066,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -1120,21 +1107,22 @@ public class QuotationService : IQuotationService
         var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
         if (q.IsCivilMeMode)
         {
-            // Civil & ME total is 3 sources added together: FinalSellingPrice (Subkontraktor SOW,
-            // harga jual ke customer — FinalSubconCost is cost-basis only, used for margin, never
-            // summed here), QuotationItem (equipment/material lines, same as standard mode — Qty *
-            // MaterialPrice goes to TotalMaterial, Qty * ServicePrice to TotalService), and
-            // QuotationWorkDetail/BOQ (Volume * MaterialPrice goes to TotalMaterial, Volume *
-            // ServicePrice to TotalService alongside FinalSellingPrice — same Jasa/Material split
-            // as QuotationItem, task #44).
+            // Civil & ME total is 2 sources added together: QuotationItem (equipment/material
+            // lines, same as standard mode — Qty * MaterialPrice goes to TotalMaterial, Qty *
+            // ServicePrice to TotalService), and QuotationWorkDetail/BOQ (Volume * MaterialPrice
+            // goes to TotalMaterial, Volume * ServicePrice to TotalService — same Jasa/Material
+            // split as QuotationItem, task #44). QuotationGroup.FinalSellingPrice (Subkontraktor
+            // SOW manual entry) was a 3rd source here until it was removed — see migration
+            // MigrateFinalSellingPriceToWorkDetailAndDropSubconFields, which folds any pre-existing
+            // FinalSellingPrice value into a real QuotationWorkDetail row so GrandTotal is
+            // unaffected by the removal.
             var civilMeItems = allGroups.SelectMany(g => g.Items).ToList();
             var allWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).ToList();
             q.TotalMaterial = MoneyMath.Round(
                 civilMeItems.Sum(i => i.Qty * i.MaterialPrice)
                 + allWorkDetails.Sum(d => d.Volume * d.MaterialPrice));
             q.TotalService = MoneyMath.Round(
-                allGroups.Sum(g => g.FinalSellingPrice ?? 0)
-                + civilMeItems.Sum(i => i.Qty * i.ServicePrice)
+                civilMeItems.Sum(i => i.Qty * i.ServicePrice)
                 + allWorkDetails.Sum(d => d.Volume * d.ServicePrice));
         }
         else
@@ -1153,19 +1141,19 @@ public class QuotationService : IQuotationService
     // Task #42: "kosong" is existence-based (does at least one row exist), NOT price-based —
     // Step-0 investigation found GrandTotal<=0 produces a false positive (a Quotation with real
     // rows and Discount=100% legitimately has GrandTotal=0 but is not empty), and a row priced at
-    // 0 still counts as content. Civil & ME mirrors RecalcTotals' 3-source definition (Group.
-    // FinalSellingPrice, QuotationItem, QuotationWorkDetail) so the two never drift apart. Shared
-    // by SendAsync and ApproveAsync — content can change between the two (UpdateAsync doesn't gate
-    // on Status), so both need the same check, not just one.
+    // 0 still counts as content. Civil & ME mirrors RecalcTotals' 2-source definition
+    // (QuotationItem, QuotationWorkDetail) so the two never drift apart. Shared by SendAsync and
+    // ApproveAsync — content can change between the two (UpdateAsync doesn't gate on Status), so
+    // both need the same check, not just one. FinalSellingPrice used to be a 3rd signal here —
+    // removed alongside the field itself (see MigrateFinalSellingPriceToWorkDetailAndDropSubconFields).
     private static bool IsQuotationEmpty(Models.Quotation q)
     {
         var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
         if (q.IsCivilMeMode)
         {
-            var hasFinalSellingPrice = allGroups.Any(g => (g.FinalSellingPrice ?? 0) > 0);
             var hasItems = allGroups.SelectMany(g => g.Items).Any();
             var hasWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).Any();
-            return !hasFinalSellingPrice && !hasItems && !hasWorkDetails;
+            return !hasItems && !hasWorkDetails;
         }
 
         return !allGroups.SelectMany(g => g.Items).Any();
@@ -1251,10 +1239,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                SubcontractorName = g.Subcontractor?.Name,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.OrderBy(i => i.SortOrder).Select(i => new QuotationItemDto
                 {
                     Id = i.Id,

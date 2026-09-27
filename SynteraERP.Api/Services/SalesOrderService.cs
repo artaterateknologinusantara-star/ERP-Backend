@@ -339,20 +339,24 @@ public class SalesOrderService : ISalesOrderService
             ItemMasterId = item.ItemMasterId,
         }).ToList();
 
-        // Civil & ME mode: RecalcTotals (QuotationService) folds QuotationGroup.FinalSellingPrice
-        // and QuotationWorkDetail.TotalHarga (BOQ) into Quotation.TotalService/GrandTotal
-        // regardless of whether the group has any QuotationItem rows — but neither source is a
-        // QuotationItem, so neither was ever represented above. Left unaddressed, a Quotation
-        // approved with real BOQ/subcon-selling-price value converts into a SalesOrder that's
-        // silently missing that value (soItems, and everything computed from it below, would
-        // reflect only the QuotationItem slice) — confirmed against real scratch-DB data where a
-        // Civil ME quotation's SO ended up Rp 8.880.000 short of the approved Quotation total.
-        // Folded in as ONE non-shippable lump-sum SalesOrderItem (not per-WorkDetail rows) so the
-        // SO's Total/Project budget/Invoice-cap math — all of which already sum over soItems —
-        // pick it up for free. ItemMasterId/Sku left null so MatchSoItemToItemMasterAsync (which
-        // only matches by explicit ItemMasterId or exact Sku==Code, no name-guessing fallback)
-        // never accidentally links it to real inventory; GetShippableItemsForSoAsync/DO creation
-        // correctly leave it out of shippable quantities.
+        // Civil & ME mode: RecalcTotals (QuotationService) folds QuotationWorkDetail.TotalHarga
+        // (BOQ) into Quotation.TotalService/GrandTotal regardless of whether the group has any
+        // QuotationItem rows — but WorkDetail is not a QuotationItem, so it was never represented
+        // above. Left unaddressed, a Quotation approved with real BOQ value converts into a
+        // SalesOrder that's silently missing that value (soItems, and everything computed from it
+        // below, would reflect only the QuotationItem slice) — confirmed against real scratch-DB
+        // data where a Civil ME quotation's SO ended up Rp 8.880.000 short of the approved
+        // Quotation total. Folded in as ONE non-shippable lump-sum SalesOrderItem (not per-
+        // WorkDetail rows) so the SO's Total/Project budget/Invoice-cap math — all of which
+        // already sum over soItems — pick it up for free. ItemMasterId/Sku left null so
+        // MatchSoItemToItemMasterAsync (which only matches by explicit ItemMasterId or exact
+        // Sku==Code, no name-guessing fallback) never accidentally links it to real inventory;
+        // GetShippableItemsForSoAsync/DO creation correctly leave it out of shippable quantities.
+        // QuotationGroup.FinalSellingPrice (Subkontraktor SOW manual entry) used to be folded in
+        // here too — removed alongside the field itself (see
+        // MigrateFinalSellingPriceToWorkDetailAndDropSubconFields), which converts any
+        // pre-existing FinalSellingPrice value into a real WorkDetail row first, so it still flows
+        // through here unchanged via allWorkDetails.
         if (quotation.IsCivilMeMode)
         {
             var allWorkDetails = quotation.Tabs
@@ -360,10 +364,7 @@ public class SalesOrderService : ISalesOrderService
                 .SelectMany(g => g.WorkItems)
                 .SelectMany(w => w.WorkDetails)
                 .ToList();
-            var allGroups = quotation.Tabs.SelectMany(t => t.Groups).ToList();
-            var boqLumpSum = MoneyMath.Round(
-                allGroups.Sum(g => g.FinalSellingPrice ?? 0)
-                + allWorkDetails.Sum(d => d.TotalHarga));
+            var boqLumpSum = MoneyMath.Round(allWorkDetails.Sum(d => d.TotalHarga));
 
             if (boqLumpSum > 0)
             {
@@ -378,8 +379,8 @@ public class SalesOrderService : ISalesOrderService
                     Discount = 0,
                     Amount = boqLumpSum,
                     QtyShipped = 0,
-                    Notes = "Nilai gabungan Detail Kerja (BOQ) dan Harga Jual Subkontraktor dari " +
-                        "Quotation Civil & ME — jasa, tidak dapat di-DO-kan per baris.",
+                    Notes = "Nilai gabungan Detail Kerja (BOQ) dari Quotation Civil & ME — jasa, " +
+                        "tidak dapat di-DO-kan per baris.",
                     SortOrder = allItems.Count,
                     ItemMasterId = null,
                 });

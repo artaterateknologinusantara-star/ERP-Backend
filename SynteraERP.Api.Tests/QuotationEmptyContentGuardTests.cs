@@ -97,7 +97,7 @@ public class QuotationEmptyContentGuardTests : IClassFixture<WebApplicationFacto
     }
 
     [Fact]
-    public async Task SendAsync_rejects_CivilMe_Quotation_with_zero_Items_zero_WorkDetail_zero_FinalSellingPrice()
+    public async Task SendAsync_rejects_CivilMe_Quotation_with_zero_Items_zero_WorkDetail()
     {
         var services = CreateScratchServices();
         using var scope = services.CreateScope();
@@ -109,7 +109,7 @@ public class QuotationEmptyContentGuardTests : IClassFixture<WebApplicationFacto
         var quotationSvc = scope.ServiceProvider.GetRequiredService<IQuotationService>();
 
         var quotation = await quotationSvc.CreateAsync(BaseRequest(true,
-            new SaveQuotationGroupRequest { Name = "Group 1", SortOrder = 0, Items = [], FinalSellingPrice = null }));
+            new SaveQuotationGroupRequest { Name = "Group 1", SortOrder = 0, Items = [] }));
 
         try
         {
