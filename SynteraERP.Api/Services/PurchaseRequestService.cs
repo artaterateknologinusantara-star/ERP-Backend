@@ -271,16 +271,8 @@ public class PurchaseRequestService : IPurchaseRequestService
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "PURCHASE_REQUEST")
-            ?? throw new InvalidOperationException("NumberingConfig for PURCHASE_REQUEST not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.PurchaseRequests, x => x.No, "PURCHASE_REQUEST");
 
     private static PurchaseRequestListDto ToListDto(Models.PurchaseRequest x) => new()
     {

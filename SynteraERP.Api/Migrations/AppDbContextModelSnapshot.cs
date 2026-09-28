@@ -2688,9 +2688,6 @@ namespace SynteraERP.Api.Migrations
                     b.Property<Guid?>("ApprovedBy")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("AreaBlockTender")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("Contractor")
                         .HasColumnType("nvarchar(max)");
 
@@ -2838,14 +2835,6 @@ namespace SynteraERP.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<decimal?>("FinalSellingPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("FinalSubconCost")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -2862,15 +2851,10 @@ namespace SynteraERP.Api.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
 
-                    b.Property<Guid?>("SubcontractorId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("TabId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("SubcontractorId");
 
                     b.HasIndex("TabId");
 
@@ -3003,10 +2987,18 @@ namespace SynteraERP.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal>("MaterialPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("ServicePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
@@ -3018,10 +3010,6 @@ namespace SynteraERP.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal>("Volume")
                         .HasPrecision(12, 4)
@@ -3088,9 +3076,14 @@ namespace SynteraERP.Api.Migrations
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
 
+                    b.Property<Guid?>("SourceVendorRabRequestId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("GroupId");
+
+                    b.HasIndex("SourceVendorRabRequestId");
 
                     b.ToTable("QuotationWorkItems");
                 });
@@ -3179,32 +3172,32 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(3950), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Full system access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Administrator",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(3950), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(3950), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Quotation and sales module access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Sales",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(3950), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         },
                         new
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(3960), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Description = "Invoice and payment access",
                             IsActive = true,
                             IsDeleted = false,
                             Name = "Finance",
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(3960), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -3897,7 +3890,7 @@ namespace SynteraERP.Api.Migrations
                         new
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000001"),
-                            CreatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(4020), new TimeSpan(0, 0, 0, 0, 0)),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             Email = "admin@syntera.id",
                             IsActive = true,
                             IsDeleted = false,
@@ -3905,7 +3898,7 @@ namespace SynteraERP.Api.Migrations
                             Name = "Administrator",
                             PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
                             RoleId = new Guid("10000000-0000-0000-0000-000000000001"),
-                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 9, 24, 6, 22, 57, 497, DateTimeKind.Unspecified).AddTicks(4020), new TimeSpan(0, 0, 0, 0, 0))
+                            UpdatedAt = new DateTimeOffset(new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
                         });
                 });
 
@@ -3913,9 +3906,6 @@ namespace SynteraERP.Api.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ApprovedWorkItemId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset>("CreatedAt")
@@ -3959,8 +3949,6 @@ namespace SynteraERP.Api.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ApprovedWorkItemId");
 
                     b.HasIndex("SupplierId");
 
@@ -4095,13 +4083,41 @@ namespace SynteraERP.Api.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<decimal>("MarkupAmount")
+                    b.Property<decimal>("MaterialMarkup")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<decimal>("UnitPrice")
+                    b.Property<decimal>("MaterialPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NegotiationNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<decimal>("ServiceMarkup")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("ServicePrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Spesifikasi")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
@@ -4109,18 +4125,25 @@ namespace SynteraERP.Api.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("VendorRabRequestLineId")
+                    b.Property<Guid?>("VendorRabRequestLineId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("VendorRabSubmissionId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<decimal>("Volume")
+                        .HasPrecision(12, 4)
+                        .HasColumnType("decimal(12,4)");
+
+                    b.Property<string>("WorkItemName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("VendorRabRequestLineId");
 
-                    b.HasIndex("VendorRabSubmissionId", "VendorRabRequestLineId")
-                        .IsUnique();
+                    b.HasIndex("VendorRabSubmissionId");
 
                     b.ToTable("VendorRabSubmissionLines");
                 });
@@ -4591,18 +4614,11 @@ namespace SynteraERP.Api.Migrations
 
             modelBuilder.Entity("SynteraERP.Api.Models.QuotationGroup", b =>
                 {
-                    b.HasOne("SynteraERP.Api.Models.Supplier", "Subcontractor")
-                        .WithMany()
-                        .HasForeignKey("SubcontractorId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("SynteraERP.Api.Models.QuotationTab", "Tab")
                         .WithMany("Groups")
                         .HasForeignKey("TabId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("Subcontractor");
 
                     b.Navigation("Tab");
                 });
@@ -4677,7 +4693,14 @@ namespace SynteraERP.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("SynteraERP.Api.Models.VendorRabRequest", "SourceVendorRabRequest")
+                        .WithMany("ApprovedWorkItems")
+                        .HasForeignKey("SourceVendorRabRequestId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.Navigation("Group");
+
+                    b.Navigation("SourceVendorRabRequest");
                 });
 
             modelBuilder.Entity("SynteraERP.Api.Models.RetentionRelease", b =>
@@ -4864,11 +4887,6 @@ namespace SynteraERP.Api.Migrations
 
             modelBuilder.Entity("SynteraERP.Api.Models.VendorRabRequest", b =>
                 {
-                    b.HasOne("SynteraERP.Api.Models.QuotationWorkItem", "ApprovedWorkItem")
-                        .WithMany()
-                        .HasForeignKey("ApprovedWorkItemId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("SynteraERP.Api.Models.QuotationGroup", "QuotationGroup")
                         .WithMany()
                         .HasForeignKey("QuotationGroupId")
@@ -4880,8 +4898,6 @@ namespace SynteraERP.Api.Migrations
                         .HasForeignKey("SupplierId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("ApprovedWorkItem");
 
                     b.Navigation("QuotationGroup");
 
@@ -4923,8 +4939,7 @@ namespace SynteraERP.Api.Migrations
                     b.HasOne("SynteraERP.Api.Models.VendorRabRequestLine", "VendorRabRequestLine")
                         .WithMany()
                         .HasForeignKey("VendorRabRequestLineId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("SynteraERP.Api.Models.VendorRabSubmission", "VendorRabSubmission")
                         .WithMany("Lines")
@@ -5062,6 +5077,8 @@ namespace SynteraERP.Api.Migrations
 
             modelBuilder.Entity("SynteraERP.Api.Models.VendorRabRequest", b =>
                 {
+                    b.Navigation("ApprovedWorkItems");
+
                     b.Navigation("Lines");
 
                     b.Navigation("Submissions");

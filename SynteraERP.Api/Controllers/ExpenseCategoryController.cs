@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Expense;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -15,6 +17,7 @@ public class ExpenseCategoryController : ControllerBase
 
     public ExpenseCategoryController(IExpenseCategoryService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<ExpenseCategoryDto>>>> List([FromQuery] bool? isActive)
     {
@@ -22,6 +25,7 @@ public class ExpenseCategoryController : ControllerBase
         return Ok(ApiResponse<List<ExpenseCategoryDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<ExpenseCategoryDto>>> Get(Guid id)
     {
@@ -30,6 +34,7 @@ public class ExpenseCategoryController : ControllerBase
         return Ok(ApiResponse<ExpenseCategoryDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<ExpenseCategoryDto>>> Create([FromBody] CreateExpenseCategoryRequest request)
     {
@@ -37,6 +42,7 @@ public class ExpenseCategoryController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<ExpenseCategoryDto>.Ok(item, "Expense Category berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Finance, PermissionActions.Edit)]
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ApiResponse<ExpenseCategoryDto>>> Update(Guid id, [FromBody] UpdateExpenseCategoryRequest request)
     {

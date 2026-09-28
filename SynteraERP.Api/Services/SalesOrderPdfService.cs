@@ -13,11 +13,11 @@ public class SalesOrderPdfService
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _env;
 
-    // Color palette
-    private const string Navy      = "#1E3A5F";
+    // Color palette — Navy = warna brand utama (hijau logo, Sep 2026)
+    private const string Navy      = "#1F5C3F";
     private const string Blue      = "#2563EB";
     private const string SlateGray = "#CBD5E1";
-    private const string LightBlue = "#EFF6FF";
+    private const string LightBlue = "#EAF3EE";
     private const string AltRow    = "#F8FAFF";
 
     public SalesOrderPdfService(AppDbContext context, IWebHostEnvironment env)
@@ -125,7 +125,7 @@ public class SalesOrderPdfService
                 });
             });
 
-            col.Item().PaddingTop(8).BorderBottom(2).BorderColor(Blue).Height(2);
+            col.Item().PaddingTop(8).BorderBottom(2).BorderColor(Navy).Height(2);
         });
     }
 

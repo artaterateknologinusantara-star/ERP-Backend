@@ -31,5 +31,5 @@ public interface IQuotationService
     // Dipanggil oleh VendorRabSubmissionService saat maincon approve submission vendor — satu-
     // satunya jalur yang boleh menulis data vendor jadi QuotationWorkDetail resmi (lihat komentar
     // di ApplyVendorRabSubmissionRequest).
-    Task<QuotationWorkItemDto> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request);
+    Task<List<QuotationWorkItemDto>> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request);
 }

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.DemoLead;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -15,6 +17,7 @@ public class DemoLeadController : ControllerBase
 
     public DemoLeadController(IDemoLeadService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<List<DemoLeadDto>>>> List()
     {
@@ -38,6 +41,7 @@ public class DemoLeadController : ControllerBase
         return Ok(ApiResponse<DemoLeadDto>.Ok(item, "Permintaan demo berhasil dikirim."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPut("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse<DemoLeadDto>>> UpdateStatus(Guid id, [FromBody] UpdateDemoLeadStatusRequest request)
     {

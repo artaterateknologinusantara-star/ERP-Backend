@@ -19,6 +19,11 @@ public class QuotationListDto
     public bool IsLatestRevision { get; set; }
     public DateTimeOffset? SentAt { get; set; }
     public bool HasCustomerPO { get; set; }
+
+    // Null kalau Status bukan Disetujui, atau sudah ada SalesOrder aktif untuk Quotation ini.
+    // Jumlah hari sejak ApprovedAt kalau Disetujui dan belum ada SalesOrder — monitoring read-only,
+    // mirror pola PurchaseOrderDto.HasActiveSupplierInvoice (bukan gate/blocking).
+    public int? DaysApprovedWithoutSalesOrder { get; set; }
 }
 
 // ── Send Result ───────────────────────────────────────────────────────────────
@@ -55,7 +60,6 @@ public class QuotationDto : QuotationListDto
     public string? Location { get; set; }
     public string? Contractor { get; set; }
     public string? ValidityPeriod { get; set; }
-    public string? AreaBlockTender { get; set; }
     public Guid? ParentId { get; set; }
     public DateTimeOffset? ApprovedAt { get; set; }
     public string? ApprovedByName { get; set; }
@@ -88,10 +92,6 @@ public class QuotationGroupDto
     public int SortOrder { get; set; }
     public decimal? RecapVolume { get; set; }
     public string? RecapUnit { get; set; }
-    public Guid? SubcontractorId { get; set; }
-    public string? SubcontractorName { get; set; }
-    public decimal? FinalSubconCost { get; set; }
-    public decimal? FinalSellingPrice { get; set; }
     public List<QuotationItemDto> Items { get; set; } = [];
     public List<QuotationWorkItemDto> WorkItems { get; set; } = [];
 }
@@ -111,7 +111,8 @@ public class QuotationWorkDetailDto
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
     public decimal TotalHarga { get; set; }
     public int SortOrder { get; set; }
     public List<QuotationWorkDetailAttachmentDto> Attachments { get; set; } = [];
@@ -167,7 +168,6 @@ public class SaveQuotationRequest
     public string? Location { get; set; }
     public string? Contractor { get; set; }
     public string? ValidityPeriod { get; set; }
-    public string? AreaBlockTender { get; set; }
     public List<SaveQuotationTabRequest> Tabs { get; set; } = [];
     public List<SaveQuotationTerminRequest> Termins { get; set; } = [];
 }
@@ -199,9 +199,6 @@ public class SaveQuotationGroupRequest
     public int SortOrder { get; set; }
     public decimal? RecapVolume { get; set; }
     public string? RecapUnit { get; set; }
-    public Guid? SubcontractorId { get; set; }
-    public decimal? FinalSubconCost { get; set; }
-    public decimal? FinalSellingPrice { get; set; }
     public List<SaveQuotationItemRequest> Items { get; set; } = [];
 
     /// <summary>Null (field absent from the request body) means "leave this group's WorkItems
@@ -251,7 +248,8 @@ public class SaveQuotationWorkDetailRequest
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
     public int SortOrder { get; set; }
 }
 
@@ -273,7 +271,8 @@ public class SaveWorkDetailRequest
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; }
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; }
+    public decimal ServicePrice { get; set; }
+    public decimal MaterialPrice { get; set; }
     public int SortOrder { get; set; }
 }
 

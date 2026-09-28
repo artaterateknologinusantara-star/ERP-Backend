@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.Invoice;
 using SynteraERP.Api.DTOs.SalesOrderPayment;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -24,6 +26,7 @@ public class InvoiceController : ControllerBase
         _dpSvc = dpSvc;
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<InvoiceListDto>>>> List([FromQuery] InvoiceQueryParams p)
     {
@@ -31,6 +34,7 @@ public class InvoiceController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<InvoiceListDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
@@ -38,6 +42,7 @@ public class InvoiceController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<InvoiceDto>>> Get(Guid id)
     {
@@ -46,6 +51,7 @@ public class InvoiceController : ControllerBase
         return Ok(ApiResponse<InvoiceDto>.Ok(item));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Create)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<InvoiceDto>>> Create([FromBody] CreateInvoiceRequest request)
     {
@@ -53,6 +59,7 @@ public class InvoiceController : ControllerBase
         return CreatedAtAction(nameof(Get), new { id = item.Id }, ApiResponse<InvoiceDto>.Ok(item, "Invoice berhasil dibuat."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPatch("{id:guid}/send")]
     public async Task<ActionResult<ApiResponse<InvoiceDto>>> MarkAsSent(Guid id)
     {
@@ -61,6 +68,7 @@ public class InvoiceController : ControllerBase
         return Ok(ApiResponse<InvoiceDto>.Ok(item, "Invoice berhasil dikirim."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPost("{id:guid}/payments")]
     public async Task<ActionResult<ApiResponse<InvoiceDto>>> RecordPayment(Guid id, [FromBody] RecordPaymentRequest request)
     {
@@ -69,6 +77,7 @@ public class InvoiceController : ControllerBase
         return Ok(ApiResponse<InvoiceDto>.Ok(item, "Pembayaran berhasil dicatat."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPost("{id:guid}/retention-release")]
     public async Task<ActionResult<ApiResponse<InvoiceDto>>> ReleaseRetention(Guid id, [FromBody] RetentionReleaseRequest request)
     {
@@ -77,6 +86,7 @@ public class InvoiceController : ControllerBase
         return Ok(ApiResponse<InvoiceDto>.Ok(item, "Retensi berhasil dilepas."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
@@ -85,6 +95,7 @@ public class InvoiceController : ControllerBase
         return Ok(ApiResponse.Ok("Invoice berhasil dihapus."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}/pdf")]
     public async Task<IActionResult> ExportPdf(Guid id)
     {
@@ -93,6 +104,7 @@ public class InvoiceController : ControllerBase
         return File(pdfBytes, "application/pdf", $"Invoice_{id}.pdf");
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPost("{id:guid}/apply-down-payment")]
     public async Task<ActionResult<ApiResponse<InvoiceDto>>> ApplyDownPayment(Guid id, [FromBody] ApplyDownPaymentRequest request)
     {

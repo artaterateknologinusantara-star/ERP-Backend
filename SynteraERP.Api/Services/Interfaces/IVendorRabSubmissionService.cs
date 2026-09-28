@@ -10,7 +10,8 @@ public interface IVendorRabSubmissionService
 
     // Internal-facing
     Task<VendorRabSubmissionDto?> GetByIdAsync(Guid submissionId);
-    Task<bool> SetLineMarkupAsync(Guid submissionId, Guid lineId, decimal markupAmount);
-    Task<Guid> ApproveAsync(Guid submissionId, Guid approvedByUserId);
+    Task<bool> SetLineMarkupAsync(Guid submissionId, Guid lineId, decimal serviceMarkup, decimal materialMarkup);
+    Task<List<Guid>> ApproveAsync(Guid submissionId, Guid approvedByUserId);
     Task<bool> RejectAsync(Guid submissionId, Guid rejectedByUserId, string? reason);
+    Task<bool> RequestRevisionAsync(Guid submissionId, List<(Guid lineId, string note)> flaggedLines, Guid requestedByUserId);
 }

@@ -2,15 +2,17 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.VendorPortal;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
 
-// Internal/maincon-facing — scheme default ("Bearer"), lewat [Authorize] class-level seperti
-// mayoritas controller lain di codebase ini (RequirePermission hanya dipakai di aksi approve,
-// sama seperti pola di QuotationController).
+// Internal/maincon-facing — scheme default ("Bearer"). Gated to Sales:View/Create, consistent
+// with VendorRabSubmissionController's review actions also living under Sales — sending a RAB
+// request and reviewing its submission are two halves of one workflow.
 [Authorize]
 [ApiController]
 public class VendorRabRequestController : ControllerBase
@@ -22,6 +24,7 @@ public class VendorRabRequestController : ControllerBase
         _svc = svc;
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Create)]
     [HttpPost("api/quotations/groups/{groupId:guid}/rab-requests")]
     public async Task<ActionResult<ApiResponse<VendorRabRequestDto>>> CreateAndSend(
         Guid groupId, [FromBody] CreateVendorRabRequestRequest request)
@@ -45,6 +48,7 @@ public class VendorRabRequestController : ControllerBase
         }
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("api/quotations/groups/{groupId:guid}/rab-requests")]
     public async Task<ActionResult<ApiResponse<List<VendorRabRequestDto>>>> ListByGroup(Guid groupId)
     {
@@ -52,6 +56,7 @@ public class VendorRabRequestController : ControllerBase
         return Ok(ApiResponse<List<VendorRabRequestDto>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("api/vendor-rab-requests/{id:guid}")]
     public async Task<ActionResult<ApiResponse<VendorRabRequestDto>>> GetById(Guid id)
     {

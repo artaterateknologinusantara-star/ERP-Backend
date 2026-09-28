@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.CatalogLink;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
 namespace SynteraERP.Api.Controllers;
@@ -15,6 +17,7 @@ public class CatalogLinkController : ControllerBase
 
     public CatalogLinkController(ICatalogLinkService svc) => _svc = svc;
 
+    [RequirePermission(Modules.Inventory, PermissionActions.View)]
     [HttpGet("unlinked")]
     public async Task<IActionResult> GetUnlinked()
     {
@@ -22,6 +25,7 @@ public class CatalogLinkController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Inventory, PermissionActions.Edit)]
     [HttpPost("{sourceType}/{itemRowId:guid}/link")]
     public async Task<IActionResult> Link(string sourceType, Guid itemRowId, [FromBody] LinkCatalogItemRequest request)
     {

@@ -263,16 +263,10 @@ public class AppDbContext : DbContext
             e.Property(g => g.Name).HasMaxLength(200).IsRequired();
             e.Property(g => g.RecapVolume).HasPrecision(12, 4);
             e.Property(g => g.RecapUnit).HasMaxLength(20);
-            e.Property(g => g.FinalSubconCost).HasPrecision(18, 2);
-            e.Property(g => g.FinalSellingPrice).HasPrecision(18, 2);
             e.HasOne(g => g.Tab)
              .WithMany(t => t.Groups)
              .HasForeignKey(g => g.TabId)
              .OnDelete(DeleteBehavior.Cascade);
-            e.HasOne(g => g.Subcontractor)
-             .WithMany()
-             .HasForeignKey(g => g.SubcontractorId)
-             .OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<QuotationItem>(e =>
@@ -317,6 +311,11 @@ public class AppDbContext : DbContext
              .WithMany(g => g.WorkItems)
              .HasForeignKey(w => w.GroupId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(w => w.SourceVendorRabRequest)
+             .WithMany(r => r.ApprovedWorkItems)
+             .HasForeignKey(w => w.SourceVendorRabRequestId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
         });
 
         b.Entity<QuotationWorkDetail>(e =>
@@ -324,7 +323,8 @@ public class AppDbContext : DbContext
             e.Property(d => d.Name).HasMaxLength(200).IsRequired();
             e.Property(d => d.Unit).HasMaxLength(20).IsRequired();
             e.Property(d => d.Volume).HasPrecision(12, 4);
-            e.Property(d => d.UnitPrice).HasPrecision(18, 2);
+            e.Property(d => d.ServicePrice).HasPrecision(18, 2);
+            e.Property(d => d.MaterialPrice).HasPrecision(18, 2);
             e.Ignore(d => d.TotalHarga);
             e.HasOne(d => d.WorkItem)
              .WithMany(w => w.WorkDetails)
@@ -808,11 +808,6 @@ public class AppDbContext : DbContext
              .WithMany()
              .HasForeignKey(x => x.SupplierId)
              .OnDelete(DeleteBehavior.Restrict);
-            e.HasOne(x => x.ApprovedWorkItem)
-             .WithMany()
-             .HasForeignKey(x => x.ApprovedWorkItemId)
-             .OnDelete(DeleteBehavior.SetNull)
-             .IsRequired(false);
         });
 
         b.Entity<VendorRabRequestLine>(e =>
@@ -844,19 +839,30 @@ public class AppDbContext : DbContext
 
         b.Entity<VendorRabSubmissionLine>(e =>
         {
-            // 1 harga per baris request per submission — mencegah vendor/duplicate-request
-            // mengirim 2 harga berbeda untuk baris yang sama dalam 1 percobaan.
-            e.HasIndex(x => new { x.VendorRabSubmissionId, x.VendorRabRequestLineId }).IsUnique();
-            e.Property(x => x.UnitPrice).HasPrecision(18, 2);
-            e.Property(x => x.MarkupAmount).HasPrecision(18, 2);
+            // Nama/Spesifikasi/Volume/Unit sekarang milik baris ini sendiri (bukan lagi dikunci
+            // 1:1 ke VendorRabRequestLine) — vendor bebas tambah/hapus baris, jadi unique index
+            // lama (VendorRabSubmissionId, VendorRabRequestLineId) sudah tidak relevan lagi.
+            e.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            e.Property(x => x.WorkItemName).HasMaxLength(200);
+            e.Property(x => x.Unit).HasMaxLength(20).IsRequired();
+            e.Property(x => x.Volume).HasPrecision(12, 4);
+            e.Property(x => x.ServicePrice).HasPrecision(18, 2);
+            e.Property(x => x.MaterialPrice).HasPrecision(18, 2);
+            e.Property(x => x.ServiceMarkup).HasPrecision(18, 2);
+            e.Property(x => x.MaterialMarkup).HasPrecision(18, 2);
+            e.Property(x => x.NegotiationNote).HasMaxLength(1000);
             e.HasOne(x => x.VendorRabSubmission)
              .WithMany(s => s.Lines)
              .HasForeignKey(x => x.VendorRabSubmissionId)
              .OnDelete(DeleteBehavior.Cascade);
+            // SetNull ditolak SQL Server di sini (multiple cascade paths lewat
+            // VendorRabSubmission -> VendorRabRequest -> Lines) — dikonfirmasi lewat percobaan
+            // apply migration ke scratch DB, bukan cuma dibaca dari kode (rule #3 CLAUDE.md).
             e.HasOne(x => x.VendorRabRequestLine)
              .WithMany()
              .HasForeignKey(x => x.VendorRabRequestLineId)
-             .OnDelete(DeleteBehavior.Restrict);
+             .OnDelete(DeleteBehavior.Restrict)
+             .IsRequired(false);
         });
 
         // ─── StockTransaction ─────────────────────────────────────────────────
@@ -1083,10 +1089,21 @@ public class AppDbContext : DbContext
         var salesRoleId = new Guid("10000000-0000-0000-0000-000000000002");
         var financeRoleId = new Guid("10000000-0000-0000-0000-000000000003");
 
+        // Fixed sentinel date (bukan DateTimeOffset.UtcNow) — sama seperti permSeedDate/acctSeedDate
+        // di bawah. DateTimeOffset.UtcNow di HasData() dievaluasi ulang setiap kali `dotnet ef
+        // migrations add` dijalankan, jadi EF Core mengira model berubah dan meregenerasi UpdateData
+        // yang me-reset CreatedAt/UpdatedAt baris ini di HAMPIR SETIAP migration baru (dikonfirmasi:
+        // 50 dari 126 migration existing kena, termasuk yang paling baru) — kelas bug yang sama
+        // dengan insiden NumberingConfig lama (lihat catatan di bawah), bedanya di sini yang kena
+        // cuma kolom audit CreatedAt/UpdatedAt (bukan field bisnis), jadi selama ini tidak
+        // ketahuan/berdampak nyata (Role.CreatedAt tidak pernah dikirim ke frontend sama sekali,
+        // User.CreatedAt dikirim tapi tidak pernah dirender di UI manapun).
+        var roleUserSeedDate = new DateTimeOffset(new DateTime(2026, 1, 1), TimeSpan.Zero);
+
         b.Entity<Role>().HasData(
-            new Role { Id = adminRoleId, Name = "Administrator", Description = "Full system access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow },
-            new Role { Id = salesRoleId, Name = "Sales", Description = "Quotation and sales module access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow },
-            new Role { Id = financeRoleId, Name = "Finance", Description = "Invoice and payment access", IsActive = true, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }
+            new Role { Id = adminRoleId, Name = "Administrator", Description = "Full system access", IsActive = true, CreatedAt = roleUserSeedDate, UpdatedAt = roleUserSeedDate },
+            new Role { Id = salesRoleId, Name = "Sales", Description = "Quotation and sales module access", IsActive = true, CreatedAt = roleUserSeedDate, UpdatedAt = roleUserSeedDate },
+            new Role { Id = financeRoleId, Name = "Finance", Description = "Invoice and payment access", IsActive = true, CreatedAt = roleUserSeedDate, UpdatedAt = roleUserSeedDate }
         );
 
         var adminId = new Guid("20000000-0000-0000-0000-000000000001");
@@ -1100,8 +1117,8 @@ public class AppDbContext : DbContext
                 // password: Admin@123
                 PasswordHash = "$2a$11$K8VJO5Yq8pZ2kQ7M1mHsqOzGn5X9/K2Rj7sL3nH6P4dQ0wE1vTx9m",
                 IsActive = true,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
+                CreatedAt = roleUserSeedDate,
+                UpdatedAt = roleUserSeedDate
             }
         );
 

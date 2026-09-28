@@ -52,8 +52,12 @@ public class QuotationService : IQuotationService
             .Where(c => ids.Contains(c.QuotationId))
             .Select(c => c.QuotationId)
             .ToListAsync()).ToHashSet();
+        var soQuotationIds = (await _db.SalesOrders
+            .Where(so => so.QuotationId.HasValue && ids.Contains(so.QuotationId.Value) && !so.IsDeleted)
+            .Select(so => so.QuotationId!.Value)
+            .ToListAsync()).ToHashSet();
 
-        var data = items.Select(x => ToListDto(x, cpoQuotationIds.Contains(x.Id))).ToList();
+        var data = items.Select(x => ToListDto(x, cpoQuotationIds.Contains(x.Id), soQuotationIds.Contains(x.Id))).ToList();
         return PaginatedResponse<QuotationListDto>.Create(data, total, p.Page, p.PerPage);
     }
 
@@ -64,7 +68,6 @@ public class QuotationService : IQuotationService
             .Include(x => x.Customer)
             .Include(x => x.Sales)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items).ThenInclude(i => i.ItemMaster)
-            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Subcontractor)
             .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails).ThenInclude(d => d.Attachments)
             .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == id);
@@ -78,7 +81,9 @@ public class QuotationService : IQuotationService
             approvedByName = approver?.Name;
         }
 
-        return ToDto(q, approvedByName);
+        var hasSalesOrder = await _db.SalesOrders.AnyAsync(so => so.QuotationId == id && !so.IsDeleted);
+
+        return ToDto(q, approvedByName, hasSalesOrder);
     }
 
     public async Task<QuotationDto> CreateAsync(SaveQuotationRequest request)
@@ -114,7 +119,9 @@ public class QuotationService : IQuotationService
         quotation.PaymentTerms = request.PaymentTerms;
         quotation.TermsAndConditions = request.TermsAndConditions;
         quotation.AdditionalNotes = request.AdditionalNotes;
-        quotation.Discount = request.Discount;
+        // Task #42: frontend already clamps Diskon 0-100, but backend never did — a direct API
+        // call with Discount>100 makes TotalBeforeTax/GrandTotal go negative.
+        quotation.Discount = Math.Clamp(request.Discount, 0, 100);
         quotation.TaxRate = request.TaxRate;
         quotation.IsCivilMeMode = request.IsCivilMeMode;
         quotation.TotalAreaSqm = request.TotalAreaSqm;
@@ -125,7 +132,6 @@ public class QuotationService : IQuotationService
         quotation.Location = request.Location;
         quotation.Contractor = request.Contractor;
         quotation.ValidityPeriod = request.ValidityPeriod;
-        quotation.AreaBlockTender = request.AreaBlockTender;
         quotation.UpdatedAt = DateTimeOffset.UtcNow;
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -221,9 +227,6 @@ public class QuotationService : IQuotationService
             group.SortOrder = incoming.SortOrder;
             group.RecapVolume = incoming.RecapVolume;
             group.RecapUnit = incoming.RecapUnit;
-            group.SubcontractorId = incoming.SubcontractorId;
-            group.FinalSubconCost = incoming.FinalSubconCost;
-            group.FinalSellingPrice = incoming.FinalSellingPrice;
 
             // Items have no children of their own (no attachment hangs off Item.Id) — a full
             // per-group replace is still the simplest correct approach for them.
@@ -332,7 +335,8 @@ public class QuotationService : IQuotationService
             detail.Spesifikasi = incoming.Spesifikasi;
             detail.Volume = incoming.Volume;
             detail.Unit = incoming.Unit;
-            detail.UnitPrice = incoming.UnitPrice;
+            detail.ServicePrice = incoming.ServicePrice;
+            detail.MaterialPrice = incoming.MaterialPrice;
             detail.SortOrder = incoming.SortOrder;
         }
     }
@@ -383,7 +387,6 @@ public class QuotationService : IQuotationService
             Location = source.Location,
             Contractor = source.Contractor,
             ValidityPeriod = source.ValidityPeriod,
-            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             ParentId = source.Id,
         };
@@ -400,9 +403,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     GroupId = Guid.Empty,
@@ -434,7 +434,8 @@ public class QuotationService : IQuotationService
                         Spesifikasi = d.Spesifikasi,
                         Volume = d.Volume,
                         Unit = d.Unit,
-                        UnitPrice = d.UnitPrice,
+                        ServicePrice = d.ServicePrice,
+                        MaterialPrice = d.MaterialPrice,
                         SortOrder = d.SortOrder,
                     }).ToList(),
                 }).ToList(),
@@ -458,9 +459,18 @@ public class QuotationService : IQuotationService
     {
         var quotation = await _db.Quotations
             .Include(x => x.Customer)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
             .FirstOrDefaultAsync(x => x.Id == id);
 
         if (quotation is null) return null;
+
+        // Task #42: block a Quotation with no content at all the moment it leaves Draft — sending
+        // it to a customer (let alone approving it) with nothing in it is what let #41's bug
+        // reach SalesOrder in the first place.
+        if (IsQuotationEmpty(quotation))
+            throw new InvalidOperationException(
+                "Penawaran tidak bisa dikirim — belum ada baris Item atau Detail Kerja.");
 
         quotation.Status = QuotationStatus.Terkirim;
         quotation.SentAt = DateTimeOffset.UtcNow;
@@ -521,7 +531,6 @@ public class QuotationService : IQuotationService
             Location = source.Location,
             Contractor = source.Contractor,
             ValidityPeriod = source.ValidityPeriod,
-            AreaBlockTender = source.AreaBlockTender,
             Status = QuotationStatus.Draft,
             Revision = source.Revision + 1,
             ParentId = source.ParentId ?? source.Id,
@@ -539,9 +548,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -570,7 +576,8 @@ public class QuotationService : IQuotationService
                         Spesifikasi = d.Spesifikasi,
                         Volume = d.Volume,
                         Unit = d.Unit,
-                        UnitPrice = d.UnitPrice,
+                        ServicePrice = d.ServicePrice,
+                        MaterialPrice = d.MaterialPrice,
                         SortOrder = d.SortOrder,
                     }).ToList(),
                 }).ToList(),
@@ -597,8 +604,18 @@ public class QuotationService : IQuotationService
 
     public async Task<bool> ApproveAsync(Guid id, Guid approvedByUserId)
     {
-        var quotation = await _db.Quotations.FindAsync(id);
+        var quotation = await _db.Quotations
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.Items)
+            .Include(x => x.Tabs).ThenInclude(t => t.Groups).ThenInclude(g => g.WorkItems).ThenInclude(w => w.WorkDetails)
+            .FirstOrDefaultAsync(x => x.Id == id);
         if (quotation is null || quotation.Status != QuotationStatus.Terkirim) return false;
+
+        // Task #42: content can still change between Send and Approve (UpdateAsync doesn't gate
+        // on Status), so a Quotation that was non-empty when sent could be edited down to nothing
+        // and approved anyway if this weren't checked again here — not just at SendAsync.
+        if (IsQuotationEmpty(quotation))
+            throw new InvalidOperationException(
+                "Penawaran tidak bisa disetujui — belum ada baris Item atau Detail Kerja.");
 
         quotation.Status = QuotationStatus.Disetujui;
         quotation.ApprovedAt = DateTimeOffset.UtcNow;
@@ -724,7 +741,8 @@ public class QuotationService : IQuotationService
             Spesifikasi = request.Spesifikasi,
             Volume = request.Volume,
             Unit = request.Unit,
-            UnitPrice = request.UnitPrice,
+            ServicePrice = request.ServicePrice,
+            MaterialPrice = request.MaterialPrice,
             SortOrder = request.SortOrder,
         };
         _db.QuotationWorkDetails.Add(detail);
@@ -748,7 +766,8 @@ public class QuotationService : IQuotationService
         detail.Spesifikasi = request.Spesifikasi;
         detail.Volume = request.Volume;
         detail.Unit = request.Unit;
-        detail.UnitPrice = request.UnitPrice;
+        detail.ServicePrice = request.ServicePrice;
+        detail.MaterialPrice = request.MaterialPrice;
         detail.SortOrder = request.SortOrder;
 
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -781,7 +800,7 @@ public class QuotationService : IQuotationService
         return true;
     }
 
-    public async Task<QuotationWorkItemDto> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request)
+    public async Task<List<QuotationWorkItemDto>> ApplyApprovedVendorRabSubmissionAsync(ApplyVendorRabSubmissionRequest request)
     {
         var group = await _db.QuotationGroups.Include(g => g.Tab)
             .FirstOrDefaultAsync(g => g.Id == request.QuotationGroupId)
@@ -792,29 +811,52 @@ public class QuotationService : IQuotationService
             .Select(w => (int?)w.SortOrder)
             .MaxAsync() ?? -1) + 1;
 
-        var workItem = new QuotationWorkItem
-        {
-            GroupId = request.QuotationGroupId,
-            Name = request.WorkItemName,
-            SortOrder = nextSortOrder,
-        };
-        _db.QuotationWorkItems.Add(workItem);
+        // Fan-out: kelompokkan baris per WorkItemName vendor — 1 kelompok jadi 1 QuotationWorkItem
+        // (bukan lagi 1 WorkItem untuk semua baris). Baris tanpa WorkItemName (null/kosong) masuk
+        // kelompok default (DefaultWorkItemName = VendorRabRequest.Name), supaya tidak ada baris
+        // yang hilang dari fan-out. GroupBy LINQ stabil (mempertahankan urutan kemunculan pertama
+        // tiap key, dan urutan asli di dalam tiap grup).
+        var lineGroups = request.Lines
+            .GroupBy(line => string.IsNullOrWhiteSpace(line.WorkItemName) ? request.DefaultWorkItemName : line.WorkItemName!)
+            .ToList();
 
         // FK di-set eksplisit (bukan lewat nav property) — sama seperti pola Add eksplisit di
-        // UpsertTabs/UpsertGroups, supaya tidak bergantung ke graph-fixup EF. workItem.WorkDetails
-        // diisi manual di bawah supaya ToWorkItemDto bisa langsung dipakai tanpa reload dari DB.
-        var details = request.Lines.Select(line => new QuotationWorkDetail
+        // UpsertTabs/UpsertGroups, supaya tidak bergantung ke graph-fixup EF. WorkDetails diisi
+        // manual di bawah supaya ToWorkItemDto bisa langsung dipakai tanpa reload dari DB.
+        var workItems = new List<QuotationWorkItem>();
+        var sortOrder = nextSortOrder;
+        foreach (var lineGroup in lineGroups)
         {
-            WorkItemId = workItem.Id,
-            Name = line.Name,
-            Spesifikasi = line.Spesifikasi,
-            Volume = line.Volume,
-            Unit = line.Unit,
-            UnitPrice = line.FinalUnitPrice,
-            SortOrder = line.SortOrder,
-        }).ToList();
-        _db.QuotationWorkDetails.AddRange(details);
-        workItem.WorkDetails = details;
+            var workItem = new QuotationWorkItem
+            {
+                GroupId = request.QuotationGroupId,
+                Name = lineGroup.Key,
+                SortOrder = sortOrder++,
+                SourceVendorRabRequestId = request.SourceVendorRabRequestId,
+            };
+            _db.QuotationWorkItems.Add(workItem);
+
+            // Task #44 Bagian 2 (Opsi B, keputusan 26 Sep 2026): vendor sendiri submit harga Jasa
+            // dan Material terpisah (VendorRabSubmissionLine.ServicePrice/MaterialPrice), maincon
+            // markup juga per-kategori (ServiceMarkup/MaterialMarkup) — FinalServicePrice/
+            // FinalMaterialPrice dari VendorRabSubmissionService.ApproveAsync sudah hasil akhirnya,
+            // tulis langsung tanpa realokasi lagi di sini.
+            var details = lineGroup.Select((line, index) => new QuotationWorkDetail
+            {
+                WorkItemId = workItem.Id,
+                Name = line.Name,
+                Spesifikasi = line.Spesifikasi,
+                Volume = line.Volume,
+                Unit = line.Unit,
+                ServicePrice = line.FinalServicePrice,
+                MaterialPrice = line.FinalMaterialPrice,
+                SortOrder = index,
+            }).ToList();
+            _db.QuotationWorkDetails.AddRange(details);
+            workItem.WorkDetails = details;
+
+            workItems.Add(workItem);
+        }
 
         // VendorRabSubmissionService.ApproveAsync juga menulis status Submission/Request di
         // DbContext yang SAMA sebagai bagian dari "approve" yang satu ini (rule #5: WorkItem baru
@@ -836,7 +878,7 @@ public class QuotationService : IQuotationService
             await tx.CommitAsync();
         }
 
-        return ToWorkItemDto(workItem);
+        return workItems.Select(ToWorkItemDto).ToList();
     }
 
     // Standalone WorkItem/WorkDetail endpoints above load/mutate only the narrow entity in
@@ -959,7 +1001,8 @@ public class QuotationService : IQuotationService
         Spesifikasi = d.Spesifikasi,
         Volume = d.Volume,
         Unit = d.Unit,
-        UnitPrice = d.UnitPrice,
+        ServicePrice = d.ServicePrice,
+        MaterialPrice = d.MaterialPrice,
         TotalHarga = d.TotalHarga,
         SortOrder = d.SortOrder,
         Attachments = d.Attachments.OrderBy(a => a.SortOrder)
@@ -969,42 +1012,8 @@ public class QuotationService : IQuotationService
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "QUOTATION")
-            ?? throw new InvalidOperationException("NumberingConfig for QUOTATION not found");
-
-        // Sync LastNumber with the actual highest number in DB.
-        // Prevents unique-constraint violations when a migration reset the counter
-        // while existing quotation rows with higher numbers still exist.
-        var year = DateTime.UtcNow.ToString("yy");
-        var yearPrefix = $"{config.Prefix}-{year}.";
-
-        var existingNos = await _db.Quotations
-            .IgnoreQueryFilters()
-            .Where(q => q.No.StartsWith(yearPrefix))
-            .Select(q => q.No)
-            .ToListAsync();
-
-        if (existingNos.Count > 0)
-        {
-            var actualMax = existingNos
-                .Select(no =>
-                {
-                    var suffix = no.Length > yearPrefix.Length ? no[yearPrefix.Length..] : "0";
-                    return int.TryParse(suffix, out var n) ? n : 0;
-                })
-                .Max();
-
-            if (actualMax >= config.LastNumber)
-                config.LastNumber = actualMax;
-        }
-
-        var docNo = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return docNo;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.Quotations, q => q.No, "QUOTATION");
 
     private static Models.Quotation MapFromRequest(SaveQuotationRequest req, string no)
     {
@@ -1020,7 +1029,7 @@ public class QuotationService : IQuotationService
             PaymentTerms = req.PaymentTerms,
             TermsAndConditions = req.TermsAndConditions,
             AdditionalNotes = req.AdditionalNotes,
-            Discount = req.Discount,
+            Discount = Math.Clamp(req.Discount, 0, 100),
             TaxRate = req.TaxRate,
             IsCivilMeMode = req.IsCivilMeMode,
             TotalAreaSqm = req.TotalAreaSqm,
@@ -1031,7 +1040,6 @@ public class QuotationService : IQuotationService
             Location = req.Location,
             Contractor = req.Contractor,
             ValidityPeriod = req.ValidityPeriod,
-            AreaBlockTender = req.AreaBlockTender,
             Status = QuotationStatus.Draft,
         };
         q.Tabs = BuildTabs(req.Tabs, q.Id);
@@ -1058,9 +1066,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.Select(i => new QuotationItem
                 {
                     ItemNo = i.ItemNo,
@@ -1089,7 +1094,8 @@ public class QuotationService : IQuotationService
                         Spesifikasi = d.Spesifikasi,
                         Volume = d.Volume,
                         Unit = d.Unit,
-                        UnitPrice = d.UnitPrice,
+                        ServicePrice = d.ServicePrice,
+                        MaterialPrice = d.MaterialPrice,
                         SortOrder = d.SortOrder,
                     }).ToList(),
                 }).ToList(),
@@ -1101,19 +1107,23 @@ public class QuotationService : IQuotationService
         var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
         if (q.IsCivilMeMode)
         {
-            // Civil & ME total is 3 sources added together: FinalSellingPrice (Subkontraktor SOW,
-            // harga jual ke customer — FinalSubconCost is cost-basis only, used for margin, never
-            // summed here), QuotationItem (equipment/material lines, same as standard mode — Qty *
-            // MaterialPrice goes to TotalMaterial, Qty * ServicePrice to TotalService), and
-            // QuotationWorkDetail/BOQ (TotalHarga is a single blended price — no Jasa/Material
-            // split source, so it's added to TotalService alongside FinalSellingPrice).
+            // Civil & ME total is 2 sources added together: QuotationItem (equipment/material
+            // lines, same as standard mode — Qty * MaterialPrice goes to TotalMaterial, Qty *
+            // ServicePrice to TotalService), and QuotationWorkDetail/BOQ (Volume * MaterialPrice
+            // goes to TotalMaterial, Volume * ServicePrice to TotalService — same Jasa/Material
+            // split as QuotationItem, task #44). QuotationGroup.FinalSellingPrice (Subkontraktor
+            // SOW manual entry) was a 3rd source here until it was removed — see migration
+            // MigrateFinalSellingPriceToWorkDetailAndDropSubconFields, which folds any pre-existing
+            // FinalSellingPrice value into a real QuotationWorkDetail row so GrandTotal is
+            // unaffected by the removal.
             var civilMeItems = allGroups.SelectMany(g => g.Items).ToList();
             var allWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).ToList();
-            q.TotalMaterial = MoneyMath.Round(civilMeItems.Sum(i => i.Qty * i.MaterialPrice));
+            q.TotalMaterial = MoneyMath.Round(
+                civilMeItems.Sum(i => i.Qty * i.MaterialPrice)
+                + allWorkDetails.Sum(d => d.Volume * d.MaterialPrice));
             q.TotalService = MoneyMath.Round(
-                allGroups.Sum(g => g.FinalSellingPrice ?? 0)
-                + civilMeItems.Sum(i => i.Qty * i.ServicePrice)
-                + allWorkDetails.Sum(d => d.TotalHarga));
+                civilMeItems.Sum(i => i.Qty * i.ServicePrice)
+                + allWorkDetails.Sum(d => d.Volume * d.ServicePrice));
         }
         else
         {
@@ -1128,7 +1138,35 @@ public class QuotationService : IQuotationService
         q.GrandTotal = q.TotalBeforeTax + q.TaxAmount;
     }
 
-    private static QuotationListDto ToListDto(Models.Quotation x, bool hasCustomerPO = false) => new()
+    // Task #42: "kosong" is existence-based (does at least one row exist), NOT price-based —
+    // Step-0 investigation found GrandTotal<=0 produces a false positive (a Quotation with real
+    // rows and Discount=100% legitimately has GrandTotal=0 but is not empty), and a row priced at
+    // 0 still counts as content. Civil & ME mirrors RecalcTotals' 2-source definition
+    // (QuotationItem, QuotationWorkDetail) so the two never drift apart. Shared by SendAsync and
+    // ApproveAsync — content can change between the two (UpdateAsync doesn't gate on Status), so
+    // both need the same check, not just one. FinalSellingPrice used to be a 3rd signal here —
+    // removed alongside the field itself (see MigrateFinalSellingPriceToWorkDetailAndDropSubconFields).
+    private static bool IsQuotationEmpty(Models.Quotation q)
+    {
+        var allGroups = q.Tabs.SelectMany(t => t.Groups).ToList();
+        if (q.IsCivilMeMode)
+        {
+            var hasItems = allGroups.SelectMany(g => g.Items).Any();
+            var hasWorkDetails = allGroups.SelectMany(g => g.WorkItems).SelectMany(w => w.WorkDetails).Any();
+            return !hasItems && !hasWorkDetails;
+        }
+
+        return !allGroups.SelectMany(g => g.Items).Any();
+    }
+
+    // Null kalau Status bukan Disetujui atau sudah ada SalesOrder aktif — monitoring read-only,
+    // mirror PurchaseOrderService's HasActiveSupplierInvoice, bukan gate (lihat komentar DTO).
+    private static int? ComputeDaysApprovedWithoutSalesOrder(Models.Quotation x, bool hasSalesOrder) =>
+        x.Status == QuotationStatus.Disetujui && !hasSalesOrder && x.ApprovedAt.HasValue
+            ? (int)(DateTimeOffset.UtcNow - x.ApprovedAt.Value).TotalDays
+            : null;
+
+    private static QuotationListDto ToListDto(Models.Quotation x, bool hasCustomerPO = false, bool hasSalesOrder = false) => new()
     {
         Id = x.Id,
         No = x.No,
@@ -1144,9 +1182,10 @@ public class QuotationService : IQuotationService
         IsLatestRevision = x.IsLatestRevision,
         SentAt = x.SentAt,
         HasCustomerPO = hasCustomerPO,
+        DaysApprovedWithoutSalesOrder = ComputeDaysApprovedWithoutSalesOrder(x, hasSalesOrder),
     };
 
-    private static QuotationDto ToDto(Models.Quotation x, string? approvedByName = null) => new()
+    private static QuotationDto ToDto(Models.Quotation x, string? approvedByName = null, bool hasSalesOrder = false) => new()
     {
         Id = x.Id,
         No = x.No,
@@ -1182,10 +1221,10 @@ public class QuotationService : IQuotationService
         Location = x.Location,
         Contractor = x.Contractor,
         ValidityPeriod = x.ValidityPeriod,
-        AreaBlockTender = x.AreaBlockTender,
         ParentId = x.ParentId,
         ApprovedAt = x.ApprovedAt,
         ApprovedByName = approvedByName,
+        DaysApprovedWithoutSalesOrder = ComputeDaysApprovedWithoutSalesOrder(x, hasSalesOrder),
         CreatedAt = x.CreatedAt,
         UpdatedAt = x.UpdatedAt,
         Tabs = x.Tabs.OrderBy(t => t.SortOrder).Select(t => new QuotationTabDto
@@ -1200,10 +1239,6 @@ public class QuotationService : IQuotationService
                 SortOrder = g.SortOrder,
                 RecapVolume = g.RecapVolume,
                 RecapUnit = g.RecapUnit,
-                SubcontractorId = g.SubcontractorId,
-                SubcontractorName = g.Subcontractor?.Name,
-                FinalSubconCost = g.FinalSubconCost,
-                FinalSellingPrice = g.FinalSellingPrice,
                 Items = g.Items.OrderBy(i => i.SortOrder).Select(i => new QuotationItemDto
                 {
                     Id = i.Id,

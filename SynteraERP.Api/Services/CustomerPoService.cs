@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SynteraERP.Api.Data;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.CustomerPO;
+using SynteraERP.Api.Helpers;
 using SynteraERP.Api.Models;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -200,23 +201,10 @@ public class CustomerPoService : ICustomerPoService
         if (!File.Exists(fullPath)) return null;
 
         var data = await File.ReadAllBytesAsync(fullPath);
-        var contentType = GetContentType(cpo.AttachmentPath);
+        var contentType = ContentTypeHelper.FromPath(cpo.AttachmentPath);
         var fileName = cpo.AttachmentName ?? Path.GetFileName(cpo.AttachmentPath);
         return (data, contentType, fileName);
     }
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
-
-    private static string GetContentType(string path) =>
-        Path.GetExtension(path).ToLowerInvariant() switch
-        {
-            ".pdf" => "application/pdf",
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".png" => "image/png",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            _ => "application/octet-stream",
-        };
 
     private static CustomerPoListDto ToListDto(CustomerPO c, Guid? soId, string? soNo, bool hasHistory) => new()
     {

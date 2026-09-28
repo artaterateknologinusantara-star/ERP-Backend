@@ -23,13 +23,12 @@ public class VendorRabRequest : BaseEntity
     public Guid? SentBy { get; set; }
     public DateTimeOffset? DueDate { get; set; }
 
-    // Ditulis sekali saat approve — jejak QuotationWorkItem resmi yang dihasilkan, untuk
-    // ditampilkan di UI internal ("submission ini sudah jadi WorkItem X"). Tidak dipakai PDF.
-    public Guid? ApprovedWorkItemId { get; set; }
-
     public QuotationGroup QuotationGroup { get; set; } = null!;
     public Supplier Supplier { get; set; } = null!;
-    public QuotationWorkItem? ApprovedWorkItem { get; set; }
+    // 1 approval sekarang fan-out jadi banyak QuotationWorkItem (dikelompokkan per
+    // WorkItemName vendor) — jejaknya di sisi QuotationWorkItem.SourceVendorRabRequestId,
+    // bukan singular ApprovedWorkItemId di sini lagi.
+    public ICollection<QuotationWorkItem> ApprovedWorkItems { get; set; } = [];
     public ICollection<VendorRabRequestLine> Lines { get; set; } = [];
     public ICollection<VendorRabSubmission> Submissions { get; set; } = [];
 }

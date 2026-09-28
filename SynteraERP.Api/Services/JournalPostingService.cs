@@ -336,16 +336,8 @@ public class JournalPostingService : IJournalPostingService
         return entry.Id;
     }
 
-    private async Task<string> NextEntryNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "JOURNAL_ENTRY")
-            ?? throw new InvalidOperationException("NumberingConfig for JOURNAL_ENTRY not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextEntryNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.JournalEntries, x => x.EntryNumber, "JOURNAL_ENTRY");
 
     private static JournalEntryDto ToDto(JournalEntry x, string? postedByName = null, string? createdByName = null) => new()
     {

@@ -298,6 +298,10 @@ public class SalesOrderService : ISalesOrderService
             .Include(x => x.Tabs)
                 .ThenInclude(t => t.Groups)
                     .ThenInclude(g => g.Items)
+            .Include(x => x.Tabs)
+                .ThenInclude(t => t.Groups)
+                    .ThenInclude(g => g.WorkItems)
+                        .ThenInclude(w => w.WorkDetails)
             .Include(x => x.Termins)
             .FirstOrDefaultAsync(x => x.Id == quotationId && !x.IsDeleted)
             ?? throw new Exception("Quotation tidak ditemukan");
@@ -335,10 +339,105 @@ public class SalesOrderService : ISalesOrderService
             ItemMasterId = item.ItemMasterId,
         }).ToList();
 
-        var taxRate = await _taxRateService.GetDefaultRateAsync();
+        // Civil & ME mode: RecalcTotals (QuotationService) folds QuotationWorkDetail.TotalHarga
+        // (BOQ) into Quotation.TotalService/GrandTotal regardless of whether the group has any
+        // QuotationItem rows — but WorkDetail is not a QuotationItem, so it was never represented
+        // above. Left unaddressed, a Quotation approved with real BOQ value converts into a
+        // SalesOrder that's silently missing that value (soItems, and everything computed from it
+        // below, would reflect only the QuotationItem slice) — confirmed against real scratch-DB
+        // data where a Civil ME quotation's SO ended up Rp 8.880.000 short of the approved
+        // Quotation total. Folded in as ONE non-shippable lump-sum SalesOrderItem (not per-
+        // WorkDetail rows) so the SO's Total/Project budget/Invoice-cap math — all of which
+        // already sum over soItems — pick it up for free. ItemMasterId/Sku left null so
+        // MatchSoItemToItemMasterAsync (which only matches by explicit ItemMasterId or exact
+        // Sku==Code, no name-guessing fallback) never accidentally links it to real inventory;
+        // GetShippableItemsForSoAsync/DO creation correctly leave it out of shippable quantities.
+        // QuotationGroup.FinalSellingPrice (Subkontraktor SOW manual entry) used to be folded in
+        // here too — removed alongside the field itself (see
+        // MigrateFinalSellingPriceToWorkDetailAndDropSubconFields), which converts any
+        // pre-existing FinalSellingPrice value into a real WorkDetail row first, so it still flows
+        // through here unchanged via each group's own WorkDetails below.
+        //
+        // Sep 2026: dulu SATU baris lump-sum menggabungkan WorkDetail dari SEMUA kategori
+        // sekaligus ("[Jasa/BOQ] {ProjectName}") — user minta tampilan Item SO mengikuti
+        // breakdown per kategori PERSIS seperti tabel SUMMARY halaman 1 PDF Penawaran ("A.
+        // Preliminaries", "B. MEP Works SOC", dst, lihat QuotationPdfService.RenderSummaryContent).
+        // Sekarang 1 baris lump-sum PER GROUP (kategori), diberi huruf yang SAMA dengan PDF lewat
+        // QuotationPdfService.BuildGroupCategoryLetters (reuse logic penomoran huruf yang sudah
+        // ada, bukan duplikasi — CLAUDE.md #6). Hanya WorkDetail yang dilipat di sini — Item
+        // (Material dari Maincon) tetap jadi baris SalesOrderItem sendiri-sendiri (via allItems di
+        // atas) supaya tetap bisa di-DO-kan per baris; menggabungkannya ke sini juga akan
+        // menghitungnya dua kali.
+        if (quotation.IsCivilMeMode)
+        {
+            var categoryLetters = QuotationPdfService.BuildGroupCategoryLetters(quotation);
+            var groupsInOrder = quotation.Tabs.OrderBy(t => t.SortOrder)
+                .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
+                .ToList();
+
+            var boqSortOrder = allItems.Count;
+            foreach (var g in groupsInOrder)
+            {
+                var groupWorkDetailSum = MoneyMath.Round(
+                    g.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => d.TotalHarga));
+                if (groupWorkDetailSum <= 0) continue;
+
+                var volume = g.RecapVolume ?? 1;
+                var unit = string.IsNullOrWhiteSpace(g.RecapUnit) ? "Ls" : g.RecapUnit;
+                var unitPrice = volume != 0 ? MoneyMath.Round(groupWorkDetailSum / volume) : groupWorkDetailSum;
+
+                soItems.Add(new SalesOrderItem
+                {
+                    Id = Guid.NewGuid(),
+                    Description = $"{categoryLetters[g.Id]}. {g.Name}",
+                    Sku = null,
+                    Qty = volume,
+                    Uom = unit,
+                    UnitPrice = unitPrice,
+                    Discount = 0,
+                    Amount = groupWorkDetailSum,
+                    QtyShipped = 0,
+                    Notes = "Nilai gabungan Detail Kerja (BOQ) kategori ini dari Quotation Civil & " +
+                        "ME — jasa, tidak dapat di-DO-kan per baris.",
+                    SortOrder = boqSortOrder++,
+                    ItemMasterId = null,
+                });
+            }
+        }
+
+        // Bug ditemukan Sep 2026 (quotation Q.ARN-26.0010 gagal di-convert, selisih Rp
+        // 20.535.000): baris ini SEBELUMNYA memakai _taxRateService.GetDefaultRateAsync() — tarif
+        // default GLOBAL dari master data Tax Rate — padahal Quotation.GrandTotal (yang
+        // divalidasi persis di bawah) dihitung RecalcTotals() (QuotationService.cs) memakai
+        // quotation.TaxRate, field tarif pajak BEKU milik dokumen itu sendiri (bisa diedit user
+        // per-quotation, tidak selalu sama dengan default global). Begitu master data Tax Rate
+        // berubah setelah quotation dibuat/disetujui, dua sisi ini pasti diverge sebesar delta
+        // pajak dari seluruh TotalBeforeTax — jauh melebihi toleransi pembulatan Rp1/baris di
+        // bawah. Perbaikan: pakai quotation.TaxRate (dibagi 100, field ini persen bukan pecahan)
+        // supaya sumbernya identik dengan RecalcTotals.
+        var taxRate = quotation.TaxRate / 100m;
         var subTotal = MoneyMath.Round(soItems.Sum(x => x.Amount));
-        var taxAmount = MoneyMath.Round(subTotal * taxRate);
-        var grandTotal = subTotal + taxAmount;
+        // Task #43 (found en route while adding the GrandTotal invariant check below):
+        // Quotation.Discount was never applied here — SO.Total silently ended up as the FULL
+        // undiscounted line total, overcharging by the discount amount for any Quotation with
+        // Discount>0 (0 rows currently have Discount>0 in dev/scratch, so no existing converted
+        // SO has been affected yet). Mirrors RecalcTotals' order: discount reduces the subtotal
+        // BEFORE tax, tax is computed on the discounted amount, not after.
+        var discountAmount = MoneyMath.Round(subTotal * quotation.Discount / 100);
+        var totalBeforeTax = subTotal - discountAmount;
+        var taxAmount = MoneyMath.Round(totalBeforeTax * taxRate);
+        var grandTotal = totalBeforeTax + taxAmount;
+
+        // Task #43: Quotation.GrandTotal and this grandTotal are computed independently
+        // (RecalcTotals sums-then-rounds per category; soItems above rounds per line then sums) —
+        // a future content source added to one and forgotten in the other (exactly #41's bug)
+        // would silently diverge here again. Tolerance scales with line count, not a flat Rp1 —
+        // each line's own rounding can contribute up to Rp1 of divergence between the two
+        // rounding orders, so a BOQ with many lines can legitimately accumulate more than that.
+        var totalTolerance = soItems.Count;
+        if (Math.Abs(grandTotal - quotation.GrandTotal) > totalTolerance)
+            throw new InvalidOperationException(
+                $"SalesOrder tidak bisa dibuat — Total hasil konversi (Rp {grandTotal:N0}) berbeda dari Total Quotation yang disetujui (Rp {quotation.GrandTotal:N0}) melebihi toleransi pembulatan. Selisih: Rp {Math.Abs(grandTotal - quotation.GrandTotal):N0}.");
 
         var no = await NextNumberAsync();
 
@@ -379,24 +478,45 @@ public class SalesOrderService : ISalesOrderService
         // exhausted (observed twice during testing). One transaction means ANY failure here —
         // QuotationId collision or otherwise — rolls back the SO too; the caller just retries the
         // whole request, and the existingSO check above confirms there's nothing left to clean up.
-        _db.Projects.Add(await BuildProjectForSoAsync(so, grandTotal));
+        var project = await BuildProjectForSoAsync(so, grandTotal);
+        _db.Projects.Add(project);
 
-        try
+        // Task #25: SequentialCodeHelper now generates Project.Code from MAX(ever issued)+1
+        // instead of COUNT(active)+1, which closes the deterministic post-deletion gap collision
+        // — but the TOCTOU race (two concurrent SO creates both reading the same MAX before either
+        // commits) is still possible, same as the QuotationId race handled below. Retrying the
+        // FULL RunWithRetryAsync wrapper here would defeat the single-transaction design above
+        // (SequentialCodeHelper.ChangeTracker.Clear() would also untrack `so`/the quotation status
+        // flip, burning an SO number on every Project.Code retry — the exact orphan-SO failure
+        // mode this method was redesigned to avoid). Instead: on a Project.Code collision only,
+        // regenerate just that property on the SAME already-tracked `project` entity and retry
+        // SaveChangesAsync — `so`/`quotation` stay tracked and untouched throughout.
+        const int maxProjectCodeAttempts = 3;
+        for (var attempt = 1; ; attempt++)
         {
-            await _db.SaveChangesAsync();
-        }
-        catch (DbUpdateException ex) when (IsQuotationAlreadyHasSoViolation(ex))
-        {
-            // Two concurrent requests (e.g. a double-submit) can both pass the existingSO == null
-            // check above before either commits — the unique index on SalesOrders.QuotationId is
-            // what actually prevents the duplicate SO. The loser lands here instead of a raw 500;
-            // roll back (the failed insert leaves the transaction unusable for further writes) and
-            // hand back the winner's SO exactly like the existingSO check above would have.
-            await tx.RollbackAsync();
-            _db.ChangeTracker.Clear();
-            var winner = await _db.SalesOrders.FirstOrDefaultAsync(x => x.QuotationId == quotationId && !x.IsDeleted);
-            if (winner is null) throw;
-            return (await GetByIdAsync(winner.Id))!;
+            try
+            {
+                await _db.SaveChangesAsync();
+                break;
+            }
+            catch (DbUpdateException ex) when (IsQuotationAlreadyHasSoViolation(ex))
+            {
+                // Two concurrent requests (e.g. a double-submit) can both pass the existingSO == null
+                // check above before either commits — the unique index on SalesOrders.QuotationId is
+                // what actually prevents the duplicate SO. The loser lands here instead of a raw 500;
+                // roll back (the failed insert leaves the transaction unusable for further writes) and
+                // hand back the winner's SO exactly like the existingSO check above would have.
+                await tx.RollbackAsync();
+                _db.ChangeTracker.Clear();
+                var winner = await _db.SalesOrders.FirstOrDefaultAsync(x => x.QuotationId == quotationId && !x.IsDeleted);
+                if (winner is null) throw;
+                return (await GetByIdAsync(winner.Id))!;
+            }
+            catch (DbUpdateException ex) when (attempt < maxProjectCodeAttempts && IsProjectCodeViolation(ex))
+            {
+                project.Code = await SequentialCodeHelper.NextYearCodeAsync(
+                    _db.Projects, x => x.Code, "PRJ", 3, DateTime.UtcNow.Year);
+            }
         }
 
         await tx.CommitAsync();
@@ -409,9 +529,14 @@ public class SalesOrderService : ISalesOrderService
         && (sqlEx.Number == 2601 || sqlEx.Number == 2627)
         && sqlEx.Message.Contains("IX_SalesOrders_QuotationId", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsProjectCodeViolation(DbUpdateException ex) =>
+        ex.InnerException is SqlException sqlEx
+        && (sqlEx.Number == 2601 || sqlEx.Number == 2627)
+        && sqlEx.Message.Contains("IX_Projects_Code", StringComparison.OrdinalIgnoreCase);
+
     private async Task<Project> BuildProjectForSoAsync(SalesOrder so, decimal budget)
     {
-        var code  = await SequentialCodeHelper.NextYearCodeAsync(_db.Projects, "PRJ", 3, DateTime.UtcNow.Year);
+        var code  = await SequentialCodeHelper.NextYearCodeAsync(_db.Projects, x => x.Code, "PRJ", 3, DateTime.UtcNow.Year);
         var name  = !string.IsNullOrWhiteSpace(so.ProjectName) ? so.ProjectName : so.No;
 
         return new Project
@@ -426,26 +551,22 @@ public class SalesOrderService : ISalesOrderService
         };
     }
 
-    private async Task<string> NextNumberAsync()
-    {
-        var config = await _db.NumberingConfigs
-            .FirstOrDefaultAsync(n => n.DocType == "SALES_ORDER")
-            ?? throw new InvalidOperationException("NumberingConfig for SALES_ORDER not found");
-
-        var no = config.GenerateNext();
-        await _db.SaveChangesAsync();
-        return no;
-    }
+    private Task<string> NextNumberAsync() =>
+        NumberingResyncHelper.NextNumberAsync(_db, _db.SalesOrders, x => x.No, "SALES_ORDER");
 
     private static SalesOrderDetailResponse ToDetailResponse(
         SalesOrder so, decimal taxRate, string phase, Dictionary<Guid, Guid> invoiceByTerminId)
     {
-        var subTotal = so.Items.Any()
-            ? MoneyMath.Round(so.Items.Sum(x => x.Amount))
-            : MoneyMath.Round(so.Total / (1 + taxRate));
-
-        var taxAmount = MoneyMath.Round(subTotal * taxRate);
-        var grandTotal = so.Items.Any() ? subTotal + taxAmount : so.Total;
+        // Task #43 (found en route): this used to recompute subTotal/grandTotal from raw
+        // so.Items.Sum() whenever Items existed, silently ignoring so.Total (and therefore any
+        // Quotation.Discount folded into it) — the persisted so.Total was correct, but every
+        // DTO response showing GrandTotal for a discounted SO with Items displayed the FULL
+        // undiscounted amount instead. so.Total is now always the single source of truth,
+        // reverse-derived into subTotal/taxAmount the same way the (previously Items-less-only)
+        // fallback branch already did — no more special-casing on Items.Any().
+        var subTotal = MoneyMath.Round(so.Total / (1 + taxRate));
+        var taxAmount = so.Total - subTotal;
+        var grandTotal = so.Total;
 
         return new SalesOrderDetailResponse
         {

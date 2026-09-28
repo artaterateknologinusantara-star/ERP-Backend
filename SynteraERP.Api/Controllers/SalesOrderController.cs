@@ -1,9 +1,11 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SynteraERP.Api.Authorization;
 using SynteraERP.Api.DTOs.Common;
 using SynteraERP.Api.DTOs.SalesOrder;
 using SynteraERP.Api.DTOs.SalesOrderPayment;
+using SynteraERP.Api.Models;
 using SynteraERP.Api.Services;
 using SynteraERP.Api.Services.Interfaces;
 
@@ -25,6 +27,7 @@ public class SalesOrderController : ControllerBase
         _dpSvc = dpSvc;
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<SalesOrderListResponse>>>> List(
         [FromQuery] int page = 1,
@@ -36,6 +39,7 @@ public class SalesOrderController : ControllerBase
         return Ok(ApiResponse<PaginatedResponse<SalesOrderListResponse>>.Ok(result));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
@@ -43,6 +47,7 @@ public class SalesOrderController : ControllerBase
         return Ok(new { success = true, data = result });
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ApiResponse<SalesOrderDetailResponse>>> Get(Guid id)
     {
@@ -51,6 +56,7 @@ public class SalesOrderController : ControllerBase
         return Ok(ApiResponse<SalesOrderDetailResponse>.Ok(item));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Create)]
     [HttpPost("from-quotation/{quotationId:guid}")]
     public async Task<IActionResult> CreateFromQuotation(Guid quotationId)
     {
@@ -69,6 +75,7 @@ public class SalesOrderController : ControllerBase
         }
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<ApiResponse>> UpdateStatus(Guid id, [FromBody] UpdateSalesOrderStatusRequest request)
     {
@@ -81,6 +88,7 @@ public class SalesOrderController : ControllerBase
         catch (ArgumentException ex) { return BadRequest(ApiResponse.Fail(ex.Message)); }
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Delete)]
     [HttpDelete("{id:guid}")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id)
     {
@@ -92,6 +100,7 @@ public class SalesOrderController : ControllerBase
         catch (KeyNotFoundException ex) { return NotFound(ApiResponse.Fail(ex.Message)); }
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}/pdf")]
     public async Task<IActionResult> ExportPdf(Guid id)
     {
@@ -100,6 +109,7 @@ public class SalesOrderController : ControllerBase
         return File(pdfBytes, "application/pdf", $"SO_{id}.pdf");
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.Edit)]
     [HttpPost("{id:guid}/down-payments")]
     public async Task<ActionResult<ApiResponse<SalesOrderPaymentDto>>> RecordDownPayment(Guid id, [FromBody] RecordDownPaymentRequest request)
     {
@@ -107,6 +117,7 @@ public class SalesOrderController : ControllerBase
         return Ok(ApiResponse<SalesOrderPaymentDto>.Ok(item, "Down Payment berhasil dicatat."));
     }
 
+    [RequirePermission(Modules.Sales, PermissionActions.View)]
     [HttpGet("{id:guid}/down-payments")]
     public async Task<ActionResult<ApiResponse<List<SalesOrderPaymentDto>>>> ListDownPayments(Guid id)
     {

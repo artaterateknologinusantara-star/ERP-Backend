@@ -25,6 +25,7 @@ public class VendorRabSubmission : BaseEntity
 public enum VendorRabSubmissionStatus
 {
     PendingReview,
+    RevisionRequested,
     Approved,
     Rejected,
 }

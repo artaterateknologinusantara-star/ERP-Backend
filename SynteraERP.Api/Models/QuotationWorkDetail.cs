@@ -8,10 +8,11 @@ public class QuotationWorkDetail
     public string? Spesifikasi { get; set; }
     public decimal Volume { get; set; } = 0;
     public string Unit { get; set; } = string.Empty;
-    public decimal UnitPrice { get; set; } = 0;
+    public decimal ServicePrice { get; set; } = 0;
+    public decimal MaterialPrice { get; set; } = 0;
     public int SortOrder { get; set; } = 0;
 
-    public decimal TotalHarga => Volume * UnitPrice;
+    public decimal TotalHarga => Volume * (ServicePrice + MaterialPrice);
 
     public QuotationWorkItem WorkItem { get; set; } = null!;
     public ICollection<QuotationWorkDetailAttachment> Attachments { get; set; } = [];

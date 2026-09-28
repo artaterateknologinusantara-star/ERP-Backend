@@ -18,6 +18,7 @@ public class TaxRateController : ControllerBase
     public TaxRateController(ITaxRateService svc) => _svc = svc;
 
     [HttpGet]
+    [RequirePermission(Modules.Settings, PermissionActions.View)]
     public async Task<ActionResult<ApiResponse<PaginatedResponse<TaxRateDto>>>> List([FromQuery] PaginationParams p)
     {
         var result = await _svc.ListAsync(p);
@@ -25,6 +26,7 @@ public class TaxRateController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [RequirePermission(Modules.Settings, PermissionActions.View)]
     public async Task<ActionResult<ApiResponse<TaxRateDto>>> Get(Guid id)
     {
         var item = await _svc.GetByIdAsync(id);

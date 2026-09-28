@@ -88,7 +88,7 @@ public class BranchService : IBranchService
     }
 
     private Task<string> GenerateCodeAsync() =>
-        SequentialCodeHelper.NextCodeAsync(_db.Branches, "BR", 4);
+        SequentialCodeHelper.NextCodeAsync(_db.Branches, x => x.Code, "BR", 4);
 
     private static BranchDto ToDto(Branch x) => new()
     {
