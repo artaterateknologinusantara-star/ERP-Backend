@@ -53,7 +53,10 @@ public class SalesOrderQuotationTotalInvariantTests : IClassFixture<WebApplicati
         return factory.Services;
     }
 
-    private static SaveQuotationRequest BaseRequest(decimal discount, params SaveQuotationItemRequest[] items) => new()
+    private static SaveQuotationRequest BaseRequest(decimal discount, params SaveQuotationItemRequest[] items) =>
+        BaseRequest(discount, 11, items);
+
+    private static SaveQuotationRequest BaseRequest(decimal discount, decimal taxRate, params SaveQuotationItemRequest[] items) => new()
     {
         CustomerId = SeededCustomerId,
         SalesId = SeededAdminId,
@@ -61,7 +64,7 @@ public class SalesOrderQuotationTotalInvariantTests : IClassFixture<WebApplicati
         Date = DateOnly.FromDateTime(DateTime.UtcNow),
         ValidUntil = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(14)),
         Discount = discount,
-        TaxRate = 11,
+        TaxRate = taxRate,
         Tabs =
         [
             new SaveQuotationTabRequest
@@ -218,6 +221,49 @@ public class SalesOrderQuotationTotalInvariantTests : IClassFixture<WebApplicati
             var so = await salesOrderSvc.CreateFromQuotationAsync(quotation.Id, SeededAdminId);
 
             so.GrandTotal.Should().Be(888_000);
+            so.GrandTotal.Should().Be(quotation.GrandTotal);
+        }
+        finally
+        {
+            await CleanupAsync(db, quotation.Id);
+        }
+    }
+
+    // Real bug found Sep 2026 (quotation Q.ARN-26.0010 couldn't convert, off by Rp 20.535.000):
+    // CreateFromQuotationAsync used to read the tax rate from ITaxRateService.GetDefaultRateAsync()
+    // (the GLOBAL default row in the TaxRates master table) instead of quotation.TaxRate (the
+    // per-document field RecalcTotals actually used to compute Quotation.GrandTotal). Any
+    // Quotation whose own TaxRate differs from whatever the current global default happens to be
+    // would diverge by the tax delta on the whole TotalBeforeTax — far past the Rp1-per-line
+    // rounding tolerance — and CreateFromQuotationAsync would wrongly refuse to convert it even
+    // though Quotation.GrandTotal is entirely self-consistent. This quotation uses TaxRate=5 (NOT
+    // 11, the seeded global default), which would have failed before the fix and must succeed now.
+    [Fact]
+    public async Task CreateFromQuotationAsync_succeeds_when_quotation_TaxRate_differs_from_global_default()
+    {
+        var services = CreateScratchServices();
+        using var scope = services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.MigrateAsync();
+        await CustomerSeeder.SeedAsync(db);
+        await NumberingConfigSeeder.SeedAsync(db);
+
+        var quotationSvc = scope.ServiceProvider.GetRequiredService<IQuotationService>();
+        var salesOrderSvc = scope.ServiceProvider.GetRequiredService<ISalesOrderService>();
+
+        var quotation = await quotationSvc.CreateAsync(BaseRequest(0, 5,
+            new SaveQuotationItemRequest { ItemNo = "1", Equipment = "Test Item", Qty = 1, Unit = "unit", MaterialPrice = 1_000_000, ServicePrice = 0, SortOrder = 0 }));
+
+        try
+        {
+            // Subtotal 1.000.000, TaxRate 5% => TaxAmount 50.000, GrandTotal 1.050.000 — NOT
+            // 1.110.000 (what using the 11% global default instead would produce).
+            quotation.GrandTotal.Should().Be(1_050_000);
+
+            await quotationSvc.UpdateStatusAsync(quotation.Id, "Disetujui");
+            var so = await salesOrderSvc.CreateFromQuotationAsync(quotation.Id, SeededAdminId); // must NOT throw
+
+            so.GrandTotal.Should().Be(1_050_000);
             so.GrandTotal.Should().Be(quotation.GrandTotal);
         }
         finally

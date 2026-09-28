@@ -161,14 +161,17 @@ public class QuotationPdfService
                 {
                     if (logoBytes is not null)
                     {
-                        logoRow.ConstantItem(56).PaddingRight(8).AlignMiddle()
-                            .Image(logoBytes).FitWidth();
+                        // Kotak logo diperbesar (56 -> 100 lebar, tinggi 44 tetap proporsi lewat
+                        // FitArea/contain) supaya sepadan visual dengan nama perusahaan di
+                        // sebelahnya, bukan kotak kecil yang tenggelam (keluhan user Sep 2026).
+                        logoRow.ConstantItem(100).Height(44).PaddingRight(10).AlignMiddle()
+                            .Image(logoBytes).FitArea();
                     }
 
                     logoRow.RelativeItem().Column(info =>
                     {
                         info.Item().Text(company.CompanyName)
-                            .Bold().FontSize(12).FontColor(Colors.Blue.Darken3);
+                            .Bold().FontSize(12).FontColor("#1F5C3F");
 
                         if (!string.IsNullOrWhiteSpace(company.Address))
                             info.Item().Text(company.Address).FontSize(8).FontColor(Colors.Grey.Darken1);
@@ -188,14 +191,14 @@ public class QuotationPdfService
                 row.ConstantItem(155).AlignRight().Column(right =>
                 {
                     right.Item().Text("PENAWARAN HARGA")
-                        .Bold().FontSize(14).FontColor(Colors.Blue.Darken3);
+                        .Bold().FontSize(14).FontColor("#1F5C3F");
                     right.Item().Text(q.No).Bold().FontSize(11);
                     if (q.Revision > 0)
                         right.Item().Text($"Revisi ke-{q.Revision}").FontSize(8).FontColor(Colors.Grey.Darken1);
                 });
             });
 
-            col.Item().PaddingTop(5).LineHorizontal(1.5f).LineColor(Colors.Blue.Darken3);
+            col.Item().PaddingTop(5).LineHorizontal(1.5f).LineColor("#1F5C3F");
         });
     }
 
@@ -207,7 +210,7 @@ public class QuotationPdfService
         {
             col.Spacing(8);
 
-            col.Item().Text("SUMMARY").Bold().FontSize(12).FontColor(Colors.Blue.Darken3);
+            col.Item().Text("SUMMARY").Bold().FontSize(12).FontColor("#1F5C3F");
 
             // Header RAB — Facility ID, Renov PIC, Facility Name, Scope of Work, Location,
             // Contractor, Date, Validity Period (Civil & ME only, nullable — falls back to "-").
@@ -255,14 +258,14 @@ public class QuotationPdfService
                 {
                     void HeaderCell(IContainer cell, string text, bool alignRight = false)
                     {
-                        var t = cell.Background(Colors.Blue.Darken3).Padding(4)
+                        var t = cell.Background("#1F5C3F").Padding(4)
                             .Text(text).Bold().FontColor(Colors.White).FontSize(8);
                         if (alignRight) t.AlignRight();
                         else t.AlignCenter();
                     }
 
                     HeaderCell(h.Cell(), "No");
-                    h.Cell().Background(Colors.Blue.Darken3).Padding(4)
+                    h.Cell().Background("#1F5C3F").Padding(4)
                         .Text("Deskripsi").Bold().FontColor(Colors.White).FontSize(8);
                     HeaderCell(h.Cell(), "Volume");
                     HeaderCell(h.Cell(), "Satuan");
@@ -313,9 +316,9 @@ public class QuotationPdfService
                 if (q.TotalAreaSqm is > 0)
                 {
                     decimal pricePerSqm = grandTotal / q.TotalAreaSqm.Value;
-                    table.Cell().ColumnSpan(5).Background(Colors.Blue.Lighten4).Padding(4)
+                    table.Cell().ColumnSpan(5).Background("#EAF3EE").Padding(4)
                         .Text("HARGA / M²").Bold().FontSize(9).AlignRight();
-                    table.Cell().Background(Colors.Blue.Lighten4).Padding(4)
+                    table.Cell().Background("#EAF3EE").Padding(4)
                         .Text(FormatRupiah(pricePerSqm)).Bold().FontSize(9).AlignRight();
                 }
             });
@@ -353,12 +356,12 @@ public class QuotationPdfService
                 SumRow($"PPN ({q.TaxRate:N0}%)", FormatRupiah(q.TaxAmount));
 
                 // Grand total — highlighted
-                t.Cell().BorderBottom(1.5f).BorderColor(Colors.Blue.Darken3)
+                t.Cell().BorderBottom(1.5f).BorderColor("#1F5C3F")
                     .PaddingVertical(3).PaddingHorizontal(4)
-                    .Text("GRAND TOTAL").Bold().FontSize(8).FontColor(Colors.Blue.Darken3);
-                t.Cell().BorderBottom(1.5f).BorderColor(Colors.Blue.Darken3)
+                    .Text("GRAND TOTAL").Bold().FontSize(8).FontColor("#1F5C3F");
+                t.Cell().BorderBottom(1.5f).BorderColor("#1F5C3F")
                     .PaddingVertical(3).PaddingHorizontal(4)
-                    .Text(FormatRupiah(q.GrandTotal)).Bold().FontSize(8).FontColor(Colors.Blue.Darken3).AlignRight();
+                    .Text(FormatRupiah(q.GrandTotal)).Bold().FontSize(8).FontColor("#1F5C3F").AlignRight();
             });
 
             // Terbilang (Item D) — dekat Grand Total di atas, sebelum Notes/Terms.
@@ -442,7 +445,7 @@ public class QuotationPdfService
         {
             col.Spacing(10);
 
-            col.Item().Text("BILL OF QUANTITY").Bold().FontSize(12).FontColor(Colors.Blue.Darken3);
+            col.Item().Text("BILL OF QUANTITY").Bold().FontSize(12).FontColor("#1F5C3F");
 
             var groups = q.Tabs.OrderBy(t => t.SortOrder)
                 .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
@@ -529,7 +532,7 @@ public class QuotationPdfService
 
             foreach (var group in groups)
             {
-                col.Item().PaddingTop(6).Text($"{categoryLetters[group.Id]}. {group.Name}").Bold().FontSize(10).FontColor(Colors.Blue.Darken2);
+                col.Item().PaddingTop(6).Text($"{categoryLetters[group.Id]}. {group.Name}").Bold().FontSize(10).FontColor("#2F6F4F");
 
                 foreach (var workItem in group.WorkItems.OrderBy(w => w.SortOrder))
                 {
@@ -615,7 +618,7 @@ public class QuotationPdfService
                     + group.Items.Sum(i => i.GrandLine);
                 col.Item().PaddingTop(2).Background(Colors.Grey.Lighten3).Padding(4).AlignRight()
                     .Text($"Subtotal — {categoryLetters[group.Id]}. {group.Name}: {FormatRupiah(groupSubtotal)}")
-                    .Bold().FontSize(8).FontColor(Colors.Blue.Darken2);
+                    .Bold().FontSize(8).FontColor("#2F6F4F");
             }
         });
     }
@@ -692,14 +695,14 @@ public class QuotationPdfService
                 {
                     void HeaderCell(IContainer cell, string text, bool alignRight = false)
                     {
-                        var t = cell.Background(Colors.Blue.Darken3).Padding(4)
+                        var t = cell.Background("#1F5C3F").Padding(4)
                             .Text(text).Bold().FontColor(Colors.White).FontSize(8);
                         if (alignRight) t.AlignRight();
                         else t.AlignCenter();
                     }
 
                     HeaderCell(h.Cell(), "No");
-                    h.Cell().Background(Colors.Blue.Darken3).Padding(4)
+                    h.Cell().Background("#1F5C3F").Padding(4)
                         .Text("Deskripsi").Bold().FontColor(Colors.White).FontSize(8);
                     HeaderCell(h.Cell(), "Qty");
                     HeaderCell(h.Cell(), "Jasa / Satuan", alignRight: true);
@@ -734,7 +737,7 @@ public class QuotationPdfService
                         lastGroupName = entry.GroupName;
                         groupSubtotal = 0;
                         table.Cell().ColumnSpan(6)
-                            .Background(Colors.Blue.Lighten4)
+                            .Background("#EAF3EE")
                             .Padding(4)
                             .Text(entry.GroupName).Bold().FontSize(8);
                     }
@@ -818,12 +821,12 @@ public class QuotationPdfService
                 SumRow($"PPN ({q.TaxRate:N0}%)", FormatRupiah(q.TaxAmount));
 
                 // Grand total — highlighted
-                t.Cell().BorderBottom(1.5f).BorderColor(Colors.Blue.Darken3)
+                t.Cell().BorderBottom(1.5f).BorderColor("#1F5C3F")
                     .PaddingVertical(3).PaddingHorizontal(4)
-                    .Text("GRAND TOTAL").Bold().FontSize(8).FontColor(Colors.Blue.Darken3);
-                t.Cell().BorderBottom(1.5f).BorderColor(Colors.Blue.Darken3)
+                    .Text("GRAND TOTAL").Bold().FontSize(8).FontColor("#1F5C3F");
+                t.Cell().BorderBottom(1.5f).BorderColor("#1F5C3F")
                     .PaddingVertical(3).PaddingHorizontal(4)
-                    .Text(FormatRupiah(q.GrandTotal)).Bold().FontSize(8).FontColor(Colors.Blue.Darken3).AlignRight();
+                    .Text(FormatRupiah(q.GrandTotal)).Bold().FontSize(8).FontColor("#1F5C3F").AlignRight();
             });
 
             // Notes

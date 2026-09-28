@@ -356,38 +356,66 @@ public class SalesOrderService : ISalesOrderService
         // here too — removed alongside the field itself (see
         // MigrateFinalSellingPriceToWorkDetailAndDropSubconFields), which converts any
         // pre-existing FinalSellingPrice value into a real WorkDetail row first, so it still flows
-        // through here unchanged via allWorkDetails.
+        // through here unchanged via each group's own WorkDetails below.
+        //
+        // Sep 2026: dulu SATU baris lump-sum menggabungkan WorkDetail dari SEMUA kategori
+        // sekaligus ("[Jasa/BOQ] {ProjectName}") — user minta tampilan Item SO mengikuti
+        // breakdown per kategori PERSIS seperti tabel SUMMARY halaman 1 PDF Penawaran ("A.
+        // Preliminaries", "B. MEP Works SOC", dst, lihat QuotationPdfService.RenderSummaryContent).
+        // Sekarang 1 baris lump-sum PER GROUP (kategori), diberi huruf yang SAMA dengan PDF lewat
+        // QuotationPdfService.BuildGroupCategoryLetters (reuse logic penomoran huruf yang sudah
+        // ada, bukan duplikasi — CLAUDE.md #6). Hanya WorkDetail yang dilipat di sini — Item
+        // (Material dari Maincon) tetap jadi baris SalesOrderItem sendiri-sendiri (via allItems di
+        // atas) supaya tetap bisa di-DO-kan per baris; menggabungkannya ke sini juga akan
+        // menghitungnya dua kali.
         if (quotation.IsCivilMeMode)
         {
-            var allWorkDetails = quotation.Tabs
-                .SelectMany(t => t.Groups)
-                .SelectMany(g => g.WorkItems)
-                .SelectMany(w => w.WorkDetails)
+            var categoryLetters = QuotationPdfService.BuildGroupCategoryLetters(quotation);
+            var groupsInOrder = quotation.Tabs.OrderBy(t => t.SortOrder)
+                .SelectMany(t => t.Groups.OrderBy(g => g.SortOrder))
                 .ToList();
-            var boqLumpSum = MoneyMath.Round(allWorkDetails.Sum(d => d.TotalHarga));
 
-            if (boqLumpSum > 0)
+            var boqSortOrder = allItems.Count;
+            foreach (var g in groupsInOrder)
             {
+                var groupWorkDetailSum = MoneyMath.Round(
+                    g.WorkItems.SelectMany(w => w.WorkDetails).Sum(d => d.TotalHarga));
+                if (groupWorkDetailSum <= 0) continue;
+
+                var volume = g.RecapVolume ?? 1;
+                var unit = string.IsNullOrWhiteSpace(g.RecapUnit) ? "Ls" : g.RecapUnit;
+                var unitPrice = volume != 0 ? MoneyMath.Round(groupWorkDetailSum / volume) : groupWorkDetailSum;
+
                 soItems.Add(new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
-                    Description = $"[Jasa/BOQ] {quotation.ProjectName}",
+                    Description = $"{categoryLetters[g.Id]}. {g.Name}",
                     Sku = null,
-                    Qty = 1,
-                    Uom = "Ls",
-                    UnitPrice = boqLumpSum,
+                    Qty = volume,
+                    Uom = unit,
+                    UnitPrice = unitPrice,
                     Discount = 0,
-                    Amount = boqLumpSum,
+                    Amount = groupWorkDetailSum,
                     QtyShipped = 0,
-                    Notes = "Nilai gabungan Detail Kerja (BOQ) dari Quotation Civil & ME — jasa, " +
-                        "tidak dapat di-DO-kan per baris.",
-                    SortOrder = allItems.Count,
+                    Notes = "Nilai gabungan Detail Kerja (BOQ) kategori ini dari Quotation Civil & " +
+                        "ME — jasa, tidak dapat di-DO-kan per baris.",
+                    SortOrder = boqSortOrder++,
                     ItemMasterId = null,
                 });
             }
         }
 
-        var taxRate = await _taxRateService.GetDefaultRateAsync();
+        // Bug ditemukan Sep 2026 (quotation Q.ARN-26.0010 gagal di-convert, selisih Rp
+        // 20.535.000): baris ini SEBELUMNYA memakai _taxRateService.GetDefaultRateAsync() — tarif
+        // default GLOBAL dari master data Tax Rate — padahal Quotation.GrandTotal (yang
+        // divalidasi persis di bawah) dihitung RecalcTotals() (QuotationService.cs) memakai
+        // quotation.TaxRate, field tarif pajak BEKU milik dokumen itu sendiri (bisa diedit user
+        // per-quotation, tidak selalu sama dengan default global). Begitu master data Tax Rate
+        // berubah setelah quotation dibuat/disetujui, dua sisi ini pasti diverge sebesar delta
+        // pajak dari seluruh TotalBeforeTax — jauh melebihi toleransi pembulatan Rp1/baris di
+        // bawah. Perbaikan: pakai quotation.TaxRate (dibagi 100, field ini persen bukan pecahan)
+        // supaya sumbernya identik dengan RecalcTotals.
+        var taxRate = quotation.TaxRate / 100m;
         var subTotal = MoneyMath.Round(soItems.Sum(x => x.Amount));
         // Task #43 (found en route while adding the GrandTotal invariant check below):
         // Quotation.Discount was never applied here — SO.Total silently ended up as the FULL

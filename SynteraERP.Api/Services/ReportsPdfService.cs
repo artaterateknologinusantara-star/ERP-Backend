@@ -15,11 +15,13 @@ public class ReportsPdfService
     private readonly IReportsService _reportsService;
     private readonly AppDbContext _context;
 
-    // Color palette — konsisten dengan InvoicePdfService/QuotationPdfService/SalesOrderPdfService
-    private const string Navy = "#1E3A5F";
+    // Color palette — konsisten dengan InvoicePdfService/QuotationPdfService/SalesOrderPdfService.
+    // Navy = warna brand utama (hijau logo, Sep 2026). Green/Red TETAP tidak diubah — itu makna
+    // semantik (seimbang/untung = hijau, selisih/rugi = merah), bukan warna brand.
+    private const string Navy = "#1F5C3F";
     private const string Blue = "#2563EB";
     private const string SlateGray = "#CBD5E1";
-    private const string LightBlue = "#EFF6FF";
+    private const string LightBlue = "#EAF3EE";
     private const string AltRow = "#F8FAFF";
     private const string Green = "#16A34A";
     private const string Red = "#DC2626";
@@ -345,7 +347,7 @@ public class ReportsPdfService
                 });
             });
 
-            col.Item().PaddingTop(8).BorderBottom(2).BorderColor(Blue).Height(2);
+            col.Item().PaddingTop(8).BorderBottom(2).BorderColor(Navy).Height(2);
         });
     }
 

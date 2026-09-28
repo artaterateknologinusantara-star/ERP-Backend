@@ -13,11 +13,13 @@ public class InvoicePdfService
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _env;
 
-    // Color palette
-    private const string Navy      = "#1E3A5F";
+    // Color palette — Navy/LightGreenBg jadi warna brand utama (hijau logo, Sep 2026);
+    // Blue dipertahankan HANYA untuk badge status invoice non-overdue (Terkirim/dst, baris
+    // ~142) supaya tidak bentrok visual dengan Green yang sudah berarti "Lunas".
+    private const string Navy      = "#1F5C3F";
     private const string Blue      = "#2563EB";
     private const string SlateGray = "#CBD5E1";
-    private const string LightBlue = "#EFF6FF";
+    private const string LightBlue = "#EAF3EE";
     private const string AltRow    = "#F8FAFF";
     private const string Green     = "#16A34A";
     private const string Red       = "#DC2626";
@@ -149,7 +151,7 @@ public class InvoicePdfService
                 });
             });
 
-            col.Item().PaddingTop(8).BorderBottom(2).BorderColor(Blue).Height(2);
+            col.Item().PaddingTop(8).BorderBottom(2).BorderColor(Navy).Height(2);
         });
     }
 
@@ -451,7 +453,7 @@ public class InvoicePdfService
             if (!string.IsNullOrEmpty(company.FooterText))
             {
                 col.Item()
-                    .Background(LightBlue).Border(0.5f).BorderColor("#DBEAFE").Padding(8)
+                    .Background(LightBlue).Border(0.5f).BorderColor("#BFE0CC").Padding(8)
                     .Column(bank =>
                     {
                         bank.Item().Text("Informasi Pembayaran")

@@ -137,8 +137,10 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
             await quotationSvc.UpdateStatusAsync(quotation.Id, "Disetujui");
             var so = await salesOrderSvc.CreateFromQuotationAsync(quotation.Id, SeededAdminId);
 
-            so.Items.Should().ContainSingle(); // hanya baris lump-sum
-            so.Items[0].Description.Should().Contain("Jasa/BOQ");
+            so.Items.Should().ContainSingle(); // hanya baris lump-sum (1 Group = "Group 1")
+            // Sep 2026: description sekarang per-kategori ("{huruf}. {NamaGroup}"), sama seperti
+            // baris SUMMARY halaman 1 PDF Penawaran — bukan lagi "[Jasa/BOQ] {ProjectName}".
+            so.Items[0].Description.Should().Be("A. Group 1");
             so.GrandTotal.Should().Be(quotation.GrandTotal);
 
             var soEntity = await db.SalesOrders.FirstAsync(x => x.Id == so.Id);
@@ -227,7 +229,8 @@ public class SalesOrderCivilMeConversionTests : IClassFixture<WebApplicationFact
             await quotationSvc.UpdateStatusAsync(quotation.Id, "Disetujui");
             var so = await salesOrderSvc.CreateFromQuotationAsync(quotation.Id, SeededAdminId);
 
-            so.Items.Should().HaveCount(2); // 1 QuotationItem + 1 lump-sum (WorkDetail only now)
+            so.Items.Should().HaveCount(2); // 1 QuotationItem + 1 lump-sum per-kategori (WorkDetail only)
+            so.Items.Should().Contain(i => i.Description == "A. Group 1" && i.Amount == 8_000_000); // TotalHarga WD = 16*(300.000+200.000), Item "Kabel Tray" tidak ikut dilipat di sini (baris sendiri)
             so.GrandTotal.Should().Be(quotation.GrandTotal);
 
             var soEntity = await db.SalesOrders.FirstAsync(x => x.Id == so.Id);
